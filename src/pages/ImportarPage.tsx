@@ -26,8 +26,9 @@ import { notifications } from '@mantine/notifications';
 import { getCasos } from '../services/casosApi';
 import { uploadArchivoExcel, getArchivosPorCaso, deleteArchivo } from '../services/archivosApi';
 import apiClient from '../services/api';
-import type { Caso, ArchivoExcel } from '../types/data';
+import type { Caso, ArchivoExcel, UploadResponse } from '../types/data';
 import * as XLSX from 'xlsx'; // Importar librería xlsx
+import { useNavigate } from 'react-router-dom';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
@@ -82,6 +83,8 @@ function ImportarPage() {
   const [loadingArchivos, setLoadingArchivos] = useState(false);
   const [errorArchivos, setErrorArchivos] = useState<string | null>(null);
   const [deletingArchivoId, setDeletingArchivoId] = useState<number | null>(null);
+
+  const navigate = useNavigate(); // Hook para navegación
 
   // Cargar casos para el selector
   useEffect(() => {
@@ -272,13 +275,13 @@ function ImportarPage() {
 
     try {
         const finalMapping = Object.entries(columnMapping)
-            .filter(([key, value]) => value !== null)
+            .filter(([_, value]) => value !== null)
             .reduce((obj, [key, value]) => {
                 obj[key] = value as string;
                 return obj;
             }, {} as { [key: string]: string });
 
-        const resultado: ArchivoExcel = await uploadArchivoExcel(
+        const resultado: UploadResponse = await uploadArchivoExcel(
             selectedCasoId,
             fileType,
             selectedFile,
@@ -287,21 +290,44 @@ function ImportarPage() {
 
         notifications.show({
             title: 'Éxito',
-            message: `Archivo "${resultado.Nombre_del_Archivo}" importado. ID Archivo: ${resultado.ID_Archivo}`,
+            message: `Archivo "${resultado.archivo.Nombre_del_Archivo}" importado. ID Archivo: ${resultado.archivo.ID_Archivo}`,
             color: 'green'
         });
+
+        // --- Notificación de Nuevos Lectores --- 
+        if (resultado.nuevos_lectores_creados && resultado.nuevos_lectores_creados.length > 0) {
+            const numNuevos = resultado.nuevos_lectores_creados.length;
+            notifications.show({
+                title: 'Lectores Nuevos Creados',
+                message: (
+                    <Box>
+                        <Text size="sm">Se crearon automáticamente {numNuevos} lectores nuevos.</Text>
+                        <Text size="sm">Se recomienda revisar y completar su información.</Text>
+                        <Button 
+                            size="xs" 
+                            variant="light" 
+                            mt="xs" 
+                            onClick={() => navigate('/lectores')} // O la ruta correcta
+                        >
+                            Ir a Gestión de Lectores
+                        </Button>
+                    </Box>
+                ),
+                color: 'blue',
+                autoClose: 10000, // Dar más tiempo para leer y hacer clic
+                withCloseButton: true,
+            });
+        }
+        // --- Fin Notificación --- 
 
         // Limpiar formulario
         setSelectedFile(null);
         setExcelHeaders([]);
         setColumnMapping({});
-        // No reseteamos el caso o tipo por si quiere importar otro al mismo
 
-        // --- RECARGAR LISTA DE ARCHIVOS ---
+        // Recargar lista de archivos
         if (selectedCasoId) {
             await fetchArchivos(selectedCasoId);
-        } else {
-            console.warn("selectedCasoId es null, no se pudo recargar la lista de archivos después de la importación.");
         }
 
     } catch (err: any) {

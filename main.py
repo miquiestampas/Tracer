@@ -4,12 +4,13 @@ from fastapi.exceptions import RequestValidationError # Importar excepción
 from fastapi.responses import JSONResponse, FileResponse # Importar para respuesta personalizada y FileResponse
 from fastapi.encoders import jsonable_encoder # Importar para codificar errores
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func # Importar func para count
 import models, schemas # Importar nuestros modelos y schemas
 from database import SessionLocal, engine, get_db # Importar configuración de BD y get_db
 import pandas as pd
 from io import BytesIO
 import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple # Asegurar List y Optional
 import json
 from urllib.parse import unquote
 import logging # Importar logging
@@ -17,6 +18,7 @@ import os # Para trabajar con rutas de archivo
 import shutil # Para guardar archivos subidos
 import pathlib # Importar pathlib para rutas absolutas
 from dateutil import parser # Importar dateutil.parser
+import re # Importar re para expresiones regulares
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -34,15 +36,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(f"Error de validación para request: {request.method} {request.url}")
     # Convertir los errores a un formato logueable/serializable
     error_details = jsonable_encoder(exc.errors())
-    logger.error(f"Detalles del error: {error_details}") 
+    logger.error(f"Detalles del error: {error_details}")
     # Devolver la respuesta 422 estándar pero asegurando que el error se logueó
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": error_details},
     )
 
-# --- Configuración CORS --- 
-# TEMPORALMENTE PERMISIVO PARA DIAGNÓSTICO
+# --- Configuración CORS ---
 origins = [
     "*" # Permitir cualquier origen temporalmente
 ]
@@ -51,9 +52,89 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins, # Usar la lista comodín
     allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"], 
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+# --- Directorio para guardar archivos subidos (RUTA ABSOLUTA) ---
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+UPLOADS_DIR = BASE_DIR / "uploads"
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+logger.info(f"Directorio de subidas configurado en: {UPLOADS_DIR}")
+
+# === DEFINICIÓN DE PARSEAR_UBICACION ===
+# (Debe estar definida antes de ser usada en update_lector)
+def parsear_ubicacion(ubicacion_str: str) -> Optional[Tuple[float, float]]:
+    """Intenta parsear una cadena para obtener latitud y longitud.
+
+    Soporta:
+    1. Formato "lat SEPARADOR lon" (coma o espacio como separador)
+    2. Enlaces de Google Maps tipo "...google.com/maps/...@lat,lon,..."
+
+    Devuelve:
+        Tuple[float, float]: (latitud, longitud) si el parseo es exitoso y válido.
+        None: Si el formato no se reconoce o las coordenadas están fuera de rango.
+    """
+    if not isinstance(ubicacion_str, str) or not ubicacion_str.strip():
+        logger.debug("parsear_ubicacion recibió entrada vacía o no string.")
+        return None
+
+    ubicacion_str = ubicacion_str.strip()
+    logger.debug(f"Intentando parsear ubicación: '{ubicacion_str}'")
+
+    # 1. Intentar formato "lat SEPARADOR lon" (coma o espacio como separador)
+    match_latlon = re.match(r"^(-?\d+(?:\.\d+)?)\s*(?:,|\s+)\s*(-?\d+(?:\.\d+)?)$", ubicacion_str)
+    if match_latlon:
+        try:
+            lat = float(match_latlon.group(1))
+            lon = float(match_latlon.group(2))
+            # Validar rangos
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                logger.info(f"Coordenadas parseadas (lat, lon): {lat}, {lon}")
+                return lat, lon
+            else:
+                logger.warning(f"Coordenadas fuera de rango: Lat={lat}, Lon={lon}")
+                return None
+        except ValueError:
+            logger.warning("Error al convertir lat/lon a float.")
+            return None
+
+    # 2. Intentar formato enlace Google Maps (@lat,lon,...)
+    match_gmaps = re.search(r"google\.[a-z.]+/maps/.*?@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)", ubicacion_str)
+    if match_gmaps:
+        try:
+            lat = float(match_gmaps.group(1))
+            lon = float(match_gmaps.group(2))
+            # Validar rangos
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                logger.info(f"Coordenadas parseadas de Google Maps: Lat={lat}, Lon={lon}")
+                return lat, lon
+            else:
+                logger.warning(f"Coordenadas de Google Maps fuera de rango: Lat={lat}, Lon={lon}")
+                return None
+        except ValueError:
+             logger.warning("Error al convertir lat/lon de Google Maps a float.")
+             return None
+
+    logger.warning(f"Formato de ubicación no reconocido: '{ubicacion_str}'")
+    return None
+
+# --- Helper functions para importación ---
+def get_optional_float(value):
+    try: return float(value) if pd.notna(value) else None
+    except (ValueError, TypeError): return None
+
+def get_optional_str(value):
+    return str(value).strip() if pd.notna(value) else None
+
+def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime]:
+    if not dt_str: return None
+    try:
+        return parser.parse(dt_str)
+    except (ValueError, OverflowError, TypeError) as e:
+        logger.warning(f"No se pudo parsear la fecha/hora: '{dt_str}'. Error: {e}")
+        return None
+
 
 # --- Endpoints API REST ---
 
@@ -65,7 +146,6 @@ def read_root():
 @app.post("/casos", response_model=schemas.Caso, status_code=status.HTTP_201_CREATED)
 def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
     logger.info(f"Solicitud POST /casos con datos: {caso}")
-    # Verificar si ya existe un caso con el mismo nombre y año (opcional)
     existing_caso = db.query(models.Caso).filter(
         models.Caso.Nombre_del_Caso == caso.Nombre_del_Caso,
         models.Caso.Año == caso.Año
@@ -73,42 +153,28 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
     if existing_caso:
         logger.warning(f"Intento de crear caso duplicado: {caso.Nombre_del_Caso} ({caso.Año})")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ya existe un caso con el mismo nombre y año.")
-
-    # Crear instancia del modelo SQLAlchemy explícitamente
     try:
-        # Convertir el schema Pydantic a un diccionario
-        caso_data = caso.model_dump(exclude_unset=True) 
-        
-        # Asegurarse de que el estado sea el Enum del modelo si se proporciona,
-        # o usar el default del modelo si no.
-        estado_enum_del_modelo = models.EstadoCasoEnum.NUEVO # Default del modelo
+        caso_data = caso.model_dump(exclude_unset=True)
+        estado_enum_del_modelo = models.EstadoCasoEnum.NUEVO
         if 'Estado' in caso_data and caso_data['Estado'] is not None:
-            # Convertir el valor del schema (string) al Enum del modelo
             try:
-                estado_enum_del_modelo = models.EstadoCasoEnum(caso_data['Estado']) 
+                estado_enum_del_modelo = models.EstadoCasoEnum(caso_data['Estado'])
             except ValueError:
-                # Si el valor no es válido para el Enum del modelo, lanzar error o usar default?
-                # Por ahora, lanzaremos error para ser estrictos.
                 logger.error(f"Valor de Estado inválido proporcionado: {caso_data['Estado']}")
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor de Estado inválido: {caso_data['Estado']}")
-        
-        # Crear el objeto del modelo, asignando el Enum del modelo
         db_caso = models.Caso(
             Nombre_del_Caso=caso_data['Nombre_del_Caso'],
             Año=caso_data['Año'],
             NIV=caso_data.get('NIV'),
             Descripcion=caso_data.get('Descripcion'),
-            # Fecha_de_Creacion se asigna por default en el modelo
-            Estado=estado_enum_del_modelo # Usar el Enum del modelo
+            Estado=estado_enum_del_modelo
         )
-        
         db.add(db_caso)
-        db.commit() 
-        db.refresh(db_caso) # Ahora el refresh debería funcionar
+        db.commit()
+        db.refresh(db_caso)
         logger.info(f"Caso creado exitosamente con ID: {db_caso.ID_Caso}")
         return db_caso
     except HTTPException as http_exc:
-        # Re-lanzar excepciones HTTP para que FastAPI las maneje
         raise http_exc
     except Exception as e:
         db.rollback()
@@ -127,19 +193,66 @@ def read_caso(caso_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
     return db_caso
 
-# --- Directorio para guardar archivos subidos (RUTA ABSOLUTA) ---
-# Obtiene la ruta del directorio donde está main.py y le añade /uploads
-BASE_DIR = pathlib.Path(__file__).resolve().parent
-UPLOADS_DIR = BASE_DIR / "uploads"
-# Crear el directorio si no existe
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-logger.info(f"Directorio de subidas configurado en: {UPLOADS_DIR}")
+@app.put("/casos/{caso_id}/estado", response_model=schemas.Caso)
+def update_caso_estado(caso_id: int, estado_update: schemas.CasoEstadoUpdate, db: Session = Depends(get_db)):
+    logger.info(f"Solicitud PUT para actualizar estado del caso ID: {caso_id} a {estado_update.Estado.value}")
+    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if db_caso is None:
+        logger.warning(f"[Update Estado Caso] Caso con ID {caso_id} no encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+    try:
+        db_caso.Estado = estado_update.Estado # Asignar el valor del Enum
+        db.commit()
+        db.refresh(db_caso)
+        logger.info(f"[Update Estado Caso] Estado del caso ID {caso_id} actualizado a {db_caso.Estado.value}")
+        return db_caso
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Update Estado Caso] Error al actualizar estado del caso ID {caso_id}. Rollback: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al actualizar el estado del caso.")
 
-# === ARCHIVOS EXCEL (Importación) - MODIFICADO PARA GUARDAR ARCHIVO ===
-# Columna esperadas (pueden variar según tipo de archivo)
-COLUMNAS_LPR_ESPERADAS = ['Matricula', 'Fecha y Hora', 'ID_Lector', 'Carril', 'Velocidad', 'Coordenada_X', 'Coordenada_Y']
-COLUMNAS_GPS_ESPERADAS = ['Matricula', 'Fecha y Hora', 'Coordenada_X', 'Coordenada_Y', 'Velocidad'] # Ejemplo para GPS
+@app.delete("/casos/{caso_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_caso(caso_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Solicitud DELETE para caso ID: {caso_id} (con eliminación en cascada)")
+    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if db_caso is None:
+        logger.warning(f"[Delete Caso Casc] Caso con ID {caso_id} no encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado.")
+    try:
+        archivos_a_eliminar = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
+        logger.info(f"[Delete Caso Casc] Se encontraron {len(archivos_a_eliminar)} archivos asociados al caso {caso_id}.")
+        for db_archivo in archivos_a_eliminar:
+            archivo_id_actual = db_archivo.ID_Archivo
+            nombre_archivo_actual = db_archivo.Nombre_del_Archivo
+            logger.info(f"[Delete Caso Casc] Procesando archivo ID: {archivo_id_actual} ({nombre_archivo_actual})")
+            lecturas_eliminadas = db.query(models.Lectura).filter(models.Lectura.ID_Archivo == archivo_id_actual).delete(synchronize_session=False)
+            logger.info(f"[Delete Caso Casc] {lecturas_eliminadas} lecturas asociadas al archivo {archivo_id_actual} marcadas para eliminar.")
+            if nombre_archivo_actual:
+                file_path_to_delete = UPLOADS_DIR / nombre_archivo_actual
+                if os.path.isfile(file_path_to_delete):
+                    try:
+                        os.remove(file_path_to_delete)
+                        logger.info(f"[Delete Caso Casc] Archivo físico eliminado: {file_path_to_delete}")
+                    except OSError as e:
+                        logger.error(f"[Delete Caso Casc] Error al eliminar archivo físico {file_path_to_delete}: {e}. Continuando...", exc_info=True)
+                else:
+                    logger.warning(f"[Delete Caso Casc] Archivo físico no encontrado en {file_path_to_delete}, no se elimina.")
+            else:
+                logger.warning(f"[Delete Caso Casc] Registro ArchivoExcel ID {archivo_id_actual} no tiene nombre, no se puede eliminar archivo físico.")
+            db.delete(db_archivo)
+            logger.info(f"[Delete Caso Casc] Registro ArchivoExcel ID {archivo_id_actual} marcado para eliminar.")
+        db.delete(db_caso)
+        logger.info(f"[Delete Caso Casc] Caso ID {caso_id} marcado para eliminar.")
+        db.commit()
+        logger.info(f"[Delete Caso Casc] Commit realizado. Eliminación completada para caso ID {caso_id} y sus asociados.")
+        return None
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Delete Caso Casc] Error durante la eliminación del caso ID {caso_id}. Rollback realizado: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al intentar eliminar el caso y sus asociados: {e}")
 
+
+# === ARCHIVOS EXCEL (Importación, Descarga, Eliminación) ===
 @app.post("/casos/{caso_id}/archivos/upload", response_model=schemas.ArchivoExcel, status_code=status.HTTP_201_CREATED)
 async def upload_excel(
     caso_id: int,
@@ -153,10 +266,8 @@ async def upload_excel(
     if db_caso is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
 
-    # --- GUARDAR ARCHIVO ORIGINAL (usando ruta absoluta) --- 
-    # Limpiar nombre de archivo por seguridad (opcional pero recomendado)
-    # filename = secure_filename(excel_file.filename) # Necesitarías una función 'secure_filename'
-    filename = excel_file.filename # Por ahora usamos el original
+    # --- GUARDAR ARCHIVO ORIGINAL ---
+    filename = excel_file.filename
     file_location = UPLOADS_DIR / filename
     logger.info(f"Intentando guardar archivo en: {file_location}")
     try:
@@ -168,114 +279,84 @@ async def upload_excel(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"No se pudo guardar el archivo subido '{filename}'.")
     finally:
         excel_file.file.close()
-    # --- FIN GUARDAR ARCHIVO ORIGINAL ---
-    
-    # 4. Leer Excel desde el archivo guardado (usando ruta absoluta)
+
+    # --- Leer Excel y Mapeo ---
     try:
         df = pd.read_excel(file_location)
     except Exception as e:
-        # Si falla la lectura, quizás el archivo se guardó mal o está corrupto
         logger.error(f"Error al leer el archivo Excel desde {file_location}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al leer el archivo Excel guardado ({filename}). Puede estar corrupto o no ser un Excel válido.")
-
-    # 3. Leer mapeo
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al leer el archivo Excel guardado ({filename}).")
     try:
         map_cliente_a_interno = json.loads(column_mapping)
         map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
     except json.JSONDecodeError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El mapeo de columnas no es un JSON válido.")
-
-    # 5. Renombrar columnas
     try:
-        # Solo intentar renombrar las columnas que existen en el mapeo y en el DataFrame
         columnas_a_renombrar = {k: v for k, v in map_interno_a_cliente.items() if k in df.columns}
         df.rename(columns=columnas_a_renombrar, inplace=True)
     except Exception as e:
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aplicar mapeo de columnas: {e}. Verifica los nombres.")
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aplicar mapeo de columnas: {e}.")
 
-    # 6. Validar columnas - ACTUALIZADO
-    # Usar los campos separados Fecha y Hora
-    columnas_obligatorias = ['Matricula', 'Fecha', 'Hora'] 
+    # --- Validar Columnas Obligatorias ---
+    columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
     if tipo_archivo == 'LPR':
         columnas_obligatorias.append('ID_Lector')
     elif tipo_archivo == 'GPS':
          columnas_obligatorias.extend(['Coordenada_X', 'Coordenada_Y'])
-
-    # Verificar que las columnas mapeadas como obligatorias existen en el DataFrame renombrado
     columnas_obligatorias_faltantes = []
     for campo_interno in columnas_obligatorias:
         if campo_interno not in df.columns:
-            # Intentar encontrar qué columna del Excel se mapeó (si existe el mapeo inverso)
             col_excel_mapeada = map_cliente_a_interno.get(campo_interno)
-            if col_excel_mapeada:
-                 columnas_obligatorias_faltantes.append(f"{campo_interno} (mapeada desde '{col_excel_mapeada}')")
-            else:
-                 columnas_obligatorias_faltantes.append(f"{campo_interno} (no mapeada)")
-
+            columnas_obligatorias_faltantes.append(f"{campo_interno} (mapeada desde '{col_excel_mapeada}')" if col_excel_mapeada else f"{campo_interno} (no mapeada)")
     if columnas_obligatorias_faltantes:
-        mensaje_error = f"Faltan columnas obligatorias o mapeos incorrectos en el Excel: {', '.join(columnas_obligatorias_faltantes)}"
+        mensaje_error = f"Faltan columnas obligatorias o mapeos incorrectos: {', '.join(columnas_obligatorias_faltantes)}"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=mensaje_error)
 
-    # 7. Crear registro ArchivoExcel
+    # --- Crear Registro ArchivoExcel ---
     db_archivo = models.ArchivoExcel(
         ID_Caso=caso_id,
-        Nombre_del_Archivo=filename, # Guardamos el nombre original (o el 'seguro' si lo implementas)
+        Nombre_del_Archivo=filename,
         Tipo_de_Archivo=tipo_archivo
     )
     db.add(db_archivo)
-    db.flush() # Necesario para obtener ID_Archivo si lo usáramos para renombrar
+    db.flush()
     db.refresh(db_archivo)
 
-    # 8. Procesar e insertar lecturas - ACTUALIZADO para combinar Fecha y Hora
+    # --- Procesar e Insertar Lecturas ---
     lecturas_a_insertar = []
     errores_lectura = []
     lectores_no_encontrados = set()
-
     for index, row in df.iterrows():
         try:
-            # Obtener Matricula (obligatoria)
             matricula = str(row['Matricula']).strip() if pd.notna(row['Matricula']) else None
             if not matricula: raise ValueError("Matrícula vacía")
-
-            # --- Combinar Fecha y Hora --- (Implementación básica, necesita robustez)
             valor_fecha_excel = row['Fecha']
             valor_hora_excel = row['Hora']
             fecha_hora_final = None
             try:
-                # Intentar convertir a datetime directamente (si Pandas lo hizo bien)
                 if isinstance(valor_fecha_excel, datetime.datetime) and isinstance(valor_hora_excel, datetime.time):
                      fecha_hora_final = datetime.datetime.combine(valor_fecha_excel.date(), valor_hora_excel)
                 elif isinstance(valor_fecha_excel, datetime.date) and isinstance(valor_hora_excel, datetime.time):
                      fecha_hora_final = datetime.datetime.combine(valor_fecha_excel, valor_hora_excel)
-                else: 
-                    # Intentar parsear como strings (muy simplificado)
+                else:
                     fecha_str = str(valor_fecha_excel).split()[0]
                     hora_str = str(valor_hora_excel).split()[-1]
-                    # Intentar varios formatos comunes
                     try:
                         fecha_hora_final = pd.to_datetime(f"{fecha_str} {hora_str}", errors='raise')
                     except ValueError:
-                        # Intentar otros formatos si es necesario o manejar números de serie Excel
-                        # Placeholder: añadir lógica más robusta de parseo aquí
                          raise ValueError("Formato de fecha/hora no reconocido")
-
                 if pd.isna(fecha_hora_final):
                      raise ValueError("Fecha/Hora resultante es inválida")
-                 
             except Exception as e_comb:
-                 raise ValueError(f"Error combinando/parseando Fecha ({valor_fecha_excel}) y Hora ({valor_hora_excel}): {e_comb}")
-            # --- Fin Combinar Fecha y Hora ---
+                 raise ValueError(f"Error combinando/parseando Fecha/Hora: {e_comb}")
 
-            # Obtener otros campos (Lector, Coords, Opcionales)
             id_lector = None
             coord_x_final = get_optional_float(row.get('Coordenada_X'))
             coord_y_final = get_optional_float(row.get('Coordenada_Y'))
-
             if tipo_archivo == 'LPR':
                 id_lector_str = str(row['ID_Lector']).strip() if pd.notna(row['ID_Lector']) else None
                 if not id_lector_str: raise ValueError("Falta ID_Lector para LPR")
-                id_lector = id_lector_str # Asignar si es LPR y válido
-                # Lógica para buscar lector y usar sus coordenadas si faltan
+                id_lector = id_lector_str
                 db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == id_lector).first()
                 if not db_lector:
                     lectores_no_encontrados.add(id_lector)
@@ -284,49 +365,33 @@ async def upload_excel(
                      if coord_x_final is None: coord_x_final = db_lector.Coordenada_X
                      if coord_y_final is None: coord_y_final = db_lector.Coordenada_Y
 
-            # Obtener opcionales
             carril = get_optional_str(row.get('Carril'))
             velocidad = get_optional_float(row.get('Velocidad'))
-
-            # Crear diccionario de datos para la lectura
             lectura_data = {
-                "ID_Archivo": db_archivo.ID_Archivo,
-                "Matricula": matricula,
-                "Fecha_y_Hora": fecha_hora_final, # Usar el combinado
-                "Carril": carril,
-                "Velocidad": velocidad,
-                "ID_Lector": id_lector,
-                "Coordenada_X": coord_x_final,
-                "Coordenada_Y": coord_y_final,
-                "Tipo_Fuente": tipo_archivo # Añadir el tipo de fuente original (LPR o GPS)
+                "ID_Archivo": db_archivo.ID_Archivo, "Matricula": matricula,
+                "Fecha_y_Hora": fecha_hora_final, "Carril": carril, "Velocidad": velocidad,
+                "ID_Lector": id_lector, "Coordenada_X": coord_x_final, "Coordenada_Y": coord_y_final,
+                "Tipo_Fuente": tipo_archivo
             }
             lecturas_a_insertar.append(models.Lectura(**lectura_data))
-
         except Exception as e:
-            errores_lectura.append({"fila": index + 2, "error": str(e)}) # index+2 por header y 0-index
+            errores_lectura.append({"fila": index + 2, "error": str(e)})
 
-    # 9. Insertar lecturas
+    # --- Insertar y Respuesta ---
     if lecturas_a_insertar:
         try:
             db.add_all(lecturas_a_insertar)
             db.commit()
         except Exception as e:
             db.rollback()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al guardar lecturas en la base de datos: {e}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al guardar lecturas: {e}")
     else:
         db.commit()
-
-    # 10. Respuesta
-    # Devolver un resumen más detallado podría ser útil
     if errores_lectura:
-        # Si hubo errores, devolver 207 Multi-Status o similar con detalles?
-        # Por ahora, devolvemos el archivo pero logueamos errores
-        logger.warning(f"Importación del archivo {filename} completada con {len(errores_lectura)} errores en filas.")
-        logger.warning(f"Errores detallados: {errores_lectura}")
+        logger.warning(f"Importación {filename} completada con {len(errores_lectura)} errores: {errores_lectura}")
     if lectores_no_encontrados:
-         logger.warning(f"Lectores no encontrados durante la importación: {list(lectores_no_encontrados)}")
-
-    return db_archivo # Devolver info del archivo creado
+         logger.warning(f"Lectores no encontrados: {list(lectores_no_encontrados)}")
+    return db_archivo
 
 @app.get("/casos/{caso_id}/archivos", response_model=List[schemas.ArchivoExcel])
 def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db)):
@@ -336,166 +401,70 @@ def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db)):
     archivos = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
     return archivos
 
-# === NUEVO ENDPOINT PARA DESCARGAR ARCHIVO (CON LOGGING MEJORADO) ===
 @app.get("/archivos/{id_archivo}/download")
 async def download_archivo(id_archivo: int, db: Session = Depends(get_db)):
     logger.info(f"Solicitud de descarga para archivo ID: {id_archivo}")
-    # 1. Buscar el registro del archivo en la BD
     archivo_db = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
-
     if archivo_db is None:
-        logger.error(f"Registro de archivo con ID {id_archivo} no encontrado en la base de datos.")
+        logger.error(f"Registro archivo ID {id_archivo} no encontrado DB.")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de archivo no encontrado.")
-
-    # 2. Construir la ruta esperada del archivo guardado (usando ruta absoluta)
     if not archivo_db.Nombre_del_Archivo:
-         logger.error(f"El registro del archivo ID {id_archivo} no tiene un nombre de archivo asociado.")
-         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno: falta el nombre del archivo en la base de datos.")
-         
+         logger.error(f"Registro archivo ID {id_archivo} sin nombre.")
+         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falta nombre del archivo BD.")
     file_path = UPLOADS_DIR / archivo_db.Nombre_del_Archivo
-    logger.info(f"[Download] Intentando acceder al archivo en la ruta absoluta: {file_path}")
-
-    # 3. Verificar si el archivo existe en el servidor (con log antes)
-    logger.info(f"[Download] Verificando existencia de: {file_path}")
+    logger.info(f"[Download] Verificando: {file_path}")
     if not os.path.isfile(file_path):
-        logger.error(f"[Download] ¡ERROR! Archivo físico NO encontrado en la ruta: {file_path}")
-        # Intentar listar contenido del directorio para depuración
+        logger.error(f"[Download] Archivo físico NO encontrado: {file_path}")
         try:
              contenido_dir = os.listdir(UPLOADS_DIR)
-             logger.warning(f"[Download] Contenido actual de {UPLOADS_DIR}: {contenido_dir}")
+             logger.warning(f"[Download] Contenido {UPLOADS_DIR}: {contenido_dir}")
         except Exception as list_err:
-             logger.error(f"[Download] No se pudo listar el contenido de {UPLOADS_DIR}: {list_err}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo original no encontrado en el servidor.")
+             logger.error(f"[Download] Error listando {UPLOADS_DIR}: {list_err}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo original no encontrado servidor.")
     else:
-        logger.info(f"[Download] Archivo encontrado en: {file_path}")
-
-    # 4. Devolver el archivo usando FileResponse
-    media_type = 'application/octet-stream' # Tipo por defecto
+        logger.info(f"[Download] Archivo encontrado: {file_path}")
+    media_type = 'application/octet-stream'
     if archivo_db.Nombre_del_Archivo:
-        if archivo_db.Nombre_del_Archivo.lower().endswith('.xlsx'):
+        if archivo_db.Nombre_del_Archivo.lower().endswith(('.xlsx', '.xls')):
             media_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        elif archivo_db.Nombre_del_Archivo.lower().endswith('.xls'):
-            media_type = 'application/vnd.ms-excel'
         elif archivo_db.Nombre_del_Archivo.lower().endswith('.csv'):
             media_type = 'text/csv'
-            
-    logger.info(f"[Download] Devolviendo archivo: {file_path} con media_type: {media_type}")
-    return FileResponse(
-        path=file_path, 
-        filename=archivo_db.Nombre_del_Archivo, 
-        media_type=media_type
-    )
+    logger.info(f"[Download] Devolviendo: {file_path} ({media_type})")
+    return FileResponse(path=file_path, filename=archivo_db.Nombre_del_Archivo, media_type=media_type)
 
-# === NUEVO ENDPOINT PARA ELIMINAR ARCHIVO ===
 @app.delete("/archivos/{id_archivo}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_archivo(id_archivo: int, db: Session = Depends(get_db)):
     logger.info(f"Solicitud DELETE para archivo ID: {id_archivo}")
-    # 1. Buscar el registro del archivo en la BD
     archivo_db = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
-
     if archivo_db is None:
-        logger.warning(f"[Delete] Registro de archivo con ID {id_archivo} no encontrado. No se puede eliminar.")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de archivo no encontrado.")
-
+        logger.warning(f"[Delete] Archivo ID {id_archivo} no encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro archivo no encontrado.")
     file_path_to_delete = None
     if archivo_db.Nombre_del_Archivo:
         file_path_to_delete = UPLOADS_DIR / archivo_db.Nombre_del_Archivo
-        logger.info(f"[Delete] Ruta de archivo físico a eliminar: {file_path_to_delete}")
+        logger.info(f"[Delete] Ruta física: {file_path_to_delete}")
     else:
-        logger.warning(f"[Delete] El registro del archivo ID {id_archivo} no tiene nombre, no se puede eliminar archivo físico.")
-
+        logger.warning(f"[Delete] Registro ID {id_archivo} sin nombre, no se borra archivo físico.")
     try:
-        # 2. Eliminar lecturas asociadas (IMPORTANTE antes de eliminar el archivo Excel)
         lecturas_eliminadas = db.query(models.Lectura).filter(models.Lectura.ID_Archivo == id_archivo).delete()
-        logger.info(f"[Delete] {lecturas_eliminadas} lecturas asociadas al archivo {id_archivo} marcadas para eliminar.")
-        # No hacemos commit aún, esperamos a eliminar el archivo y el registro principal
-        
-        # 3. Eliminar el archivo físico del disco
+        logger.info(f"[Delete] {lecturas_eliminadas} lecturas asociadas marcadas para eliminar.")
         if file_path_to_delete and os.path.isfile(file_path_to_delete):
             try:
                 os.remove(file_path_to_delete)
-                logger.info(f"[Delete] Archivo físico eliminado exitosamente: {file_path_to_delete}")
+                logger.info(f"[Delete] Archivo físico eliminado: {file_path_to_delete}")
             except OSError as e:
-                # Loguear el error pero continuar para eliminar el registro BD
-                logger.error(f"[Delete] Error al eliminar archivo físico {file_path_to_delete}: {e}. Continuando para eliminar registro DB.", exc_info=True)
+                logger.error(f"[Delete] Error eliminando {file_path_to_delete}: {e}. Continuando...", exc_info=True)
         elif file_path_to_delete:
-             logger.warning(f"[Delete] El archivo físico no existía en {file_path_to_delete}. Solo se eliminará el registro DB.")
-
-        # 4. Eliminar el registro del archivo de la BD
+             logger.warning(f"[Delete] Archivo físico no existía: {file_path_to_delete}.")
         db.delete(archivo_db)
         logger.info(f"[Delete] Registro ArchivoExcel ID {id_archivo} marcado para eliminar.")
-
-        # 5. Confirmar todos los cambios en la BD
         db.commit()
-        logger.info(f"[Delete] Commit realizado. Eliminación completada para archivo ID {id_archivo}.")
-        
-        # Devolver 204 No Content (implícito por status_code)
-        return # Opcionalmente: return JSONResponse(content={"message": "Archivo y lecturas asociadas eliminados"}, status_code=status.HTTP_200_OK)
-
+        logger.info(f"[Delete] Commit realizado. Eliminación completa archivo ID {id_archivo}.")
+        return
     except Exception as e:
         db.rollback()
-        logger.error(f"[Delete] Error durante la eliminación del archivo ID {id_archivo}. Rollback realizado: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al intentar eliminar el archivo: {e}")
-
-# === MODIFICADO ENDPOINT PARA ELIMINAR CASO (CON CASCADA) ===
-@app.delete("/casos/{caso_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_caso(caso_id: int, db: Session = Depends(get_db)):
-    logger.info(f"Solicitud DELETE para caso ID: {caso_id} (con eliminación en cascada)")
-    # 1. Buscar el caso en la BD
-    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
-
-    if db_caso is None:
-        logger.warning(f"[Delete Caso Casc] Caso con ID {caso_id} no encontrado.")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado.")
-
-    try:
-        # 2. Encontrar todos los archivos asociados al caso
-        archivos_a_eliminar = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
-        logger.info(f"[Delete Caso Casc] Se encontraron {len(archivos_a_eliminar)} archivos asociados al caso {caso_id}.")
-
-        for db_archivo in archivos_a_eliminar:
-            archivo_id_actual = db_archivo.ID_Archivo
-            nombre_archivo_actual = db_archivo.Nombre_del_Archivo
-            logger.info(f"[Delete Caso Casc] Procesando archivo ID: {archivo_id_actual} ({nombre_archivo_actual})")
-
-            # 2.1 Eliminar lecturas asociadas a este archivo
-            lecturas_eliminadas = db.query(models.Lectura).filter(models.Lectura.ID_Archivo == archivo_id_actual).delete(synchronize_session=False)
-            logger.info(f"[Delete Caso Casc] {lecturas_eliminadas} lecturas asociadas al archivo {archivo_id_actual} marcadas para eliminar.")
-
-            # 2.2 Eliminar el archivo físico
-            if nombre_archivo_actual:
-                file_path_to_delete = UPLOADS_DIR / nombre_archivo_actual
-                if os.path.isfile(file_path_to_delete):
-                    try:
-                        os.remove(file_path_to_delete)
-                        logger.info(f"[Delete Caso Casc] Archivo físico eliminado: {file_path_to_delete}")
-                    except OSError as e:
-                        logger.error(f"[Delete Caso Casc] Error al eliminar archivo físico {file_path_to_delete}: {e}. Continuando...", exc_info=True)
-                else:
-                    logger.warning(f"[Delete Caso Casc] Archivo físico no encontrado en {file_path_to_delete}, no se elimina.")
-            else:
-                logger.warning(f"[Delete Caso Casc] Registro ArchivoExcel ID {archivo_id_actual} no tiene nombre, no se puede eliminar archivo físico.")
-
-            # 2.3 Eliminar el registro ArchivoExcel
-            db.delete(db_archivo)
-            logger.info(f"[Delete Caso Casc] Registro ArchivoExcel ID {archivo_id_actual} marcado para eliminar.")
-            # Hacemos flush para procesar la eliminación antes de seguir, por si hay dependencias?
-            # Opcional: db.flush()
-
-        # 3. Eliminar el caso mismo
-        db.delete(db_caso)
-        logger.info(f"[Delete Caso Casc] Caso ID {caso_id} marcado para eliminar.")
-
-        # 4. Confirmar todos los cambios en la BD
-        db.commit()
-        logger.info(f"[Delete Caso Casc] Commit realizado. Eliminación completada para caso ID {caso_id} y sus asociados.")
-        
-        return None # Devuelve 204 No Content
-
-    except Exception as e:
-        db.rollback()
-        logger.error(f"[Delete Caso Casc] Error durante la eliminación del caso ID {caso_id}. Rollback realizado: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al intentar eliminar el caso y sus asociados: {e}")
+        logger.error(f"[Delete] Error durante eliminación archivo ID {id_archivo}. Rollback: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno eliminando archivo: {e}")
 
 # === LECTORES ===
 @app.post("/lectores", response_model=schemas.Lector, status_code=status.HTTP_201_CREATED)
@@ -503,16 +472,40 @@ def create_lector(lector: schemas.LectorCreate, db: Session = Depends(get_db)):
     db_lector_existente = db.query(models.Lector).filter(models.Lector.ID_Lector == lector.ID_Lector).first()
     if db_lector_existente:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Ya existe un lector con el ID '{lector.ID_Lector}'")
-    db_lector = models.Lector(**lector.dict())
+    # Aquí usamos model_dump() de Pydantic V2 en lugar de dict()
+    db_lector = models.Lector(**lector.model_dump())
     db.add(db_lector)
     db.commit()
     db.refresh(db_lector)
     return db_lector
 
-@app.get("/lectores", response_model=List[schemas.Lector])
-def read_lectores(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
-    lectores = db.query(models.Lector).offset(skip).limit(limit).all()
-    return lectores
+@app.get("/lectores", response_model=schemas.LectoresResponse)
+def read_lectores(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    logger.info(f"Solicitud GET /lectores con skip={skip}, limit={limit}")
+    total_count = db.query(func.count(models.Lector.ID_Lector)).scalar()
+    logger.info(f"Total de lectores encontrados en DB: {total_count}")
+    lectores_query = db.query(models.Lector).order_by(models.Lector.ID_Lector).offset(skip).limit(limit)
+    lectores = lectores_query.all()
+    logger.info(f"Devolviendo {len(lectores)} lectores para la página actual.")
+    return schemas.LectoresResponse(total_count=total_count or 0, lectores=lectores)
+
+# === ENDPOINT PARA DATOS DEL MAPA ===
+# (Versión correcta con consulta a BD)
+@app.get("/lectores/coordenadas", response_model=List[schemas.LectorCoordenadas])
+def read_lectores_coordenadas(db: Session = Depends(get_db)):
+    """Devuelve una lista de lectores con coordenadas válidas para el mapa."""
+    logger.info("Solicitud GET /lectores/coordenadas")
+
+    # Consultar todos los lectores que tengan Coordenada_X Y Coordenada_Y no nulas
+    lectores_con_coords = db.query(models.Lector).filter(
+        models.Lector.Coordenada_X.isnot(None),
+        models.Lector.Coordenada_Y.isnot(None)
+    ).all()
+
+    logger.info(f"Encontrados {len(lectores_con_coords)} lectores con coordenadas válidas.")
+
+    # response_model se encarga de la serialización
+    return lectores_con_coords
 
 @app.get("/lectores/{lector_id}", response_model=schemas.Lector)
 def read_lector(lector_id: str, db: Session = Depends(get_db)):
@@ -525,26 +518,56 @@ def read_lector(lector_id: str, db: Session = Depends(get_db)):
 def update_lector(lector_id: str, lector_update: schemas.LectorUpdate, db: Session = Depends(get_db)):
     db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id).first()
     if db_lector is None:
+        logger.warning(f"[Update Lector] Lector con ID '{lector_id}' no encontrado.")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lector no encontrado")
 
-    update_data = lector_update.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_lector, key, value)
+    # Usar model_dump() para Pydantic V2
+    update_data = lector_update.model_dump(exclude_unset=True)
+    logger.debug(f"[Update Lector {lector_id}] Datos recibidos: {update_data}")
 
-    db.commit()
-    db.refresh(db_lector)
-    return db_lector
+    # Procesar UbicacionInput por separado
+    ubicacion_input_str = update_data.pop('UbicacionInput', None)
+    if ubicacion_input_str:
+        logger.info(f"[Update Lector {lector_id}] Intentando parsear UbicacionInput: '{ubicacion_input_str}'")
+        parsed_coords = parsear_ubicacion(ubicacion_input_str)
+        if parsed_coords:
+            lat, lon = parsed_coords
+            logger.info(f"[Update Lector {lector_id}] Coordenadas parseadas: Lat={lat}, Lon={lon}")
+            db_lector.Coordenada_Y = lat
+            db_lector.Coordenada_X = lon
+        else:
+            logger.warning(f"[Update Lector {lector_id}] No se pudieron parsear coordenadas. Estableciendo a null.")
+            db_lector.Coordenada_Y = None
+            db_lector.Coordenada_X = None
+    else:
+        logger.debug(f"[Update Lector {lector_id}] No se proporcionó UbicacionInput.")
+        update_data.pop('Coordenada_X', None)
+        update_data.pop('Coordenada_Y', None)
+
+    # Actualizar el resto de los campos
+    logger.debug(f"[Update Lector {lector_id}] Actualizando otros campos: {update_data}")
+    for key, value in update_data.items():
+        if key not in ['Coordenada_X', 'Coordenada_Y']:
+             setattr(db_lector, key, value)
+
+    try:
+        db.commit()
+        db.refresh(db_lector)
+        logger.info(f"[Update Lector {lector_id}] Lector actualizado correctamente.")
+        return db_lector
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Update Lector {lector_id}] Error al guardar BD: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al guardar: {e}")
 
 @app.delete("/lectores/{lector_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_lector(lector_id: str, db: Session = Depends(get_db)):
     db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id).first()
     if db_lector is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lector no encontrado")
-
     lecturas_asociadas = db.query(models.Lectura).filter(models.Lectura.ID_Lector == lector_id).count()
     if lecturas_asociadas > 0:
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"No se puede eliminar el lector '{lector_id}' porque tiene {lecturas_asociadas} lecturas asociadas.")
-
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"No se puede eliminar '{lector_id}', tiene {lecturas_asociadas} lecturas asociadas.")
     db.delete(db_lector)
     db.commit()
     return None
@@ -554,9 +577,9 @@ def delete_lector(lector_id: str, db: Session = Depends(get_db)):
 def create_vehiculo(vehiculo: schemas.VehiculoCreate, db: Session = Depends(get_db)):
     db_vehiculo_existente = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == vehiculo.Matricula).first()
     if db_vehiculo_existente:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Ya existe un vehículo con la matrícula '{vehiculo.Matricula}'")
-
-    vehiculo_data = vehiculo.dict()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Ya existe vehículo con matrícula '{vehiculo.Matricula}'")
+    # Usar model_dump() para Pydantic V2
+    vehiculo_data = vehiculo.model_dump()
     db_vehiculo = models.Vehiculo(**vehiculo_data)
     db.add(db_vehiculo)
     db.commit()
@@ -582,12 +605,11 @@ def update_vehiculo(matricula: str, vehiculo_update: schemas.VehiculoUpdate, db:
     db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == matricula_decoded).first()
     if db_vehiculo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehículo no encontrado")
-
-    update_data = vehiculo_update.dict(exclude_unset=True)
+    # Usar model_dump() para Pydantic V2
+    update_data = vehiculo_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
-        if key == 'Matricula': continue
+        if key == 'Matricula': continue # No permitir cambiar matrícula
         setattr(db_vehiculo, key, value)
-
     db.commit()
     db.refresh(db_vehiculo)
     return db_vehiculo
@@ -598,127 +620,176 @@ def delete_vehiculo(matricula: str, db: Session = Depends(get_db)):
     db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == matricula_decoded).first()
     if db_vehiculo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehículo no encontrado")
-
     db.delete(db_vehiculo)
     db.commit()
     return None
 
-# === LECTURAS ===
-# Función auxiliar para parsear fechas flexibles
-def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime]:
-    if not dt_str: return None
-    try:
-        # dateutil.parser es bueno manejando varios formatos, incluyendo ISO 8601 y YYYY-MM-DD
-        # ignoretz=True puede ser útil si no te importa la zona horaria del cliente
-        return parser.parse(dt_str)
-    except (ValueError, OverflowError, TypeError) as e:
-        logger.warning(f"No se pudo parsear la fecha/hora: '{dt_str}'. Error: {e}")
-        return None
 
-@app.get("/lecturas", response_model=List[schemas.Lectura])
+# === LECTURAS ===
+@app.get("/lecturas", response_model=List[schemas.Lectura]) # TODO: Cambiar a respuesta paginada
 def read_lecturas(
-    skip: int = 0,
-    limit: int = 1000, # Mantener límite por defecto
-    caso_id: Optional[int] = None,
-    archivo_id: Optional[int] = None,
-    matricula: Optional[str] = None,
-    # Cambiar a parámetros de fecha/hora combinados y añadir tipo_fuente
-    fecha_hora_inicio: Optional[str] = None, # Esperar ISO string o YYYY-MM-DD
-    fecha_hora_fin: Optional[str] = None,
-    lector_id: Optional[str] = None, 
-    tipo_fuente: Optional[str] = None, # Filtro por tipo de fuente
+    skip: int = 0, limit: int = 1000, caso_id: Optional[int] = None,
+    archivo_id: Optional[int] = None, matricula: Optional[str] = None,
+    fecha_hora_inicio: Optional[str] = None, fecha_hora_fin: Optional[str] = None,
+    lector_id: Optional[str] = None, tipo_fuente: Optional[str] = None,
+    # Nuevo filtro para relevancia
+    solo_relevantes: Optional[bool] = False, 
     db: Session = Depends(get_db)
 ):
-    # Loguear todos los filtros recibidos
     logger.info(
-        f"Solicitud GET /lecturas con filtros: "
-        f"caso_id={caso_id}, archivo_id={archivo_id}, matricula={matricula}, "
-        f"fecha_hora_inicio='{fecha_hora_inicio}', fecha_hora_fin='{fecha_hora_fin}', lector_id={lector_id}, "
-        f"tipo_fuente={tipo_fuente}, skip={skip}, limit={limit}"
+        f"GET /lecturas: caso={caso_id}, archivo={archivo_id}, matricula={matricula}, "
+        f"inicio='{fecha_hora_inicio}', fin='{fecha_hora_fin}', lector={lector_id}, "
+        f"tipo={tipo_fuente}, skip={skip}, limit={limit}, relevantes_solo={solo_relevantes}"
     )
     query = db.query(models.Lectura)
 
-    # Aplicar filtros
+    # Filtro por caso_id (a través de ArchivoExcel)
     if caso_id is not None:
         query = query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id)
-        logger.info(f"Filtrando lecturas por caso_id: {caso_id}")
+        logger.info(f"Filtrando por caso_id: {caso_id}")
 
+    # Filtro por archivo_id
     if archivo_id is not None:
         query = query.filter(models.Lectura.ID_Archivo == archivo_id)
-        logger.info(f"Filtrando lecturas por archivo_id: {archivo_id}")
+        logger.info(f"Filtrando por archivo_id: {archivo_id}")
 
+    # Filtro por matrícula (case-insensitive)
     if matricula:
         matricula_decoded = unquote(matricula).strip()
         query = query.filter(models.Lectura.Matricula.ilike(f"%{matricula_decoded}%"))
-        logger.info(f"Filtrando lecturas por matricula (ilike): {matricula_decoded}")
+        logger.info(f"Filtrando por matricula (ilike): {matricula_decoded}")
 
-    # --- FILTROS MODIFICADOS --- 
+    # Filtro por rango de fecha/hora
     dt_inicio = parse_flexible_datetime(fecha_hora_inicio)
     dt_fin = parse_flexible_datetime(fecha_hora_fin)
-
     if dt_inicio:
         query = query.filter(models.Lectura.Fecha_y_Hora >= dt_inicio)
-        logger.info(f"Filtrando lecturas desde fecha/hora: {dt_inicio}")
-
+        logger.info(f"Filtrando desde fecha/hora: {dt_inicio}")
     if dt_fin:
-        # Si dt_fin no tiene hora (solo fecha), ajustar para incluir todo el día
+        # Ajuste para incluir todo el día si solo se da fecha
         if dt_fin.hour == 0 and dt_fin.minute == 0 and dt_fin.second == 0:
             dt_fin_ajustado = dt_fin + datetime.timedelta(days=1)
             query = query.filter(models.Lectura.Fecha_y_Hora < dt_fin_ajustado)
-            logger.info(f"Filtrando lecturas hasta fecha (fin del día): {dt_fin}")
+            logger.info(f"Filtrando hasta fecha (fin día): {dt_fin}")
         else:
              query = query.filter(models.Lectura.Fecha_y_Hora <= dt_fin)
-             logger.info(f"Filtrando lecturas hasta fecha/hora: {dt_fin}")
+             logger.info(f"Filtrando hasta fecha/hora: {dt_fin}")
 
+    # Filtro por ID Lector (case-insensitive)
     if lector_id:
         lector_id_stripped = lector_id.strip()
         query = query.filter(models.Lectura.ID_Lector.ilike(f"%{lector_id_stripped}%"))
-        logger.info(f"Filtrando lecturas por lector_id (ilike): {lector_id_stripped}")
-        
-    if tipo_fuente:
-        tipo_fuente_stripped = tipo_fuente.strip().upper() # Asegurar mayúsculas
-        if tipo_fuente_stripped in ['LPR', 'GPS']: # Validar valores
-             query = query.filter(models.Lectura.Tipo_Fuente == tipo_fuente_stripped)
-             logger.info(f"Filtrando lecturas por tipo_fuente: {tipo_fuente_stripped}")
-        else:
-            logger.warning(f"Valor de tipo_fuente inválido recibido: '{tipo_fuente}'. Se ignora filtro.")
-    # --- FIN FILTROS MODIFICADOS ---
+        logger.info(f"Filtrando por lector_id (ilike): {lector_id_stripped}")
 
-    # Aplicar paginación y ordenación
+    # Filtro por Tipo de Fuente
+    if tipo_fuente:
+        tipo_fuente_stripped = tipo_fuente.strip().upper()
+        if tipo_fuente_stripped in ['LPR', 'GPS']:
+             query = query.filter(models.Lectura.Tipo_Fuente == tipo_fuente_stripped)
+             logger.info(f"Filtrando por tipo_fuente: {tipo_fuente_stripped}")
+        else:
+            logger.warning(f"Valor tipo_fuente inválido: '{tipo_fuente}'. Ignorado.")
+            
+    # NUEVO: Filtro por relevancia
+    if solo_relevantes:
+        query = query.join(models.LecturaRelevante) # Inner join para incluir solo las que tienen entrada en LecturaRelevante
+        logger.info("Filtrando solo lecturas relevantes.")
+
+    # Aplicar paginación y ordenación (DESPUÉS de todos los filtros)
+    # TODO: Añadir conteo total para paginación real
     lecturas = query.order_by(models.Lectura.Fecha_y_Hora.desc()).offset(skip).limit(limit).all()
     logger.info(f"Devolviendo {len(lecturas)} lecturas.")
     return lecturas
 
-# --- Helper functions (si las necesitas para la importación) ---
-def get_optional_float(value):
-    try: return float(value) if pd.notna(value) else None
-    except (ValueError, TypeError): return None
 
-def get_optional_str(value):
-    return str(value).strip() if pd.notna(value) else None
+# === NUEVO: Endpoints para Lecturas Relevantes ===
 
-# --- NUEVO ENDPOINT PARA ACTUALIZAR ESTADO DEL CASO ---
-@app.put("/casos/{caso_id}/estado", response_model=schemas.Caso)
-def update_caso_estado(caso_id: int, estado_update: schemas.CasoEstadoUpdate, db: Session = Depends(get_db)):
-    logger.info(f"Solicitud PUT para actualizar estado del caso ID: {caso_id} a {estado_update.Estado.value}")
-    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
-    if db_caso is None:
-        logger.warning(f"[Update Estado Caso] Caso con ID {caso_id} no encontrado.")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+@app.post("/lecturas/{id_lectura}/marcar_relevante", response_model=schemas.LecturaRelevante, status_code=status.HTTP_201_CREATED)
+def marcar_lectura_relevante(id_lectura: int, nota_opcional: schemas.LecturaRelevanteUpdate | None = None, db: Session = Depends(get_db)):
+    """Marca una lectura como relevante, opcionalmente con una nota inicial."""
+    db_lectura = db.query(models.Lectura).filter(models.Lectura.ID_Lectura == id_lectura).first()
+    if not db_lectura:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lectura no encontrada.")
 
-    # Actualizar solo el estado
+    # Verificar si ya está marcada
+    db_relevante_existente = db.query(models.LecturaRelevante).filter(models.LecturaRelevante.ID_Lectura == id_lectura).first()
+    if db_relevante_existente:
+        # Si ya existe, ¿actualizamos la nota o devolvemos error?
+        # Por ahora, devolvemos la existente (o un 409 Conflict)
+        logger.warning(f"Lectura {id_lectura} ya estaba marcada como relevante.")
+        # Opcional: Actualizar nota si se proporciona aquí
+        if nota_opcional and nota_opcional.Nota is not None:
+            db_relevante_existente.Nota = nota_opcional.Nota
+            db.commit()
+            db.refresh(db_relevante_existente)
+            return db_relevante_existente
+        else:
+             # Simplemente devolver la existente sin cambios si no hay nota nueva
+             return db_relevante_existente
+            # raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La lectura ya está marcada como relevante.")
+
+    # Crear nueva entrada
+    nueva_relevante = models.LecturaRelevante(
+        ID_Lectura=id_lectura,
+        Nota=nota_opcional.Nota if nota_opcional else None
+        # Fecha_Marcada tiene default now()
+    )
+    db.add(nueva_relevante)
     try:
-        db_caso.Estado = estado_update.Estado # Asignar el valor del Enum
         db.commit()
-        db.refresh(db_caso)
-        logger.info(f"[Update Estado Caso] Estado del caso ID {caso_id} actualizado a {db_caso.Estado.value}")
-        return db_caso
+        db.refresh(nueva_relevante)
+        logger.info(f"Lectura {id_lectura} marcada como relevante.")
+        return nueva_relevante
     except Exception as e:
         db.rollback()
-        logger.error(f"[Update Estado Caso] Error al actualizar estado del caso ID {caso_id}. Rollback: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al actualizar el estado del caso.")
+        logger.error(f"Error al marcar lectura {id_lectura} como relevante: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al marcar la lectura.")
+
+
+@app.delete("/lecturas/{id_lectura}/desmarcar_relevante", status_code=status.HTTP_204_NO_CONTENT)
+def desmarcar_lectura_relevante(id_lectura: int, db: Session = Depends(get_db)):
+    """Elimina la marca de relevancia de una lectura."""
+    db_relevante = db.query(models.LecturaRelevante).filter(models.LecturaRelevante.ID_Lectura == id_lectura).first()
+    if not db_relevante:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La lectura no estaba marcada como relevante.")
+
+    db.delete(db_relevante)
+    try:
+        db.commit()
+        logger.info(f"Marca de relevante eliminada para lectura {id_lectura}.")
+        return None
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al desmarcar lectura {id_lectura}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al desmarcar la lectura.")
+
+@app.put("/lecturas_relevantes/{id_relevante}/nota", response_model=schemas.LecturaRelevante)
+def actualizar_nota_relevante(id_relevante: int, nota_update: schemas.LecturaRelevanteUpdate, db: Session = Depends(get_db)):
+    """Actualiza la nota de una lectura marcada como relevante."""
+    db_relevante = db.query(models.LecturaRelevante).filter(models.LecturaRelevante.ID_Relevante == id_relevante).first()
+    if not db_relevante:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de lectura relevante no encontrado.")
+
+    # Actualizar la nota (permitir string vacío o null para borrarla)
+    db_relevante.Nota = nota_update.Nota
+    try:
+        db.commit()
+        db.refresh(db_relevante)
+        logger.info(f"Nota actualizada para LecturaRelevante ID {id_relevante}.")
+        return db_relevante
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al actualizar nota de LecturaRelevante ID {id_relevante}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al actualizar la nota.")
+
+
+# === ENDPOINT DE PRUEBA ===
+@app.get("/ping")
+async def simple_ping():
+    logger.info("¡Recibida solicitud GET /ping!")
+    return {"message": "pong"}
 
 # --- Para ejecutar con Uvicorn (si no usas un comando externo) ---
 # import uvicorn
 # if __name__ == "__main__":
-#    uvicorn.run(app, host="0.0.0.0", port=8000) 
+#    uvicorn.run(app, host="0.0.0.0", port=8000)
