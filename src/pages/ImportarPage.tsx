@@ -393,6 +393,105 @@ function ImportarPage() {
     }
   };
 
+  // Subir el archivo al backend
+  const handleUpload = async () => {
+    if (!selectedFile || !selectedCasoId || Object.keys(columnMapping).length === 0) {
+      notifications.show({
+        title: 'Faltan Datos',
+        message: 'Selecciona un caso, un archivo y configura el mapeo de columnas.',
+        color: 'orange'
+      });
+      return;
+    }
+
+    // Validar mapeo antes de subir (igual que en saveMapping)
+    const missingMappings = REQUIRED_FIELDS[fileType].filter(field => !columnMapping[field]);
+    if (missingMappings.length > 0) {
+        notifications.show({
+            title: 'Mapeo Incompleto',
+            message: `Completa el mapeo para los campos requeridos: ${missingMappings.join(', ')}`,
+            color: 'orange'
+        });
+        return;
+    }
+
+    // Convertir el mapeo a JSON string para enviarlo
+    const mappingJson = JSON.stringify(columnMapping);
+
+    setIsUploading(true);
+    setUploadError(null);
+
+    try {
+      // Llamar a la API de subida
+      const uploadResult: UploadResponse = await uploadArchivoExcel(
+        selectedCasoId,
+        fileType,
+        selectedFile,
+        mappingJson
+      );
+
+      // --- Manejo de Respuesta Mejorado ---
+      if (uploadResult && uploadResult.archivo) {
+          // Notificación de éxito principal
+          notifications.show({
+            title: 'Importación Exitosa',
+            // Acceder al nombre del archivo a través de uploadResult.archivo
+            message: `Archivo '${uploadResult.archivo.Nombre_del_Archivo}' importado correctamente.`, 
+            color: 'green',
+            icon: <IconCheck size={18} />,
+            autoClose: 6000
+          });
+
+          // Notificación adicional si se crearon lectores
+          if (uploadResult.nuevos_lectores_creados && uploadResult.nuevos_lectores_creados.length > 0) {
+              notifications.show({
+                  title: 'Nuevos Lectores Creados',
+                  message: `Se crearon ${uploadResult.nuevos_lectores_creados.length} lectores nuevos. Puedes añadirles más información en "Gestión de Lectores". IDs: ${uploadResult.nuevos_lectores_creados.join(', ')}`,
+                  color: 'yellow', 
+                  icon: <IconAlertCircle size={18} />,
+                  autoClose: 10000 // Más tiempo para leer
+              });
+          }
+
+          // Resetear formulario y recargar lista de archivos
+          setSelectedFile(null);
+          setExcelHeaders([]);
+          setColumnMapping({});
+          await fetchArchivos(selectedCasoId); // Recargar lista tras éxito
+      } else {
+          // Esto no debería ocurrir si la API devuelve UploadResponse
+          throw new Error("La respuesta de la API no contiene la información del archivo esperado.");
+      }
+      // --- Fin Manejo de Respuesta Mejorado ---
+
+    } catch (error: any) {
+      console.error("Error detallado al importar:", error);
+      let errorMessage = 'Error desconocido al importar el archivo.';
+      if (error.response && error.response.data && error.response.data.detail) {
+        // Intentar obtener el mensaje de error específico de FastAPI
+        if (typeof error.response.data.detail === 'string') {
+            errorMessage = error.response.data.detail;
+        } else if (Array.isArray(error.response.data.detail)) {
+            // Si es un error de validación Pydantic
+            try {
+                errorMessage = error.response.data.detail.map((e: any) => `${e.loc?.join(' -> ') || 'Error'}: ${e.msg}`).join('; ');
+            } catch { /* fallback */ }
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      setUploadError(`Error al importar el archivo. Mensaje: ${errorMessage}`);
+      notifications.show({
+        title: 'Error de Importación',
+        message: errorMessage,
+        color: 'red',
+        icon: <IconX size={18} />
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // --- Renderizado del Componente ---
   return (
     <Box p="md">

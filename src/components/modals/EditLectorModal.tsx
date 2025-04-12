@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, TextInput, NumberInput, Textarea, Button, Group, SimpleGrid, LoadingOverlay, Select } from '@mantine/core';
-import type { Lector, LectorUpdateData } from '../../types/data';
+import { Modal, TextInput, NumberInput, Textarea, Button, Group, SimpleGrid, LoadingOverlay, Select, Combobox, useCombobox, InputBase, CheckIcon, Pill, Loader, Input } from '@mantine/core';
+import type { Lector, LectorUpdateData, LectorSugerenciasResponse } from '../../types/data';
+import { getLectorSugerencias } from '../../services/lectoresApi';
 
 // Opciones para el selector de Orientación
 const ORIENTACION_OPTIONS = [
@@ -21,6 +22,79 @@ interface EditLectorModalProps {
   onSave: (lectorId: string, data: LectorUpdateData) => Promise<void>; // Función para guardar cambios
 }
 
+// Componente auxiliar para el Combobox (Versión Corregida)
+function SuggestionCombobox({ label, placeholder, value, onChange, data, loading, disabled }: {
+    label: string;
+    placeholder: string;
+    value: string | null;
+    onChange: (value: string) => void;
+    data: string[];
+    loading: boolean;
+    disabled?: boolean;
+}) {
+    const combobox = useCombobox({
+        // onOptionSubmit se elimina, se maneja en Combobox.Option o Input
+    });
+
+    const [search, setSearch] = useState(value || '');
+
+    useEffect(() => {
+        setSearch(value || '');
+    }, [value]);
+
+    const filteredOptions = data.filter((item) => 
+        item.toLowerCase().includes(search.toLowerCase().trim())
+    );
+
+    const options = filteredOptions.map((item) => (
+        <Combobox.Option value={item} key={item}>
+            {item}
+        </Combobox.Option>
+    ));
+
+    return (
+        <Combobox
+            store={combobox}
+            withinPortal={false}
+            onOptionSubmit={(val) => {
+                onChange(val);
+                setSearch(val);
+                combobox.closeDropdown();
+            }}
+            disabled={disabled}
+        >
+            <Combobox.Target>
+                {/* Usar Input en lugar de InputBase para placeholder y control más simple */}
+                <Input
+                    placeholder={placeholder}
+                    value={search}
+                    onChange={(event) => {
+                        setSearch(event.currentTarget.value);
+                        onChange(event.currentTarget.value);
+                        combobox.openDropdown();
+                        combobox.updateSelectedOptionIndex();
+                    }}
+                    onClick={() => combobox.openDropdown()}
+                    onFocus={() => combobox.openDropdown()}
+                    onBlur={() => {
+                         setTimeout(() => combobox.closeDropdown(), 150); 
+                     }}
+                     rightSection={loading ? <Loader size="xs" /> : null}
+                     disabled={disabled}
+                />
+            </Combobox.Target>
+
+            <Combobox.Dropdown>
+                <Combobox.Options>
+                    {loading && <Combobox.Empty>Cargando...</Combobox.Empty>}
+                    {!loading && options.length === 0 && <Combobox.Empty>No hay sugerencias. Escribe para añadir.</Combobox.Empty>}
+                    {options}
+                </Combobox.Options>
+            </Combobox.Dropdown>
+        </Combobox>
+    );
+}
+
 const EditLectorModal: React.FC<EditLectorModalProps> = ({ 
   opened, 
   onClose, 
@@ -30,6 +104,31 @@ const EditLectorModal: React.FC<EditLectorModalProps> = ({
   // Estado local para los campos del formulario
   const [formData, setFormData] = useState<LectorUpdateData>({});
   const [isSaving, setIsSaving] = useState(false);
+  // Estado para sugerencias
+  const [sugerencias, setSugerencias] = useState<LectorSugerenciasResponse | null>(null);
+  const [loadingSugerencias, setLoadingSugerencias] = useState(false);
+
+  // Cargar sugerencias cuando se abre el modal
+  useEffect(() => {
+    if (opened && !sugerencias && !loadingSugerencias) {
+        setLoadingSugerencias(true);
+        console.log("[EditModal] Abierto y sin sugerencias, llamando a getLectorSugerencias...");
+        getLectorSugerencias()
+            .then(data => {
+                console.log("[EditModal] Sugerencias recibidas de API:", data);
+                setSugerencias(data)
+            })
+            .catch(err => {
+                console.error("[EditModal] Error cargando sugerencias:", err);
+                // Asegurarse de setear a un objeto vacío en error para evitar null
+                setSugerencias({ provincias: [], localidades: [], carreteras: [], organismos: [], contactos: [] });
+            })
+            .finally(() => setLoadingSugerencias(false));
+    }
+  }, [opened, sugerencias, loadingSugerencias]);
+
+  // Log para ver el estado de sugerencias en cada render
+  console.log("[EditModal] Renderizando. Estado sugerencias:", sugerencias);
 
   // Pre-rellenar formulario cuando el lector cambie
   useEffect(() => {
@@ -45,6 +144,9 @@ const EditLectorModal: React.FC<EditLectorModalProps> = ({
         Organismo_Regulador: lector.Organismo_Regulador || '',
         Contacto: lector.Contacto || '',
         // Si existen coords X/Y, podríamos pre-rellenar UbicacionInput
+        // y rellenar Coordenada_X/Y si el backend lo esperase, 
+        // pero por ahora lo pasamos tal cual (o lo quitamos si no existe en LectorUpdateData)
+        // Asumiendo que el backend manejará UbicacionInput si se añade a LectorUpdateData
         UbicacionInput: (lector.Coordenada_Y != null && lector.Coordenada_X != null) 
                         ? `${lector.Coordenada_Y}, ${lector.Coordenada_X}` 
                         : '', 
@@ -96,6 +198,15 @@ const EditLectorModal: React.FC<EditLectorModalProps> = ({
     onClose();
   };
 
+  // Log para ver el estado de sugerencias y los datos que se pasarán a los combobox ANTES del return
+  console.log("[EditModal] Renderizando.");
+  console.log("  Estado sugerencias:", sugerencias);
+  console.log("  Datos para Combobox Carretera:", sugerencias?.carreteras || []);
+  console.log("  Datos para Combobox Provincia:", sugerencias?.provincias || []);
+  console.log("  Datos para Combobox Localidad:", sugerencias?.localidades || []);
+  console.log("  Datos para Combobox Organismo:", sugerencias?.organismos || []);
+  console.log("  Datos para Combobox Contacto:", sugerencias?.contactos || []);
+
   return (
     <Modal
       opened={opened}
@@ -104,7 +215,7 @@ const EditLectorModal: React.FC<EditLectorModalProps> = ({
       size="xl" // Modal más grande para todos los campos
       overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
     >
-      <LoadingOverlay visible={isSaving} overlayProps={{ blur: 2 }} />
+      <LoadingOverlay visible={isSaving || loadingSugerencias} overlayProps={{ blur: 2 }} />
       <SimpleGrid cols={2} spacing="md">
         <TextInput
           label="Nombre"
@@ -113,26 +224,32 @@ const EditLectorModal: React.FC<EditLectorModalProps> = ({
           onChange={(e) => handleChange('Nombre', e.currentTarget.value)}
           disabled={isSaving}
         />
-        <TextInput
-          label="Carretera / Vía"
-          placeholder="Ej: A-4, M-30, C/ Alcalá"
-          value={formData.Carretera || ''}
-          onChange={(e) => handleChange('Carretera', e.currentTarget.value)}
-          disabled={isSaving}
+        <SuggestionCombobox
+            label="Carretera / Vía"
+            placeholder="Ej: A-4, M-30..."
+            value={formData.Carretera || null}
+            onChange={(val) => handleChange('Carretera', val)}
+            data={sugerencias?.carreteras || []}
+            loading={loadingSugerencias}
+            disabled={isSaving}
         />
-        <TextInput
-          label="Provincia"
-          placeholder="Ej: Madrid"
-          value={formData.Provincia || ''}
-          onChange={(e) => handleChange('Provincia', e.currentTarget.value)}
-          disabled={isSaving}
+        <SuggestionCombobox
+            label="Provincia"
+            placeholder="Ej: Madrid..."
+            value={formData.Provincia || null}
+            onChange={(val) => handleChange('Provincia', val)}
+            data={sugerencias?.provincias || []}
+            loading={loadingSugerencias}
+            disabled={isSaving}
         />
-        <TextInput
-          label="Localidad"
-          placeholder="Ej: Getafe"
-          value={formData.Localidad || ''}
-          onChange={(e) => handleChange('Localidad', e.currentTarget.value)}
-          disabled={isSaving}
+        <SuggestionCombobox
+            label="Localidad"
+            placeholder="Ej: Getafe..."
+            value={formData.Localidad || null}
+            onChange={(val) => handleChange('Localidad', val)}
+            data={sugerencias?.localidades || []}
+            loading={loadingSugerencias}
+            disabled={isSaving}
         />
          <TextInput
           label="Sentido"
@@ -150,28 +267,30 @@ const EditLectorModal: React.FC<EditLectorModalProps> = ({
             disabled={isSaving}
             clearable
         />
+        <SuggestionCombobox
+            label="Organismo Regulador"
+            placeholder="Ej: DGT, Ayuntamiento..."
+            value={formData.Organismo_Regulador || null}
+            onChange={(val) => handleChange('Organismo_Regulador', val)}
+            data={sugerencias?.organismos || []}
+            loading={loadingSugerencias}
+            disabled={isSaving}
+        />
+        <SuggestionCombobox
+            label="Contacto"
+            placeholder="Email o teléfono..."
+            value={formData.Contacto || null}
+            onChange={(val) => handleChange('Contacto', val)}
+            data={sugerencias?.contactos || []}
+            loading={loadingSugerencias}
+            disabled={isSaving}
+        />
         <TextInput
-          label="Organismo Regulador"
-          placeholder="Ej: DGT, Ayuntamiento..."
-          value={formData.Organismo_Regulador || ''}
-          onChange={(e) => handleChange('Organismo_Regulador', e.currentTarget.value)}
-          disabled={isSaving}
-        />
-         <TextInput
-          label="Contacto"
-          placeholder="Email o teléfono de contacto"
-          value={formData.Contacto || ''}
-          onChange={(e) => handleChange('Contacto', e.currentTarget.value)}
-          disabled={isSaving}
-        />
-        {/* Podría ser un input de archivo en el futuro */}
-         <TextInput
           label="Ruta Imagen (Opcional)"
           placeholder="Ej: /static/lector_1.jpg"
           value={formData.Imagen_Path || ''}
           onChange={(e) => handleChange('Imagen_Path', e.currentTarget.value)}
           disabled={isSaving}
-          // Considerar añadir un FileInput o similar aquí
         />
       </SimpleGrid>
       <Textarea

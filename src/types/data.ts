@@ -124,6 +124,16 @@ export interface LectorCoordenadas {
   Coordenada_X: number; // Longitud
   Provincia?: string | null;
   Carretera?: string | null;
+  Organismo_Regulador?: string | null;
+}
+
+// === NUEVO: Interfaz para Sugerencias de Edición ===
+export interface LectorSugerenciasResponse {
+  provincias: string[];
+  localidades: string[];
+  carreteras: string[];
+  organismos: string[];
+  contactos: string[];
 }
 
 // Podrías añadir interfaces para Vehiculo, etc. si las necesitas 
