@@ -1,5 +1,5 @@
 import apiClient from './api';
-import type { ArchivoExcel, Lectura } from '../types/data'; // Importa la interfaz ArchivoExcel y Lectura
+import type { ArchivoExcel, Lectura, LecturaRelevante, LecturasResponse, UploadResponse } from '../types/data'; // Importa la interfaz ArchivoExcel, Lectura y LecturaRelevante
 
 /**
  * Sube un archivo Excel al backend para ser procesado e importado.
@@ -7,14 +7,14 @@ import type { ArchivoExcel, Lectura } from '../types/data'; // Importa la interf
  * @param tipoArchivo Tipo de archivo ('LPR' o 'GPS').
  * @param archivo El objeto File del archivo Excel seleccionado.
  * @param columnMappingJson String JSON que contiene el mapeo de columnas.
- * @returns Promise<ArchivoExcel> - Los detalles del archivo creado en la BD.
+ * @returns Promise<UploadResponse> - Respuesta con info del archivo y lectores nuevos.
  */
 export const uploadArchivoExcel = async (
-  casoId: string, 
+  casoId: string | number, // Aceptar number también por si acaso
   tipoArchivo: 'LPR' | 'GPS',
   archivo: File,
   columnMappingJson: string
-): Promise<ArchivoExcel> => {
+): Promise<UploadResponse> => {
   // Crear un objeto FormData para enviar los datos
   const formData = new FormData();
 
@@ -27,7 +27,7 @@ export const uploadArchivoExcel = async (
     // Realizar la petición POST al endpoint específico
     // Es importante pasar el ID del caso en la URL
     // Axios detectará FormData y establecerá Content-Type: multipart/form-data
-    const response = await apiClient.post<ArchivoExcel>(
+    const response = await apiClient.post<UploadResponse>(
       `/casos/${casoId}/archivos/upload`,
       formData
     );
@@ -76,32 +76,93 @@ export const deleteArchivo = async (archivoId: number): Promise<void> => {
 };
 
 /**
- * Obtiene las lecturas filtrando opcionalmente por caso, archivo o matrícula.
- * @param params Objeto con parámetros de filtro opcionales: caso_id, archivo_id, matricula, limit, skip
- * @returns Promise<Lectura[]> - Una lista de lecturas que coinciden con los filtros.
+ * Obtiene las lecturas filtrando opcionalmente y con paginación.
+ * @param params Objeto con parámetros de filtro y paginación opcionales: caso_id, matricula, ..., skip, limit
+ * @returns Promise<LecturasResponse> - Un objeto con el conteo total y la lista de lecturas para la página.
  */
 export const getLecturas = async (params: {
-    caso_id?: number | string; 
+    caso_id?: number | string;
     archivo_id?: number;
     matricula?: string;
-    fecha_hora_inicio?: string; // ISO String o YYYY-MM-DD
-    fecha_hora_fin?: string; // ISO String o YYYY-MM-DD
+    fecha_hora_inicio?: string;
+    fecha_hora_fin?: string;
     lector_id?: string;
-    tipo_fuente?: string; // Nuevo filtro
-    limit?: number;
-    skip?: number;
-} = {}): Promise<Lectura[]> => {
+    tipo_fuente?: string;
+    solo_relevantes?: boolean; // Añadido para el filtro
+    skip?: number; // Añadido para paginación
+    limit?: number; // Añadido para paginación
+} = {}): Promise<LecturasResponse> => {
     try {
-        // Filtrar parámetros nulos o vacíos antes de enviar (opcional pero bueno)
         const cleanParams = Object.fromEntries(
             Object.entries(params).filter(([_, v]) => v != null && v !== '')
         );
-        const response = await apiClient.get<Lectura[]>('/lecturas', {
-            params: cleanParams // Enviar parámetros limpios
+        // El tipo genérico de la respuesta también debe coincidir
+        const response = await apiClient.get<LecturasResponse>('/lecturas', {
+            params: cleanParams
         });
         return response.data;
     } catch (error) {
         console.error('Error al obtener las lecturas:', error);
         throw error;
     }
+};
+
+/**
+ * Marca una lectura como relevante.
+ * @param idLectura El ID de la lectura a marcar.
+ * @param nota Opcional: Una nota a añadir a la marca de relevancia.
+ * @returns Promise<LecturaRelevante> - Los detalles de la lectura relevante creada.
+ */
+export const marcarLecturaRelevante = async (
+  idLectura: number,
+  nota?: string | null
+): Promise<LecturaRelevante> => {
+  try {
+    const payload = nota ? { Nota: nota } : {}; // Enviar objeto vacío si no hay nota
+    const response = await apiClient.post<LecturaRelevante>(
+      `/lecturas/${idLectura}/relevante`,
+      payload
+    );
+    return response.data;
+  } catch (error) {
+    console.error(`Error al marcar la lectura ${idLectura} como relevante:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Desmarca una lectura como relevante.
+ * @param idLectura El ID de la lectura a desmarcar.
+ * @returns Promise<void> - No devuelve nada si tiene éxito.
+ */
+export const desmarcarLecturaRelevante = async (idLectura: number): Promise<void> => {
+  try {
+    await apiClient.delete(`/lecturas/${idLectura}/relevante`);
+  } catch (error) {
+    console.error(`Error al desmarcar la lectura ${idLectura} como relevante:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Actualiza la nota de una lectura relevante existente.
+ * @param idRelevante El ID de la entrada LecturaRelevante.
+ * @param nota La nueva nota (puede ser string vacío o null para borrarla, según API).
+ * @returns Promise<LecturaRelevante> - Los detalles actualizados de la lectura relevante.
+ */
+export const actualizarNotaLecturaRelevante = async (
+  idRelevante: number,
+  nota: string | null
+): Promise<LecturaRelevante> => {
+  try {
+    const payload = { Nota: nota }; // Siempre enviar el campo Nota
+    const response = await apiClient.put<LecturaRelevante>(
+      `/lecturas/relevante/${idRelevante}`,
+      payload
+    );
+    return response.data;
+  } catch (error) {
+    console.error(`Error al actualizar la nota para la lectura relevante ${idRelevante}:`, error);
+    throw error;
+  }
 }; 

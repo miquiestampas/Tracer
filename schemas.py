@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List
+from typing import Optional, List, Union, Tuple
 import datetime
 import enum # Importar enum
 
@@ -35,13 +35,6 @@ class LecturaBase(BaseModel):
     Coordenada_Y: Optional[float] = Field(None, example=40.416775)
     Tipo_Fuente: str = Field(..., example="LPR", pattern="^(GPS|LPR)$")
 
-class LectorBase(BaseModel):
-    ID_Lector: str = Field(..., example="CAM001")
-    Coordenada_X: float = Field(..., example=-3.703790)
-    Coordenada_Y: float = Field(..., example=40.416775)
-    Sentido_de_la_Marcha: Optional[str] = Field(None, example="Norte")
-    Organismo: Optional[str] = Field(None, example="Ayuntamiento")
-
 class VehiculoBase(BaseModel):
     Matricula: str = Field(..., example="1234ABC")
     Marca: Optional[str] = Field(None, example="Seat")
@@ -60,19 +53,66 @@ class ArchivoExcelCreate(ArchivoExcelBase):
 class LecturaCreate(LecturaBase):
     ID_Archivo: int
 
-class LectorCreate(LectorBase):
-    pass
-
 class VehiculoCreate(VehiculoBase):
     pass
 
-# --- Schemas para Actualización (PUT) ---
-class LectorUpdate(BaseModel):
-    Coordenada_X: Optional[float] = None
-    Coordenada_Y: Optional[float] = None
-    Sentido_de_la_Marcha: Optional[str] = None
-    Organismo: Optional[str] = None
+# --- Actualizar Schemas Lector ---
 
+# Base: Campos comunes y obligatorios (solo ID y coords originales)
+# Ajustamos Base para reflejar el estado *mínimo* de un lector auto-creado
+class LectorBase(BaseModel):
+    ID_Lector: str = Field(..., example="MAD001", max_length=50)
+    Nombre: Optional[str] = Field(None, example="Cámara M-30 Pk 7", max_length=100)
+    Carretera: Optional[str] = Field(None, example="M-30", max_length=100)
+    Provincia: Optional[str] = Field(None, example="Madrid", max_length=50)
+    Localidad: Optional[str] = Field(None, example="Madrid", max_length=100)
+    Sentido: Optional[str] = Field(None, example="Norte", max_length=50)
+    Orientacion: Optional[str] = Field(None, example="Salida", max_length=100)
+    Organismo_Regulador: Optional[str] = Field(None, example="Ayuntamiento de Madrid", max_length=100)
+    Contacto: Optional[str] = Field(None, example="policia@madrid.es", max_length=255)
+    Coordenada_X: Optional[float] = Field(None, example=-3.703790)
+    Coordenada_Y: Optional[float] = Field(None, example=40.416775)
+    Texto_Libre: Optional[str] = Field(None, example="Notas adicionales sobre la cámara")
+    Imagen_Path: Optional[str] = Field(None, example="/static/images/cam001.jpg", max_length=255)
+
+# Create: Hereda de Base, permite añadir los campos opcionales al crear manualmente
+class LectorCreate(LectorBase):
+    pass
+
+# Update: Todos los campos son opcionales para permitir actualización parcial
+class LectorUpdate(BaseModel):
+    Nombre: Optional[str] = Field(None, max_length=100)
+    Carretera: Optional[str] = Field(None, max_length=100)
+    Provincia: Optional[str] = Field(None, max_length=50)
+    Localidad: Optional[str] = Field(None, max_length=100)
+    Sentido: Optional[str] = Field(None, max_length=50)
+    Orientacion: Optional[str] = Field(None, max_length=100)
+    Organismo_Regulador: Optional[str] = Field(None, max_length=100)
+    Contacto: Optional[str] = Field(None, max_length=255)
+    Coordenada_X: Optional[float] = None # Manejado por UbicacionInput en el endpoint
+    Coordenada_Y: Optional[float] = None # Manejado por UbicacionInput en el endpoint
+    Texto_Libre: Optional[str] = None
+    Imagen_Path: Optional[str] = Field(None, max_length=255)
+    UbicacionInput: Optional[str] = Field(None, description="Input de texto para coordenadas o enlace Google Maps")
+
+# Lectura (GET): Devuelve todos los campos de la BD
+class Lector(LectorBase): # Hereda ID_Lector, Coordenada_X, Coordenada_Y
+    Nombre: Optional[str] = None
+    Carretera: Optional[str] = None
+    Provincia: Optional[str] = None
+    Localidad: Optional[str] = None
+    Sentido: Optional[str] = None
+    Orientacion: Optional[str] = None
+    Organismo_Regulador: Optional[str] = None
+    Contacto: Optional[str] = None
+    Texto_Libre: Optional[str] = None
+    Imagen_Path: Optional[str] = None
+    # lecturas: List[Lectura] = [] # Descomentar si se quiere devolver lecturas asociadas
+    
+    class Config:
+        from_attributes = True
+
+# --- Schemas para Actualización (PUT) ---
 class VehiculoUpdate(BaseModel):
     Marca: Optional[str] = None
     Año: Optional[int] = None
@@ -106,12 +146,9 @@ class ArchivoExcel(ArchivoExcelBase):
 class Lectura(LecturaBase):
     ID_Lectura: int
     ID_Archivo: int
+    # Incluir información de relevancia opcionalmente
+    relevancia: Optional['LecturaRelevante'] = None # Usar string forward reference
 
-    class Config:
-        from_attributes = True
-
-class Lector(LectorBase):
-    # lecturas: List[Lectura] = []
     class Config:
         from_attributes = True
 
@@ -121,6 +158,69 @@ class Vehiculo(VehiculoBase):
     class Config:
         from_attributes = True
 
+# --- Schemas para Lecturas Relevantes ---
+class LecturaRelevanteBase(BaseModel):
+    Nota: Optional[str] = Field(None, example="Posible vehículo de escape visto en C/ Falsa 123")
+
+class LecturaRelevanteCreate(LecturaRelevanteBase):
+    # ID_Lectura se podría requerir aquí o tomar de la URL dependiendo de la API
+    pass
+
+class LecturaRelevanteUpdate(LecturaRelevanteBase):
+    # Mantener Nota como opcional para permitir borrarla si se envía null o vacío
+    Nota: Optional[str] = None
+
+class LecturaRelevante(LecturaRelevanteBase):
+    ID_Relevante: int
+    ID_Lectura: int
+    Fecha_Marcada: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+# --- NUEVO: Schema para respuesta paginada de lecturas ---
+class LecturasResponse(BaseModel):
+    total_count: int = Field(..., description="Número total de lecturas que coinciden con los filtros")
+    lecturas: List[Lectura] = Field(..., description="Lista de lecturas para la página actual")
+
+# --- NUEVO: Schema para respuesta de subida de archivo ---
+class UploadResponse(BaseModel):
+    archivo: ArchivoExcel # Información del archivo creado en la BD
+    nuevos_lectores_creados: Optional[List[str]] = Field(None, description="Lista de IDs de lectores nuevos creados automáticamente durante la importación")
+
+# --- NUEVO: Schema para respuesta paginada de lectores ---
+class LectoresResponse(BaseModel):
+    total_count: int
+    lectores: List[Lector]
+
+# === NUEVO: Esquema para datos de lector en el mapa ===
+class LectorCoordenadas(BaseModel):
+    ID_Lector: str
+    Nombre: Optional[str] = None
+    Coordenada_Y: float # Latitud (obligatoria para el mapa)
+    Coordenada_X: float # Longitud (obligatoria para el mapa)
+    # Añadir otros campos si son útiles para filtros o popups en el mapa
+    Provincia: Optional[str] = None
+    Carretera: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 # Caso.update_forward_refs()
 # ArchivoExcel.update_forward_refs()
 # Lector.update_forward_refs() 
+
+# --- Schemas Relacionados (con relaciones anidadas) ---
+# (Puedes definir esquemas aquí que muestren las relaciones completas si es necesario)
+# Ejemplo:
+# class LecturaCompleta(Lectura):
+#     archivo: ArchivoExcel
+#     lector: Optional[Lector]
+#     vehiculo: Optional[Vehiculo]
+
+# Actualizar referencias si es necesario (Pydantic v2 maneja mejor los forward refs)
+# Caso.model_rebuild()
+# ArchivoExcel.model_rebuild()
+# Lector.model_rebuild()
+# Lectura.model_rebuild()
+# LecturaRelevante.model_rebuild() 
