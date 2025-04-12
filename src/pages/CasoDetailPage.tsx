@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Box, Text, Loader, Alert, Tabs, Breadcrumbs, Anchor, Table, Button, Group, ActionIcon, Tooltip, Pagination } from '@mantine/core';
-import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash } from '@tabler/icons-react';
+import { Box, Text, Loader, Alert, Tabs, Breadcrumbs, Anchor, Table, Button, Group, ActionIcon, Tooltip, Pagination, TextInput, SimpleGrid, Select } from '@mantine/core';
+import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll } from '@tabler/icons-react';
 import { getCasoById } from '../services/casosApi';
 import { getArchivosPorCaso, deleteArchivo, getLecturas } from '../services/archivosApi';
 import { notifications } from '@mantine/notifications';
 import type { Caso, ArchivoExcel, Lectura } from '../types/data';
 import apiClient from '../services/api';
+import { DatePickerInput, TimeInput } from '@mantine/dates';
 
 function CasoDetailPage() {
   const { idCaso } = useParams<{ idCaso: string }>();
@@ -22,6 +23,15 @@ function CasoDetailPage() {
   const [lecturasList, setLecturasList] = useState<Lectura[]>([]);
   const [loadingLecturas, setLoadingLecturas] = useState(true);
   const [errorLecturas, setErrorLecturas] = useState<string | null>(null);
+
+  // --- ESTADOS PARA FILTROS MODIFICADOS ---
+  const [filtroMatricula, setFiltroMatricula] = useState('');
+  const [filtroFechaInicio, setFiltroFechaInicio] = useState<Date | null>(null);
+  const [filtroHoraInicio, setFiltroHoraInicio] = useState(''); // Guardar como string HH:MM
+  const [filtroFechaFin, setFiltroFechaFin] = useState<Date | null>(null);
+  const [filtroHoraFin, setFiltroHoraFin] = useState(''); // Guardar como string HH:MM
+  const [filtroLectorId, setFiltroLectorId] = useState('');
+  const [filtroTipoFuente, setFiltroTipoFuente] = useState<string | null>(null);
 
   const fetchArchivos = useCallback(async () => {
     if (idCaso) {
@@ -41,12 +51,58 @@ function CasoDetailPage() {
     }
   }, [idCaso]);
 
-  const fetchLecturasDelCaso = useCallback(async () => {
+  // Función auxiliar para combinar fecha y hora en ISO string o solo fecha
+  const combineDateTime = (date: Date | null, time: string): string | null => {
+    if (!date) return null;
+    const dateString = date.toISOString().split('T')[0];
+    if (time && /^[0-2][0-9]:[0-5][0-9]$/.test(time)) { // Validar formato HH:MM
+      // Intenta construir un objeto Date completo para obtener ISO
+      try {
+        const dateTime = new Date(`${dateString}T${time}:00`);
+        // Validar que la fecha construida no sea inválida
+        if (!isNaN(dateTime.getTime())) {
+            return dateTime.toISOString();
+        } else {
+            console.warn("Fecha/hora inválida construida:", `${dateString}T${time}:00`);
+            return dateString; // Devuelve solo la fecha si la hora es inválida
+        }
+      } catch (e) {
+          console.error("Error al construir fecha/hora:", e);
+          return dateString; // Devuelve solo la fecha en caso de error
+      }
+    } 
+    return dateString; // Devuelve solo fecha si no hay hora o es inválida
+  };
+
+  // Modificar fetchLecturasDelCaso para aceptar filtros
+  const fetchLecturasDelCaso = useCallback(async (filtros: { 
+      matricula?: string;
+      // Cambiar a campos individuales
+      fechaInicio?: Date | null;
+      horaInicio?: string; 
+      fechaFin?: Date | null;
+      horaFin?: string;
+      lectorId?: string;
+      tipoFuente?: string | null;
+    } = {}) => {
     if (idCaso) {
       setLoadingLecturas(true);
       setErrorLecturas(null);
       try {
-        const data = await getLecturas({ caso_id: idCaso });
+        // Construir objeto de parámetros para la API
+        const params: any = { caso_id: idCaso };
+        if (filtros.matricula) params.matricula = filtros.matricula;
+        if (filtros.lectorId) params.lector_id = filtros.lectorId; 
+        if (filtros.tipoFuente) params.tipo_fuente = filtros.tipoFuente; // Nuevo parámetro
+
+        // Combinar fecha y hora para inicio y fin
+        const fechaHoraInicioStr = combineDateTime(filtros.fechaInicio || null, filtros.horaInicio || '');
+        const fechaHoraFinStr = combineDateTime(filtros.fechaFin || null, filtros.horaFin || '');
+        if (fechaHoraInicioStr) params.fecha_hora_inicio = fechaHoraInicioStr;
+        if (fechaHoraFinStr) params.fecha_hora_fin = fechaHoraFinStr;
+        
+        // Llamar a getLecturas con los parámetros
+        const data = await getLecturas(params);
         setLecturasList(data);
       } catch (err: any) {
         setErrorLecturas(err.response?.data?.detail || err.message || 'Error al cargar las lecturas del caso.');
@@ -59,6 +115,31 @@ function CasoDetailPage() {
       setLoadingLecturas(false);
     }
   }, [idCaso]);
+
+  // Lógica para los botones de filtro
+  const handleFiltrarClick = () => {
+      fetchLecturasDelCaso({
+          matricula: filtroMatricula,
+          fechaInicio: filtroFechaInicio,
+          horaInicio: filtroHoraInicio,
+          fechaFin: filtroFechaFin,
+          horaFin: filtroHoraFin,
+          lectorId: filtroLectorId,
+          tipoFuente: filtroTipoFuente
+      });
+  };
+
+  const handleLimpiarClick = () => {
+      setFiltroMatricula('');
+      setFiltroFechaInicio(null);
+      setFiltroHoraInicio('');
+      setFiltroFechaFin(null);
+      setFiltroHoraFin('');
+      setFiltroLectorId('');
+      setFiltroTipoFuente(null);
+      // Volver a cargar todas las lecturas sin filtros
+      fetchLecturasDelCaso(); 
+  };
 
   useEffect(() => {
     if (idCaso) {
@@ -191,9 +272,9 @@ function CasoDetailPage() {
       <Table.Td>{lectura.ID_Lector || '-'}</Table.Td>
       <Table.Td>{lectura.Tipo_Fuente}</Table.Td>
       <Table.Td>{lectura.Carril || '-'}</Table.Td>
-      <Table.Td>{lectura.Velocidad !== null ? lectura.Velocidad.toFixed(1) : '-'}</Table.Td>
-      <Table.Td>{lectura.Coordenada_X !== null ? lectura.Coordenada_X.toFixed(6) : '-'}</Table.Td>
-      <Table.Td>{lectura.Coordenada_Y !== null ? lectura.Coordenada_Y.toFixed(6) : '-'}</Table.Td>
+      <Table.Td>{lectura.Velocidad != null ? lectura.Velocidad.toFixed(1) : '-'}</Table.Td>
+      <Table.Td>{lectura.Coordenada_X != null ? lectura.Coordenada_X.toFixed(6) : '-'}</Table.Td>
+      <Table.Td>{lectura.Coordenada_Y != null ? lectura.Coordenada_Y.toFixed(6) : '-'}</Table.Td>
       <Table.Td>{lectura.ID_Archivo}</Table.Td>
     </Table.Tr>
   ));
@@ -246,6 +327,77 @@ function CasoDetailPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="lecturas" pt="lg">
+          {/* --- Sección de Filtros Modificada --- */}
+          <Box mb="lg">
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="md">
+                <TextInput
+                    label="Matrícula"
+                    placeholder="Buscar matrícula..."
+                    value={filtroMatricula}
+                    onChange={(event) => setFiltroMatricula(event.currentTarget.value)}
+                />
+                <DatePickerInput
+                    label="Fecha Inicio"
+                    placeholder="Desde fecha..."
+                    value={filtroFechaInicio}
+                    onChange={setFiltroFechaInicio}
+                    clearable
+                    maxDate={filtroFechaFin || undefined}
+                />
+                <TimeInput
+                    label="Hora Inicio (HH:MM)"
+                    placeholder="Desde hora..."
+                    value={filtroHoraInicio}
+                    onChange={(event) => setFiltroHoraInicio(event.currentTarget.value)}
+                />
+                <DatePickerInput
+                    label="Fecha Fin"
+                    placeholder="Hasta fecha..."
+                    value={filtroFechaFin}
+                    onChange={setFiltroFechaFin}
+                    clearable
+                    minDate={filtroFechaInicio || undefined}
+                />
+                 <TimeInput
+                    label="Hora Fin (HH:MM)"
+                    placeholder="Hasta hora..."
+                    value={filtroHoraFin}
+                    onChange={(event) => setFiltroHoraFin(event.currentTarget.value)}
+                />
+                 <TextInput
+                    label="ID Lector"
+                    placeholder="Filtrar por ID lector..."
+                    value={filtroLectorId}
+                    onChange={(event) => setFiltroLectorId(event.currentTarget.value)}
+                />
+                <Select
+                    label="Tipo Fuente"
+                    placeholder="Filtrar por tipo..."
+                    data={['LPR', 'GPS']}
+                    value={filtroTipoFuente}
+                    onChange={setFiltroTipoFuente}
+                    clearable
+                 />
+            </SimpleGrid>
+            <Group justify="flex-end" mt="md">
+                <Button
+                    variant="outline"
+                    leftSection={<IconClearAll size={16} />}
+                    onClick={handleLimpiarClick}
+                >
+                    Limpiar
+                </Button>
+                <Button
+                    leftSection={<IconSearch size={16} />}
+                    onClick={handleFiltrarClick}
+                    disabled={loadingLecturas}
+                >
+                    Filtrar Lecturas
+                </Button>
+            </Group>
+          </Box>
+          {/* --- Fin Sección de Filtros Modificada --- */}
+
           {loadingLecturas && <Loader my="xl" />}
           {errorLecturas && (
             <Alert icon={<IconAlertCircle size="1rem" />} title="Error al cargar lecturas" color="red" my="xl">

@@ -16,6 +16,7 @@ import logging # Importar logging
 import os # Para trabajar con rutas de archivo
 import shutil # Para guardar archivos subidos
 import pathlib # Importar pathlib para rutas absolutas
+from dateutil import parser # Importar dateutil.parser
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -603,36 +604,88 @@ def delete_vehiculo(matricula: str, db: Session = Depends(get_db)):
     return None
 
 # === LECTURAS ===
+# Función auxiliar para parsear fechas flexibles
+def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime]:
+    if not dt_str: return None
+    try:
+        # dateutil.parser es bueno manejando varios formatos, incluyendo ISO 8601 y YYYY-MM-DD
+        # ignoretz=True puede ser útil si no te importa la zona horaria del cliente
+        return parser.parse(dt_str)
+    except (ValueError, OverflowError, TypeError) as e:
+        logger.warning(f"No se pudo parsear la fecha/hora: '{dt_str}'. Error: {e}")
+        return None
+
 @app.get("/lecturas", response_model=List[schemas.Lectura])
 def read_lecturas(
     skip: int = 0,
-    limit: int = 1000, # Limitar por defecto para evitar sobrecargas
-    caso_id: Optional[int] = None, # Añadir filtro por caso_id
+    limit: int = 1000, # Mantener límite por defecto
+    caso_id: Optional[int] = None,
     archivo_id: Optional[int] = None,
     matricula: Optional[str] = None,
+    # Cambiar a parámetros de fecha/hora combinados y añadir tipo_fuente
+    fecha_hora_inicio: Optional[str] = None, # Esperar ISO string o YYYY-MM-DD
+    fecha_hora_fin: Optional[str] = None,
+    lector_id: Optional[str] = None, 
+    tipo_fuente: Optional[str] = None, # Filtro por tipo de fuente
     db: Session = Depends(get_db)
 ):
-    logger.info(f"Solicitud GET /lecturas con filtros: caso_id={caso_id}, archivo_id={archivo_id}, matricula={matricula}, skip={skip}, limit={limit}")
+    # Loguear todos los filtros recibidos
+    logger.info(
+        f"Solicitud GET /lecturas con filtros: "
+        f"caso_id={caso_id}, archivo_id={archivo_id}, matricula={matricula}, "
+        f"fecha_hora_inicio='{fecha_hora_inicio}', fecha_hora_fin='{fecha_hora_fin}', lector_id={lector_id}, "
+        f"tipo_fuente={tipo_fuente}, skip={skip}, limit={limit}"
+    )
     query = db.query(models.Lectura)
-    
+
     # Aplicar filtros
     if caso_id is not None:
-        # Unir con ArchivoExcel para filtrar por caso_id
         query = query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id)
         logger.info(f"Filtrando lecturas por caso_id: {caso_id}")
-        
+
     if archivo_id is not None:
-        # Filtrar directamente por archivo_id si se proporciona (tiene precedencia o se combina con caso_id)
         query = query.filter(models.Lectura.ID_Archivo == archivo_id)
         logger.info(f"Filtrando lecturas por archivo_id: {archivo_id}")
-        
-    if matricula:
-        matricula_decoded = unquote(matricula)
-        query = query.filter(models.Lectura.Matricula == matricula_decoded)
-        logger.info(f"Filtrando lecturas por matricula: {matricula_decoded}")
 
-    # Aplicar paginación
-    lecturas = query.offset(skip).limit(limit).all()
+    if matricula:
+        matricula_decoded = unquote(matricula).strip()
+        query = query.filter(models.Lectura.Matricula.ilike(f"%{matricula_decoded}%"))
+        logger.info(f"Filtrando lecturas por matricula (ilike): {matricula_decoded}")
+
+    # --- FILTROS MODIFICADOS --- 
+    dt_inicio = parse_flexible_datetime(fecha_hora_inicio)
+    dt_fin = parse_flexible_datetime(fecha_hora_fin)
+
+    if dt_inicio:
+        query = query.filter(models.Lectura.Fecha_y_Hora >= dt_inicio)
+        logger.info(f"Filtrando lecturas desde fecha/hora: {dt_inicio}")
+
+    if dt_fin:
+        # Si dt_fin no tiene hora (solo fecha), ajustar para incluir todo el día
+        if dt_fin.hour == 0 and dt_fin.minute == 0 and dt_fin.second == 0:
+            dt_fin_ajustado = dt_fin + datetime.timedelta(days=1)
+            query = query.filter(models.Lectura.Fecha_y_Hora < dt_fin_ajustado)
+            logger.info(f"Filtrando lecturas hasta fecha (fin del día): {dt_fin}")
+        else:
+             query = query.filter(models.Lectura.Fecha_y_Hora <= dt_fin)
+             logger.info(f"Filtrando lecturas hasta fecha/hora: {dt_fin}")
+
+    if lector_id:
+        lector_id_stripped = lector_id.strip()
+        query = query.filter(models.Lectura.ID_Lector.ilike(f"%{lector_id_stripped}%"))
+        logger.info(f"Filtrando lecturas por lector_id (ilike): {lector_id_stripped}")
+        
+    if tipo_fuente:
+        tipo_fuente_stripped = tipo_fuente.strip().upper() # Asegurar mayúsculas
+        if tipo_fuente_stripped in ['LPR', 'GPS']: # Validar valores
+             query = query.filter(models.Lectura.Tipo_Fuente == tipo_fuente_stripped)
+             logger.info(f"Filtrando lecturas por tipo_fuente: {tipo_fuente_stripped}")
+        else:
+            logger.warning(f"Valor de tipo_fuente inválido recibido: '{tipo_fuente}'. Se ignora filtro.")
+    # --- FIN FILTROS MODIFICADOS ---
+
+    # Aplicar paginación y ordenación
+    lecturas = query.order_by(models.Lectura.Fecha_y_Hora.desc()).offset(skip).limit(limit).all()
     logger.info(f"Devolviendo {len(lecturas)} lecturas.")
     return lecturas
 

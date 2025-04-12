@@ -1,12 +1,9 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/layout/Layout'; // Asumiendo esta ruta
-import DashboardPage from './pages/DashboardPage'; // Asumiendo esta ruta
-import CasosPage from './pages/CasosPage'; // Asumiendo esta ruta
-import ImportarPage from './pages/ImportarPage'; // Importar nueva página
-import CasoDetailPage from './pages/CasoDetailPage'; // Importar nueva página
+import { lazy } from 'react';
 // Importa otras páginas aquí a medida que las crees
 // import LectoresPage from './pages/LectoresPage';
 // import MapaPage from './pages/MapaPage';
@@ -18,6 +15,13 @@ import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import { theme } from './theme'; // Importar el tema personalizado
 
+// --- Lazy Loading de Páginas ---
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const CasosPage = lazy(() => import('./pages/CasosPage'));
+const ImportarPage = lazy(() => import('./pages/ImportarPage'));
+const CasoDetailPage = lazy(() => import('./pages/CasoDetailPage'));
+// Añade aquí las demás páginas cuando las crees, usando React.lazy
+
 function App() {
   // Aquí podrías definir tu tema personalizado para MantineProvider
   // const theme = { ... };
@@ -27,19 +31,22 @@ function App() {
       <MantineProvider theme={theme}>
         <Notifications />
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<DashboardPage />} />
-              <Route path="casos" element={<CasosPage />} />
-              <Route path="casos/detalle/:idCaso" element={<CasoDetailPage />} />
-              <Route path="importar" element={<ImportarPage />} />
-              {/* <Route path="lectores" element={<LectoresPage />} /> */}
-              {/* <Route path="mapa" element={<MapaPage />} /> */}
-              {/* <Route path="busqueda" element={<BusquedaPage />} /> */}
-              {/* <Route path="patrones" element={<PatronesPage />} /> */}
-              <Route path="*" element={<div>404 - Página no encontrada</div>} />
-            </Route>
-          </Routes>
+          {/* Envolver Routes con Suspense para el fallback */}
+          <Suspense fallback={<div>Cargando página...</div>}> 
+            <Routes>
+              <Route path="/" element={<Layout />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="casos" element={<CasosPage />} />
+                <Route path="casos/detalle/:idCaso" element={<CasoDetailPage />} />
+                <Route path="importar" element={<ImportarPage />} />
+                {/* <Route path="lectores" element={<LectoresPage />} /> */}
+                {/* <Route path="mapa" element={<MapaPage />} /> */}
+                {/* <Route path="busqueda" element={<BusquedaPage />} /> */}
+                {/* <Route path="patrones" element={<PatronesPage />} /> */}
+                <Route path="*" element={<div>404 - Página no encontrada</div>} />
+              </Route>
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </MantineProvider>
     </React.StrictMode>
