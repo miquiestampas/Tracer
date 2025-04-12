@@ -199,12 +199,20 @@ class LectorCoordenadas(BaseModel):
     Nombre: Optional[str] = None
     Coordenada_Y: float # Latitud (obligatoria para el mapa)
     Coordenada_X: float # Longitud (obligatoria para el mapa)
-    # Añadir otros campos si son útiles para filtros o popups en el mapa
     Provincia: Optional[str] = None
     Carretera: Optional[str] = None
+    Organismo_Regulador: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+# === NUEVO: Esquema para Sugerencias en Edición de Lector ===
+class LectorSugerenciasResponse(BaseModel):
+    provincias: List[str] = []
+    localidades: List[str] = []
+    carreteras: List[str] = []
+    organismos: List[str] = []
+    contactos: List[str] = []
 
 # Caso.update_forward_refs()
 # ArchivoExcel.update_forward_refs()

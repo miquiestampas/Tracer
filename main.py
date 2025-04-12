@@ -253,7 +253,7 @@ def delete_caso(caso_id: int, db: Session = Depends(get_db)):
 
 
 # === ARCHIVOS EXCEL (Importación, Descarga, Eliminación) ===
-@app.post("/casos/{caso_id}/archivos/upload", response_model=schemas.ArchivoExcel, status_code=status.HTTP_201_CREATED)
+@app.post("/casos/{caso_id}/archivos/upload", response_model=schemas.UploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_excel(
     caso_id: int,
     tipo_archivo: str = Form(..., pattern="^(GPS|LPR)$"),
@@ -326,6 +326,8 @@ async def upload_excel(
     lecturas_a_insertar = []
     errores_lectura = []
     lectores_no_encontrados = set()
+    nuevos_lectores_en_sesion = set()
+
     for index, row in df.iterrows():
         try:
             matricula = str(row['Matricula']).strip() if pd.notna(row['Matricula']) else None
@@ -353,15 +355,37 @@ async def upload_excel(
             id_lector = None
             coord_x_final = get_optional_float(row.get('Coordenada_X'))
             coord_y_final = get_optional_float(row.get('Coordenada_Y'))
+            
             if tipo_archivo == 'LPR':
                 id_lector_str = str(row['ID_Lector']).strip() if pd.notna(row['ID_Lector']) else None
                 if not id_lector_str: raise ValueError("Falta ID_Lector para LPR")
-                id_lector = id_lector_str
+                id_lector = id_lector_str # Guardamos el ID original
+                
+                # Buscar lector existente
                 db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == id_lector).first()
+                
                 if not db_lector:
-                    lectores_no_encontrados.add(id_lector)
-                    id_lector = None # Desvincular si no se encuentra
-                elif db_lector:
+                    # Si no existe Y NO lo hemos añadido ya en esta sesión:
+                    if id_lector not in nuevos_lectores_en_sesion:
+                        lectores_no_encontrados.add(id_lector)
+                        logger.info(f"Lector '{id_lector}' no encontrado, añadiendo a sesión para crear.")
+                        db_lector_nuevo = models.Lector(ID_Lector=id_lector) # Crear con el ID
+                        db.add(db_lector_nuevo)
+                        nuevos_lectores_en_sesion.add(id_lector) # Registrar que lo hemos añadido
+                        # Intentar obtener coordenadas del excel si existen para el nuevo lector
+                        coord_x_nuevo = get_optional_float(row.get('Coordenada_X'))
+                        coord_y_nuevo = get_optional_float(row.get('Coordenada_Y'))
+                        if coord_x_nuevo is not None: db_lector_nuevo.Coordenada_X = coord_x_nuevo
+                        if coord_y_nuevo is not None: db_lector_nuevo.Coordenada_Y = coord_y_nuevo
+                        # Asignar las coordenadas finales para la lectura actual (pueden venir del Excel)
+                        coord_x_final = coord_x_nuevo
+                        coord_y_final = coord_y_nuevo
+                    else:
+                        # Ya añadido a la sesión, solo obtener coords si las hay en esta fila para la lectura
+                        coord_x_final = get_optional_float(row.get('Coordenada_X'))
+                        coord_y_final = get_optional_float(row.get('Coordenada_Y'))
+                        
+                else: # Si el lector SÍ existe
                      if coord_x_final is None: coord_x_final = db_lector.Coordenada_X
                      if coord_y_final is None: coord_y_final = db_lector.Coordenada_Y
 
@@ -370,7 +394,8 @@ async def upload_excel(
             lectura_data = {
                 "ID_Archivo": db_archivo.ID_Archivo, "Matricula": matricula,
                 "Fecha_y_Hora": fecha_hora_final, "Carril": carril, "Velocidad": velocidad,
-                "ID_Lector": id_lector, "Coordenada_X": coord_x_final, "Coordenada_Y": coord_y_final,
+                "ID_Lector": id_lector, 
+                "Coordenada_X": coord_x_final, "Coordenada_Y": coord_y_final,
                 "Tipo_Fuente": tipo_archivo
             }
             lecturas_a_insertar.append(models.Lectura(**lectura_data))
@@ -387,11 +412,20 @@ async def upload_excel(
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al guardar lecturas: {e}")
     else:
         db.commit()
+
+    # Construir y devolver la respuesta completa
+    response_data = schemas.UploadResponse(
+        archivo=db_archivo, 
+        nuevos_lectores_creados=list(nuevos_lectores_en_sesion) if nuevos_lectores_en_sesion else None
+    )
+    
+    # Loguear lo que se va a devolver
+    logger.info(f"Importación completada. Devolviendo datos: {response_data}")
     if errores_lectura:
         logger.warning(f"Importación {filename} completada con {len(errores_lectura)} errores: {errores_lectura}")
-    if lectores_no_encontrados:
-         logger.warning(f"Lectores no encontrados: {list(lectores_no_encontrados)}")
-    return db_archivo
+    # Ya no se loguea "Lectores no encontrados" aquí, se incluye en la respuesta si es relevante
+
+    return response_data
 
 @app.get("/casos/{caso_id}/archivos", response_model=List[schemas.ArchivoExcel])
 def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db)):
@@ -489,8 +523,8 @@ def read_lectores(skip: int = 0, limit: int = 50, db: Session = Depends(get_db))
     logger.info(f"Devolviendo {len(lectores)} lectores para la página actual.")
     return schemas.LectoresResponse(total_count=total_count or 0, lectores=lectores)
 
-# === ENDPOINT PARA DATOS DEL MAPA ===
-# (Versión correcta con consulta a BD)
+# --- Rutas específicas ANTES de la ruta con parámetro {lector_id} ---
+
 @app.get("/lectores/coordenadas", response_model=List[schemas.LectorCoordenadas])
 def read_lectores_coordenadas(db: Session = Depends(get_db)):
     """Devuelve una lista de lectores con coordenadas válidas para el mapa."""
@@ -507,6 +541,37 @@ def read_lectores_coordenadas(db: Session = Depends(get_db)):
     # response_model se encarga de la serialización
     return lectores_con_coords
 
+@app.get("/lectores/sugerencias", response_model=schemas.LectorSugerenciasResponse)
+def get_lector_sugerencias(db: Session = Depends(get_db)):
+    """Obtiene listas de valores únicos existentes para campos de Lector."""
+    logger.info("Solicitud GET /lectores/sugerencias")
+    sugerencias = {
+        "provincias": [], "localidades": [], "carreteras": [], "organismos": [], "contactos": []
+    }
+    try:
+        # Usar distinct() y filtrar no nulos/vacíos
+        # Convertir a string explícitamente antes de filtrar por != '' podría ayudar
+        sugerencias["provincias"] = sorted([p[0] for p in db.query(models.Lector.Provincia).filter(models.Lector.Provincia.isnot(None), func.trim(models.Lector.Provincia) != '').distinct().all()])
+        sugerencias["localidades"] = sorted([l[0] for l in db.query(models.Lector.Localidad).filter(models.Lector.Localidad.isnot(None), func.trim(models.Lector.Localidad) != '').distinct().all()])
+        sugerencias["carreteras"] = sorted([c[0] for c in db.query(models.Lector.Carretera).filter(models.Lector.Carretera.isnot(None), func.trim(models.Lector.Carretera) != '').distinct().all()])
+        sugerencias["organismos"] = sorted([o[0] for o in db.query(models.Lector.Organismo_Regulador).filter(models.Lector.Organismo_Regulador.isnot(None), func.trim(models.Lector.Organismo_Regulador) != '').distinct().all()])
+        sugerencias["contactos"] = sorted([co[0] for co in db.query(models.Lector.Contacto).filter(models.Lector.Contacto.isnot(None), func.trim(models.Lector.Contacto) != '').distinct().all()])
+        
+        # Log detallado de lo que se encontró
+        logger.info(f"Sugerencias encontradas en BD (antes de devolver):")
+        logger.info(f"  Provincias ({len(sugerencias['provincias'])}): {sugerencias['provincias']}")
+        logger.info(f"  Localidades ({len(sugerencias['localidades'])}): {sugerencias['localidades']}")
+        logger.info(f"  Carreteras ({len(sugerencias['carreteras'])}): {sugerencias['carreteras']}")
+        logger.info(f"  Organismos ({len(sugerencias['organismos'])}): {sugerencias['organismos']}")
+        logger.info(f"  Contactos ({len(sugerencias['contactos'])}): {sugerencias['contactos']}")
+
+    except Exception as e:
+        logger.error(f"Error al obtener sugerencias para lectores: {e}", exc_info=True)
+        # Mantener devolución de listas vacías para no bloquear UI
+    
+    return schemas.LectorSugerenciasResponse(**sugerencias)
+
+# --- Ruta con parámetro DESPUÉS de las específicas ---
 @app.get("/lectores/{lector_id}", response_model=schemas.Lector)
 def read_lector(lector_id: str, db: Session = Depends(get_db)):
     db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id).first()

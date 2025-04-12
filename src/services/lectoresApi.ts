@@ -1,5 +1,5 @@
 import apiClient from './api';
-import type { Lector, LectoresResponse, LectorUpdateData, LectorCoordenadas } from '../types/data';
+import type { Lector, LectoresResponse, LectorUpdateData, LectorCoordenadas, LectorSugerenciasResponse } from '../types/data';
 import axios from 'axios';
 
 /**
@@ -117,5 +117,21 @@ export const getLectoresParaMapa = async (): Promise<LectorCoordenadas[]> => {
   } catch (error) {
     console.error('Error al obtener los lectores para el mapa:', error);
     throw error;
+  }
+};
+
+/**
+ * Obtiene listas de valores únicos para sugerencias en formularios de lector.
+ * @returns Promise<LectorSugerenciasResponse> - Objeto con listas de sugerencias.
+ */
+export const getLectorSugerencias = async (): Promise<LectorSugerenciasResponse> => {
+  try {
+    const response = await apiClient.get<LectorSugerenciasResponse>('/lectores/sugerencias');
+    // Devolver un objeto con listas vacías si la respuesta no es la esperada, por seguridad
+    return response.data || { provincias: [], localidades: [], carreteras: [], organismos: [], contactos: [] };
+  } catch (error) {
+    console.error('Error al obtener las sugerencias para lectores:', error);
+    // Devolver listas vacías en caso de error para no bloquear el UI
+    return { provincias: [], localidades: [], carreteras: [], organismos: [], contactos: [] };
   }
 }; 

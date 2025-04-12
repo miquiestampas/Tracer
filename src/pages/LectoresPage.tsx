@@ -5,7 +5,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconEdit, IconTrash, IconCheck, IconMap, IconList } from '@tabler/icons-react';
-import { getLectores, updateLector, getLectoresParaMapa } from '../services/lectoresApi';
+import { getLectores, updateLector, getLectoresParaMapa, deleteLector } from '../services/lectoresApi';
 import type { Lector, LectorUpdateData, LectorCoordenadas } from '../types/data';
 import EditLectorModal from '../components/modals/EditLectorModal';
 
@@ -29,6 +29,7 @@ function LectoresPage() {
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const [editingLector, setEditingLector] = useState<Lector | null>(null);
+  const [deletingLectorId, setDeletingLectorId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<string | null>('tabla');
   const [mapLectores, setMapLectores] = useState<LectorCoordenadas[]>([]);
@@ -36,6 +37,7 @@ function LectoresPage() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [filtroProvincia, setFiltroProvincia] = useState<string[]>([]);
   const [filtroCarretera, setFiltroCarretera] = useState<string[]>([]);
+  const [filtroOrganismo, setFiltroOrganismo] = useState<string[]>([]);
 
   const fetchLectoresTabla = useCallback(async (page: number, pageSize: number) => {
     setLoading(true);
@@ -81,6 +83,9 @@ function LectoresPage() {
     }
   }, [activeTab, fetchMapData, mapLoading, mapError]);
 
+  // Log para ver los datos base del mapa
+  console.log("[MapFilters] Datos base mapLectores:", mapLectores);
+  
   const provinciasUnicas = useMemo(() => {
     const provincias = mapLectores
       .map(l => l.Provincia)
@@ -89,19 +94,35 @@ function LectoresPage() {
   }, [mapLectores]);
 
   const carreterasUnicas = useMemo(() => {
-    const carreteras = mapLectores
-      .map(l => l.Carretera)
-      .filter((c): c is string => c != null && c.trim() !== '');
-    return Array.from(new Set(carreteras)).sort();
+    console.log("[MapFilters] Calculando carreterasUnicas...");
+    const carreterasMapped = mapLectores.map(l => l.Carretera);
+    const carreterasFiltered = carreterasMapped.filter((c): c is string => c != null && c.trim() !== '');
+    const uniqueSet = new Set(carreterasFiltered);
+    // Convertir a formato { value, label }
+    const result = Array.from(uniqueSet).sort().map(carretera => ({ value: carretera, label: carretera }));
+    console.log("[MapFilters] Carreteras Únicas (resultado final - formato objeto):", result);
+    return result;
+  }, [mapLectores]);
+
+  const organismosUnicos = useMemo(() => {
+    console.log("[MapFilters] Calculando organismosUnicos...");
+    const organismosMapped = mapLectores.map(l => l.Organismo_Regulador);
+    const organismosFiltered = organismosMapped.filter((o): o is string => o != null && o.trim() !== '');
+    const uniqueSet = new Set(organismosFiltered);
+    // Convertir a formato { value, label }
+    const result = Array.from(uniqueSet).sort().map(organismo => ({ value: organismo, label: organismo }));
+    console.log("[MapFilters] Organismos Únicos (resultado final - formato objeto):", result);
+    return result;
   }, [mapLectores]);
 
   const lectoresFiltradosMapa = useMemo(() => {
     return mapLectores.filter(lector => {
       const provinciaMatch = filtroProvincia.length === 0 || (lector.Provincia && filtroProvincia.includes(lector.Provincia));
       const carreteraMatch = filtroCarretera.length === 0 || (lector.Carretera && filtroCarretera.includes(lector.Carretera));
-      return provinciaMatch && carreteraMatch;
+      const organismoMatch = filtroOrganismo.length === 0 || (lector.Organismo_Regulador && filtroOrganismo.includes(lector.Organismo_Regulador));
+      return provinciaMatch && carreteraMatch && organismoMatch;
     });
-  }, [mapLectores, filtroProvincia, filtroCarretera]);
+  }, [mapLectores, filtroProvincia, filtroCarretera, filtroOrganismo]);
 
   const handlePageChange = (newPage: number) => {
     setPagination(prev => ({ ...prev, page: newPage }));
@@ -166,6 +187,34 @@ function LectoresPage() {
     }
   };
 
+  const handleDeleteLector = async (lectorId: string, lectorNombre?: string | null) => {
+    const nombre = lectorNombre || lectorId;
+    if (!window.confirm(`¿Estás seguro de que quieres eliminar el lector "${nombre}"? Esta acción no se puede deshacer.`)) {
+        return;
+    }
+
+    setDeletingLectorId(lectorId);
+    try {
+        await deleteLector(lectorId);
+        notifications.show({
+            title: 'Lector Eliminado',
+            message: `El lector "${nombre}" (${lectorId}) ha sido eliminado correctamente.`,
+            color: 'teal',
+        });
+        setLectores(currentLectores => currentLectores.filter(l => l.ID_Lector !== lectorId));
+        setMapLectores(currentMapLectores => currentMapLectores.filter(l => l.ID_Lector !== lectorId));
+    } catch (error: any) {
+        console.error("Error al eliminar lector:", error);
+        notifications.show({
+            title: 'Error al Eliminar',
+            message: error.message || 'No se pudo eliminar el lector.',
+            color: 'red'
+        });
+    } finally {
+        setDeletingLectorId(null);
+    }
+  };
+
   const rows = lectores.map((lector) => (
     <Table.Tr key={lector.ID_Lector}>
       <Table.Td>{lector.ID_Lector}</Table.Td>
@@ -179,12 +228,23 @@ function LectoresPage() {
       <Table.Td>
         <Group gap="xs">
           <Tooltip label="Editar Lector">
-            <ActionIcon variant="subtle" color="blue" onClick={() => handleOpenEditModal(lector)} >
+            <ActionIcon 
+                variant="subtle" 
+                color="blue" 
+                onClick={() => handleOpenEditModal(lector)}
+                disabled={deletingLectorId === lector.ID_Lector}
+             >
               <IconEdit size={16} />
             </ActionIcon>
           </Tooltip>
-          <Tooltip label="Eliminar Lector (pendiente)">
-            <ActionIcon variant="subtle" color="red" /* onClick={() => handleDelete(lector.ID_Lector)} */ >
+          <Tooltip label="Eliminar Lector">
+            <ActionIcon 
+                variant="subtle" 
+                color="red" 
+                onClick={() => handleDeleteLector(lector.ID_Lector, lector.Nombre)} 
+                loading={deletingLectorId === lector.ID_Lector}
+                disabled={deletingLectorId !== null}
+            >
               <IconTrash size={16} />
             </ActionIcon>
           </Tooltip>
@@ -263,16 +323,15 @@ function LectoresPage() {
           
           {!mapLoading && !mapError && (
             <>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} mb="md">
+              <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} mb="md">
                 <MultiSelect
                     label="Filtrar por Provincia"
                     placeholder="Todas las provincias"
                     data={provinciasUnicas}
                     value={filtroProvincia}
                     onChange={setFiltroProvincia}
-                    searchable
-                    clearable
-                    disabled={mapLoading}
+                    searchable clearable disabled={mapLoading}
+                    styles={{ dropdown: { zIndex: 1050 } }}
                 />
                  <MultiSelect
                     label="Filtrar por Carretera"
@@ -280,9 +339,17 @@ function LectoresPage() {
                     data={carreterasUnicas}
                     value={filtroCarretera}
                     onChange={setFiltroCarretera}
-                    searchable
-                    clearable
-                    disabled={mapLoading}
+                    searchable clearable disabled={mapLoading}
+                    styles={{ dropdown: { zIndex: 1050 } }}
+                />
+                 <MultiSelect
+                    label="Filtrar por Organismo"
+                    placeholder="Todos los organismos"
+                    data={organismosUnicos}
+                    value={filtroOrganismo}
+                    onChange={setFiltroOrganismo}
+                    searchable clearable disabled={mapLoading}
+                    styles={{ dropdown: { zIndex: 1050 } }}
                 />
               </SimpleGrid>
               
