@@ -84,12 +84,20 @@ export const getLecturas = async (params: {
     caso_id?: number | string; 
     archivo_id?: number;
     matricula?: string;
+    fecha_hora_inicio?: string; // ISO String o YYYY-MM-DD
+    fecha_hora_fin?: string; // ISO String o YYYY-MM-DD
+    lector_id?: string;
+    tipo_fuente?: string; // Nuevo filtro
     limit?: number;
     skip?: number;
 } = {}): Promise<Lectura[]> => {
     try {
+        // Filtrar parámetros nulos o vacíos antes de enviar (opcional pero bueno)
+        const cleanParams = Object.fromEntries(
+            Object.entries(params).filter(([_, v]) => v != null && v !== '')
+        );
         const response = await apiClient.get<Lectura[]>('/lecturas', {
-            params: params // Axios pasa esto como query parameters
+            params: cleanParams // Enviar parámetros limpios
         });
         return response.data;
     } catch (error) {

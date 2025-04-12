@@ -62,6 +62,7 @@ function ImportarPage() {
   const [loadingCasos, setLoadingCasos] = useState(true);
   const [errorCasos, setErrorCasos] = useState<string | null>(null);
   const [selectedCasoId, setSelectedCasoId] = useState<string | null>(null);
+  const [selectedCasoName, setSelectedCasoName] = useState<string | null>(null);
   const [fileType, setFileType] = useState<'LPR' | 'GPS'>('LPR');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
@@ -376,15 +377,28 @@ function ImportarPage() {
       <Stack gap="lg">
         {/* Selector de Caso */}
         <Select
-          label="Seleccionar Caso"
-          placeholder={loadingCasos ? "Cargando casos..." : "Elige un caso"}
+          label="Selecciona un Caso"
+          placeholder="Elige el caso al que importar el archivo"
           data={casosList}
           value={selectedCasoId}
-          onChange={setSelectedCasoId}
+          onChange={(value) => {
+            setSelectedCasoId(value);
+            // --- Buscar y guardar el nombre del caso ---
+            const selectedOption = casosList.find(option => option.value === value);
+            setSelectedCasoName(selectedOption ? selectedOption.label.split(' - ')[1].split(' (')[0] : null);
+            // --- Fin Buscar y guardar el nombre ---
+            // Limpiar errores y estado del archivo al cambiar de caso
+            setSelectedFile(null);
+            setExcelHeaders([]);
+            setColumnMapping({});
+            setUploadError(null);
+            setMappingError(null);
+          }}
           searchable
-          nothingFoundMessage={loadingCasos ? <Loader size="xs" /> : "No se encontraron casos"}
-          disabled={loadingCasos || isUploading || isReadingHeaders}
+          nothingFoundMessage="No se encontraron casos"
+          disabled={loadingCasos || isUploading}
           error={errorCasos}
+          mb="md"
           required
         />
 
@@ -500,10 +514,16 @@ function ImportarPage() {
       {/* --- NUEVA SECCIÓN: TABLA DE ARCHIVOS --- */}
       {selectedCasoId && ( // Solo mostrar si hay un caso seleccionado
         <Box mt="xl">
-            <Divider my="lg" />
-            <Title order={3} mb="md">Archivos Importados para el Caso {selectedCasoId}</Title>
-            {/* Indicador de carga */}
-            {loadingArchivos && <Loader />}
+            <Divider my="lg" label="Archivos Importados" labelPosition="center" />
+            {/* --- Título Dinámico --- */}
+            {selectedCasoName && (
+                <Title order={4} mb="md" c="tracerBlue.7">
+                    Archivos para el caso: {selectedCasoName}
+                </Title>
+            )}
+            {/* --- Fin Título Dinámico --- */}
+
+            <LoadingOverlay visible={loadingArchivos} overlayProps={{ radius: "sm", blur: 2 }} />
             {/* Mensaje de error */}
             {!loadingArchivos && errorArchivos && (
                 <Alert color="red" title="Error al cargar archivos" icon={<IconAlertCircle />}>
