@@ -164,6 +164,7 @@ class LecturaRelevanteCreate(LecturaRelevanteBase):
 class LecturaRelevanteUpdate(LecturaRelevanteBase):
     # Mantener Nota como opcional para permitir borrarla si se envía null o vacío
     Nota: Optional[str] = None
+    caso_id: Optional[int] = None # <-- Añadir caso_id opcional
 
 class LecturaRelevante(LecturaRelevanteBase):
     ID_Relevante: int

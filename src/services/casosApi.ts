@@ -1,5 +1,5 @@
 import apiClient from './api';
-import type { Caso, CasoCreate, ArchivoExcel, CasoEstadoUpdate, EstadoCaso } from '../types/data'; // Añadir ArchivoExcel y Lectura
+import type { Caso, CasoCreate, ArchivoExcel, CasoEstadoUpdate, EstadoCaso, SavedSearch, SavedSearchUpdatePayload } from '../types/data'; // Añadir ArchivoExcel y Lectura
 
 // Obtener todos los casos
 export const getCasos = async (): Promise<Caso[]> => {
@@ -46,15 +46,15 @@ export const getArchivosPorCaso = async (casoId: number): Promise<ArchivoExcel[]
 };
 
 // Actualizar un caso (lo necesitaremos más adelante)
-// export const updateCaso = async (id: number, casoUpdate: Partial<CasoCreate>): Promise<Caso> => {
-//   try {
-//     const response = await apiClient.put<Caso>(`/casos/${id}`, casoUpdate);
-//     return response.data;
-//   } catch (error) {
-//     console.error(`Error al actualizar caso ${id}:`, error);
-//     throw error;
-//   }
-// };
+export const updateCaso = async (id: number, casoData: Partial<CasoCreate>): Promise<Caso> => {
+  try {
+    const response = await apiClient.put<Caso>(`/casos/${id}`, casoData);
+    return response.data;
+  } catch (error) {
+    console.error(`Error al actualizar caso ${id}:`, error);
+    throw error;
+  }
+};
 
 // Eliminar un caso (lo necesitaremos más adelante)
 export const deleteCaso = async (casoId: number): Promise<void> => {
@@ -106,3 +106,17 @@ export const getLecturas = async (params: {
     }
 };
 */ 
+
+// --- FUNCIONES PARA SAVED SEARCHES (Podrían ir en su propio archivo) ---
+
+// Actualizar Nombre, Color, Notas de una Búsqueda Guardada
+export const updateSavedSearch = async (searchId: number, updateData: SavedSearchUpdatePayload): Promise<SavedSearch> => {
+    try {
+        const response = await apiClient.put<SavedSearch>(`/saved_searches/${searchId}`, updateData);
+        return response.data;
+    } catch (error) {
+        console.error(`Error al actualizar búsqueda guardada ${searchId}:`, error);
+        // Re-lanzar para que el componente lo maneje (ej. mostrar notificación)
+        throw error; 
+    }
+}; 

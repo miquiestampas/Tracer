@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Box, Text, Loader, Alert, Tabs, Breadcrumbs, Anchor, Table, Button, Group, ActionIcon, Tooltip, Pagination, TextInput, SimpleGrid, Select, LoadingOverlay, Container } from '@mantine/core';
+import { Box, Text, Loader, Alert, Tabs, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table } from '@mantine/core';
+import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook } from '@tabler/icons-react';
 import { getCasoById } from '../services/casosApi';
 import { getArchivosPorCaso, deleteArchivo } from '../services/archivosApi';
 import { notifications } from '@mantine/notifications';
+import { openConfirmModal } from '@mantine/modals';
 import type { Caso, ArchivoExcel, Lectura, LecturaRelevante } from '../types/data';
 import apiClient from '../services/api';
 import dayjs from 'dayjs';
@@ -17,7 +19,6 @@ import EditNotaModal from '../components/modals/EditNotaModal';
 import AnalisisLecturasPanel from '../components/analisis/AnalisisLecturasPanel';
 import LprAvanzadoPanel from '../components/lpr_avanzado/LprAvanzadoPanel';
 import LecturasRelevantesPanel from '../components/caso/LecturasRelevantesPanel';
-
 
 // Definir estado inicial para filtros
 const initialFilterState: FilterState = {
