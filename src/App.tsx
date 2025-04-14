@@ -21,6 +21,7 @@ const CasosPage = lazy(() => import('./pages/CasosPage'));
 const ImportarPage = lazy(() => import('./pages/ImportarPage'));
 const CasoDetailPage = lazy(() => import('./pages/CasoDetailPage'));
 const LectoresPage = lazy(() => import('./pages/LectoresPage'));
+const AnalisisPage = lazy(() => import('./pages/AnalisisPage'));
 // Añade aquí las demás páginas cuando las crees, usando React.lazy
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
                 <Route path="casos/detalle/:idCaso" element={<CasoDetailPage />} />
                 <Route path="importar" element={<ImportarPage />} />
                 <Route path="lectores" element={<LectoresPage />} />
+                <Route path="busqueda" element={<AnalisisPage />} />
                 {/* <Route path="lectores" element={<LectoresPage />} /> */}
                 {/* <Route path="mapa" element={<MapaPage />} /> */}
                 {/* <Route path="busqueda" element={<BusquedaPage />} /> */}
