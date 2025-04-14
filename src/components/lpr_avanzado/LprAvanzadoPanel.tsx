@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Stack, Grid, Button, TextInput, Box, NumberInput, Title, LoadingOverlay, rem, Paper, Group, Badge, ActionIcon, Text, Input, Checkbox, Tooltip, InputLabel } from '@mantine/core';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, Title, LoadingOverlay, rem, Paper, Group, Badge, ActionIcon, Text, Input, Checkbox, Tooltip, InputLabel, Modal, ColorInput, Textarea } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -9,6 +9,10 @@ import { notifications } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus, DataTableProps } from 'mantine-datatable';
 import dayjs from 'dayjs';
 import _ from 'lodash';
+import { useDisclosure } from '@mantine/hooks';
+import { useForm } from '@mantine/form';
+import { updateSavedSearch } from '../../services/casosApi';
+import type { SavedSearch, SavedSearchUpdatePayload } from '../../types/data';
 
 // Definir logger (usando console)
 const logger = console;
@@ -79,19 +83,6 @@ interface LprAvanzadoPanelProps {
     casoId: number;
     interactedMatriculas: Set<string>;         // <-- Prop recibida
     addInteractedMatricula: (matriculas: string[]) => void; // <-- Prop recibida
-}
-
-// Importar el tipo SavedSearch (asumiendo que está exportado desde un archivo de tipos)
-// O definirlo aquí si no está centralizado
-interface SavedSearch {
-    id: number;
-    caso_id: number;
-    nombre: string;
-    filtros: any; // O un tipo más específico
-    color: string | null;
-    notas: string | null;
-    result_count: number | null;
-    unique_plates: string[] | null;
 }
 
 // *** NUEVA Función Auxiliar para formatear filtros ***
@@ -171,24 +162,47 @@ const sentidoOptions: SelectOption[] = [
 
 // --- Estilos específicos ---
 const customStyles = `
+  /* Estilos tabla resultados */
   .results-datatable th:first-child,
   .results-datatable td:first-child {
-    width: 50px !important; /* Ancho fijo reducido */
+    width: 50px !important; 
     min-width: 50px !important;
     max-width: 50px !important;
-    padding-left: var(--mantine-spacing-xs) !important; /* Ajustar padding */
+    padding-left: var(--mantine-spacing-xs) !important; 
     padding-right: var(--mantine-spacing-xs) !important;
   }
 
+  /* Estilos resaltado */
   .highlighted-row {
-    background-color: var(--mantine-color-blue-0) !important; /* Azul muy claro */
+    background-color: var(--mantine-color-blue-0) !important; 
+  }
+  .highlighted-row:hover {
+      background-color: var(--mantine-color-blue-1) !important; 
   }
 
-  /* Opcional: Mantener el resaltado al pasar el ratón por encima */
-  .highlighted-row:hover {
-      background-color: var(--mantine-color-blue-1) !important; /* Un azul ligeramente más oscuro */
+  /* Estilos DatePicker LPR Avanzado */
+  .lpr-avanzado-datepicker-wrapper .mantine-InputWrapper-label {
+      display: block !important; 
+      margin-bottom: var(--mantine-spacing-xs);
+  }
+
+  /* NUEVO: Forzar ancho columna selección Tabla Búsquedas Guardadas */
+  .saved-searches-datatable th:first-child,
+  .saved-searches-datatable td:first-child {
+      width: 50px !important; /* Ancho fijo muy reducido */
+      min-width: 50px !important;
+      max-width: 50px !important;
+      padding-left: var(--mantine-spacing-xs) !important; /* Ajustar padding si es necesario */
+      padding-right: var(--mantine-spacing-xs) !important;
   }
 `;
+
+// --- NUEVO: Interfaz para el formulario de edición ---
+interface EditSavedSearchFormValues {
+    nombre: string;
+    color: string;
+    notas: string;
+}
 
 function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula }: LprAvanzadoPanelProps) {
     const iconStyle = { width: rem(16), height: rem(16) };
@@ -216,6 +230,21 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
     const [selectedSearchIds, setSelectedSearchIds] = useState<number[]>([]); // Selección en la tabla
     const [activeSearchIds, setActiveSearchIds] = useState<number[]>([]); // Búsquedas activas para cruce
     const [savedSearchesLoading, setSavedSearchesLoading] = useState(false); // Loading específico búsquedas
+
+    // --- NUEVO: Estados y hooks para Modal Edición ---
+    const [editModalOpened, { open: openEditModal, close: closeEditModal }] = useDisclosure(false);
+    const [editingSearch, setEditingSearch] = useState<SavedSearch | null>(null);
+    const [isSavingEdit, setIsSavingEdit] = useState(false); // Estado de carga para el botón Guardar
+    const editForm = useForm<EditSavedSearchFormValues>({
+        initialValues: {
+            nombre: '',
+            color: '',
+            notas: ''
+        },
+        validate: {
+            nombre: (value) => (value.trim().length > 0 ? null : 'El nombre es obligatorio'),
+        },
+    });
 
     // --- Cargar datos iniciales (Ahora usa el nuevo endpoint) ---
     useEffect(() => {
@@ -491,11 +520,51 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         }
     };
     
-     // --- Handler para editar una búsqueda guardada (Placeholder) ---
-     const handleEditSavedSearch = (search: SavedSearch) => {
-         // TODO: Abrir un modal para editar nombre, color, notas
-         notifications.show({ title: 'Pendiente', message: `Editar búsqueda ${search.id} aún no implementado.`, color: 'orange' });
-     };
+    // --- Handler para abrir modal y poblar formulario (Actualizado) ---
+    const handleEditSavedSearch = (search: SavedSearch) => {
+        setEditingSearch(search); // Guardar la búsqueda completa
+        editForm.setValues({ // Poblar el formulario
+            nombre: search.nombre,
+            color: search.color || '', // Usar string vacío si es null
+            notas: search.notas || ''   // Usar string vacío si es null
+        });
+        openEditModal(); // Abrir el modal
+    };
+
+    // --- Handler para enviar actualización (CONECTADO A API) ---
+    const handleUpdateSavedSearchSubmit = async (values: EditSavedSearchFormValues) => {
+        if (!editingSearch) return;
+
+        const updateData: SavedSearchUpdatePayload = {
+            nombre: values.nombre.trim(),
+            color: values.color || null,
+            notas: values.notas.trim() || null,
+        };
+
+        setIsSavingEdit(true); // Iniciar carga
+        console.log("Enviando actualización para", editingSearch.id, updateData);
+
+        try {
+            await updateSavedSearch(editingSearch.id, updateData);
+            notifications.show({
+                title: 'Actualización Exitosa',
+                message: `Búsqueda "${updateData.nombre}" actualizada.`,
+                color: 'green',
+                icon: <IconCheck size={18} />
+            });
+            closeEditModal(); // Cerrar modal
+            fetchSavedSearches(); // Recargar la lista de búsquedas
+        } catch (error) {
+            console.error("Error actualizando búsqueda guardada:", error);
+            notifications.show({
+                title: 'Error al Actualizar',
+                message: `No se pudo guardar los cambios: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+                color: 'red'
+            });
+        } finally {
+            setIsSavingEdit(false); // Finalizar carga
+        }
+    };
 
     // --- NUEVO: Handler para Cargar Selección como Búsquedas Activas --- 
     const handleLoadSelectedSearches = () => {
@@ -774,7 +843,10 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                 fetch(`http://localhost:8000/lecturas/${id}/marcar_relevante`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ Nota: null }) // Opcional: Permitir nota
+                    body: JSON.stringify({ 
+                        Nota: null,
+                        caso_id: casoId
+                    }) 
                  })
                 .then(response => {
                     if (!response.ok && response.status !== 409) { // 409 puede ser ya marcada
@@ -874,7 +946,68 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         setSelectedRecords([]);
         setResultsLoading(false);
     };
-    // --- FIN RESTAURAR HANDLERS ---
+
+    // --- NUEVO: Handler para guardar vehículos desde una búsqueda guardada ---
+    const handleSaveVehiclesFromSearch = async (search: SavedSearch) => {
+        const matriculasUnicas = search.unique_plates;
+        if (!matriculasUnicas || matriculasUnicas.length === 0) {
+            notifications.show({ 
+                title: 'No hay Vehículos', 
+                message: `La búsqueda "${search.nombre}" no tiene matrículas únicas precalculadas o no produjo resultados.`, 
+                color: 'orange' 
+            });
+            return;
+        }
+
+        if (!window.confirm(`¿Guardar ${matriculasUnicas.length} vehículo(s) único(s) de la búsqueda "${search.nombre}" en la tabla general de Vehículos?`)) {
+            return;
+        }
+
+        setLoading(true); // Usar loading general o uno específico
+        let vehiculosCreados = 0;
+        let vehiculosExistentes = 0;
+        let errores = 0;
+
+        const results = await Promise.allSettled(
+            matriculasUnicas.map(matricula =>
+                fetch(`http://localhost:8000/vehiculos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ Matricula: matricula }),
+                }).then(async response => {
+                    if (response.status === 201) return { status: 'created' };
+                    // Asumir 400 (Bad Request) o 409 (Conflict) como "ya existe"
+                    if (response.status === 400 || response.status === 409) return { status: 'exists' }; 
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.detail || `HTTP ${response.status}`);
+                })
+            )
+        );
+
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                if (result.value.status === 'created') vehiculosCreados++;
+                if (result.value.status === 'exists') vehiculosExistentes++;
+            } else {
+                errores++;
+                 notifications.show({ title: 'Error Parcial Guardando Vehículo', message: `${result.reason.message}`, color: 'red' });
+            }
+        });
+
+        let message = '';
+        if (vehiculosCreados > 0) message += `${vehiculosCreados} vehículo(s) nuevo(s) guardado(s). `;
+        if (vehiculosExistentes > 0) message += `${vehiculosExistentes} ya existían. `;
+        if (errores > 0) message += `${errores} matrícula(s) no se pudieron procesar.`;
+        if (message) {
+            notifications.show({
+                title: "Guardar Vehículos Completado",
+                message: message.trim(),
+                color: errores > 0 ? (vehiculosCreados > 0 ? 'orange' : 'red') : 'green'
+            });
+        }
+
+        setLoading(false);
+    };
 
     // --- RESTAURAR: Definición de Columnas DataTable (Resultados Agrupados) ---
     const columns: DataTableProps<ResultadoAgrupado>['columns'] = [
@@ -893,6 +1026,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         },
         {
             accessor: 'filtros', title: 'Parámetros del Filtro', 
+            width: 200,
             render: ({ filtros }) => {
                 const summary = formatFiltersSummary(filtros);
                 return (
@@ -909,7 +1043,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
             ),
         },
         { 
-            accessor: 'notas', title: 'Notas', width: 150,
+            accessor: 'notas', title: 'Notas', width: 300,
             render: ({ notas }) => (
                 notas ? <Tooltip label={notas} multiline w={200}><Text truncate="end" size="xs">{notas}</Text></Tooltip> : '-'
             ),
@@ -926,6 +1060,11 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                      <Tooltip label="Editar Búsqueda">
                          <ActionIcon variant="subtle" color="blue" onClick={() => handleEditSavedSearch(search)}>
                              <IconPencil size={16} />
+                         </ActionIcon>
+                     </Tooltip>
+                     <Tooltip label="Guardar Vehículos de esta Búsqueda">
+                         <ActionIcon variant="subtle" color="green" onClick={() => handleSaveVehiclesFromSearch(search)} disabled={!search.unique_plates || search.unique_plates.length === 0}>
+                             <IconCar size={16} />
                          </ActionIcon>
                      </Tooltip>
                      <Tooltip label="Eliminar Búsqueda">
@@ -950,7 +1089,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                     <Paper shadow="sm" p="md" withBorder>
                         <Stack gap="sm">
                             <Title order={4} mb="sm">Definir Filtros</Title>
-                            <Input.Wrapper label="Fecha Inicio" size="xs">
+                            <Input.Wrapper label="Fecha Inicio" size="xs" className="lpr-avanzado-datepicker-wrapper">
                                 <DatePicker
                                     selected={currentFilters.fechaInicio}
                                     onChange={(date) => handleFilterChange('fechaInicio', date)}
@@ -965,7 +1104,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                                     }
                                 />
                             </Input.Wrapper>
-                            <Input.Wrapper label="Fecha Fin" size="xs">
+                            <Input.Wrapper label="Fecha Fin" size="xs" className="lpr-avanzado-datepicker-wrapper">
                                 <DatePicker
                                     selected={currentFilters.fechaFin}
                                     onChange={(date) => handleFilterChange('fechaFin', date)}
@@ -1128,7 +1267,6 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                                      sortStatus={sortStatus}
                                      onSortStatusChange={handleSortStatusChange}
                                      withTableBorder borderRadius="sm" withColumnBorders striped highlightOnHover minHeight={200}
-                                     noRecordsText="" noRecordsIcon={<></>}
                                      selectedRecords={selectedRecords} 
                                      onSelectedRecordsChange={handleSelectionChange}
                                      isRecordSelectable={(record) => !resultsLoading}
@@ -1207,6 +1345,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                             <Text c="dimmed" size="sm">No hay búsquedas guardadas para este caso. Guarda una usando los filtros de la izquierda.</Text>
                          ) : (
                             <DataTable<SavedSearch>
+                                className="saved-searches-datatable"
                                 mt="sm"
                                 records={savedSearches}
                                 columns={savedSearchColumns}
@@ -1222,6 +1361,45 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                 </Grid.Col>
 
             </Grid>
+            
+            {/* --- NUEVO: Modal de Edición --- */}
+            <Modal 
+                opened={editModalOpened} 
+                onClose={closeEditModal} 
+                title="Editar Búsqueda Guardada"
+                centered // Opcional: centrar modal
+            >
+                <form onSubmit={editForm.onSubmit(handleUpdateSavedSearchSubmit)}>
+                    <Stack>
+                        <TextInput
+                            required
+                            label="Nombre"
+                            placeholder="Nombre descriptivo"
+                            {...editForm.getInputProps('nombre')}
+                        />
+                        <ColorInput
+                            label="Color Etiqueta"
+                            placeholder="Elige un color (opcional)"
+                            {...editForm.getInputProps('color')}
+                            format="hex" // O 'rgba', 'hsl', etc.
+                            swatches={[
+                              '#25262b', '#868e96', '#fa5252', '#e64980', '#be4bdb', '#7950f2', '#4c6ef5', 
+                              '#228be6', '#15aabf', '#12b886', '#40c057', '#82c91e', '#fab005', '#fd7e14',
+                            ]}
+                        />
+                        <Textarea
+                            label="Notas (opcional)"
+                            placeholder="Añade alguna nota o comentario..."
+                            {...editForm.getInputProps('notas')}
+                            minRows={3}
+                        />
+                        <Group justify="flex-end" mt="md">
+                            <Button variant="default" onClick={closeEditModal} disabled={isSavingEdit}>Cancelar</Button>
+                            <Button type="submit" loading={isSavingEdit}>Guardar Cambios</Button> 
+                        </Group>
+                    </Stack>
+                </form>
+            </Modal>
         </Box>
     );
 }

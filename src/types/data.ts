@@ -136,4 +136,24 @@ export interface LectorSugerenciasResponse {
   contactos: string[];
 }
 
+// --- Tipos para Búsquedas Guardadas --- 
+export interface SavedSearch {
+    id: number;
+    caso_id: number;
+    nombre: string;
+    filtros: any; // O un tipo más específico: CurrentLprFilters normalizado?
+    color: string | null;
+    notas: string | null;
+    result_count: number | null;
+    unique_plates: string[] | null;
+    // Podríamos añadir fecha_creacion si existe en backend
+}
+
+// Payload para actualizar una búsqueda guardada (solo campos editables)
+export interface SavedSearchUpdatePayload {
+    nombre: string;
+    color: string | null;
+    notas: string | null;
+}
+
 // Podrías añadir interfaces para Vehiculo, etc. si las necesitas 

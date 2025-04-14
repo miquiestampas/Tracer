@@ -830,34 +830,45 @@ def read_lecturas(
 # === NUEVO: Endpoints para Lecturas Relevantes ===
 
 @app.post("/lecturas/{id_lectura}/marcar_relevante", response_model=schemas.LecturaRelevante, status_code=status.HTTP_201_CREATED)
-def marcar_lectura_relevante(id_lectura: int, nota_opcional: schemas.LecturaRelevanteUpdate | None = None, db: Session = Depends(get_db)):
-    """Marca una lectura como relevante, opcionalmente con una nota inicial."""
-    db_lectura = db.query(models.Lectura).filter(models.Lectura.ID_Lectura == id_lectura).first()
+def marcar_lectura_relevante(
+    id_lectura: int, 
+    # Usar el schema actualizado que puede incluir caso_id
+    payload: schemas.LecturaRelevanteUpdate | None = None, 
+    db: Session = Depends(get_db)
+):
+    """Marca una lectura como relevante, asegurando que pertenezca al caso si se proporciona."""
+    db_lectura = db.query(models.Lectura).options(joinedload(models.Lectura.archivo)).filter(models.Lectura.ID_Lectura == id_lectura).first()
     if not db_lectura:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lectura no encontrada.")
 
+    # --- Validación de Caso (SI se proporciona caso_id en el payload) ---
+    if payload and payload.caso_id is not None:
+        if not db_lectura.archivo or db_lectura.archivo.ID_Caso != payload.caso_id:
+            # Simplificar f-string
+            caso_real = db_lectura.archivo.ID_Caso if db_lectura.archivo else "DESCONOCIDO"
+            logger.warning(f"Intento de marcar lectura {id_lectura} (caso real: {caso_real}) como relevante para caso incorrecto ({payload.caso_id}).")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="La lectura no pertenece al caso especificado.")
+        else:
+             logger.info(f"Validación de caso OK: Lectura {id_lectura} pertenece a caso {payload.caso_id}.")
+    # --- Fin Validación --- 
+    
     # Verificar si ya está marcada
     db_relevante_existente = db.query(models.LecturaRelevante).filter(models.LecturaRelevante.ID_Lectura == id_lectura).first()
     if db_relevante_existente:
-        # Si ya existe, ¿actualizamos la nota o devolvemos error?
-        # Por ahora, devolvemos la existente (o un 409 Conflict)
         logger.warning(f"Lectura {id_lectura} ya estaba marcada como relevante.")
-        # Opcional: Actualizar nota si se proporciona aquí
-        if nota_opcional and nota_opcional.Nota is not None:
-            db_relevante_existente.Nota = nota_opcional.Nota
+        # Actualizar nota si se proporciona
+        if payload and payload.Nota is not None:
+            db_relevante_existente.Nota = payload.Nota
             db.commit()
             db.refresh(db_relevante_existente)
             return db_relevante_existente
         else:
-             # Simplemente devolver la existente sin cambios si no hay nota nueva
              return db_relevante_existente
-            # raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La lectura ya está marcada como relevante.")
 
     # Crear nueva entrada
     nueva_relevante = models.LecturaRelevante(
         ID_Lectura=id_lectura,
-        Nota=nota_opcional.Nota if nota_opcional else None
-        # Fecha_Marcada tiene default now()
+        Nota=payload.Nota if payload else None
     )
     db.add(nueva_relevante)
     try:

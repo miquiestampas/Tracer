@@ -18,6 +18,11 @@ const customStyles = `
   .highlighted-row:hover {
     background-color: var(--mantine-color-blue-1) !important; /* Un azul ligeramente más oscuro */
   }
+  /* Forzar label encima del input para DatePicker en este panel */
+  .analisis-datepicker-wrapper .mantine-InputWrapper-label {
+      display: block;
+      margin-bottom: var(--mantine-spacing-xs); /* Ajustar espacio si es necesario */
+  }
 `;
 
 // --- Interfaces (Asegurarse que estén completas) ---
@@ -252,13 +257,27 @@ function AnalisisLecturasPanel({
     // --- Funciones para Acciones ---
     const handleMarcarRelevante = async () => {
         if (selectedRecords.length === 0) return;
-        setLoading(true); // Mostrar indicador de carga durante la acción
+        setLoading(true);
         const idsToMark = selectedRecords.map(r => r.ID_Lectura);
         console.log("Marcando como relevante IDs:", idsToMark);
 
+        if (casoIdFijo === null || casoIdFijo === undefined || isNaN(casoIdFijo)) {
+            notifications.show({ title: 'Error', message: 'No se pudo determinar el ID del caso actual para marcar la lectura.', color: 'red' });
+            setSelectedRecords([]);
+            setLoading(false);
+            return;
+        }
+
         const results = await Promise.allSettled(
             idsToMark.map(id => 
-                fetch(`http://localhost:8000/lecturas/${id}/marcar_relevante`, { method: 'POST' })
+                fetch(`http://localhost:8000/lecturas/${id}/marcar_relevante`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        Nota: null,
+                        caso_id: casoIdFijo
+                     }) 
+                })
                     .then(response => {
                         if (!response.ok) { 
                             // Intentar leer detalle del error si existe
@@ -446,7 +465,7 @@ function AnalisisLecturasPanel({
                                      leftSection={<IconFolder style={iconStyle} />}
                                  />
                              )}
-                             <Input.Wrapper label="Fecha Inicio" size="xs">
+                             <Input.Wrapper label="Fecha Inicio" size="xs" className="analisis-datepicker-wrapper">
                                 <DatePicker
                                     selected={fechaInicio}
                                     onChange={(date) => setFechaInicio(date)}
@@ -462,7 +481,7 @@ function AnalisisLecturasPanel({
                                 />
                             </Input.Wrapper>
                             
-                            <Input.Wrapper label="Fecha Fin" size="xs">
+                            <Input.Wrapper label="Fecha Fin" size="xs" className="analisis-datepicker-wrapper">
                              <DatePicker
                                 selected={fechaFin}
                                 onChange={(date) => setFechaFin(date)}
