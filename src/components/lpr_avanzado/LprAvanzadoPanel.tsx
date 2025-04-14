@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Stack, Grid, Button, TextInput, Box, NumberInput, Title, LoadingOverlay, rem, Paper, Group, Badge, ActionIcon, Text, Input, Checkbox, Tooltip } from '@mantine/core';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, Title, LoadingOverlay, rem, Paper, Group, Badge, ActionIcon, Text, Input, Checkbox, Tooltip, InputLabel } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -74,9 +74,11 @@ interface ResultadoAgrupado {
     readings: Lectura[]; // Array de lecturas para esta matrícula
 }
 
-// --- Props del Componente ---
+// --- NUEVA: Props del componente ---
 interface LprAvanzadoPanelProps {
-    casoId: number; // El ID del caso es obligatorio aquí
+    casoId: number;
+    interactedMatriculas: Set<string>;         // <-- Prop recibida
+    addInteractedMatricula: (matriculas: string[]) => void; // <-- Prop recibida
 }
 
 // Importar el tipo SavedSearch (asumiendo que está exportado desde un archivo de tipos)
@@ -177,9 +179,18 @@ const customStyles = `
     padding-left: var(--mantine-spacing-xs) !important; /* Ajustar padding */
     padding-right: var(--mantine-spacing-xs) !important;
   }
+
+  .highlighted-row {
+    background-color: var(--mantine-color-blue-0) !important; /* Azul muy claro */
+  }
+
+  /* Opcional: Mantener el resaltado al pasar el ratón por encima */
+  .highlighted-row:hover {
+      background-color: var(--mantine-color-blue-1) !important; /* Un azul ligeramente más oscuro */
+  }
 `;
 
-function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
+function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula }: LprAvanzadoPanelProps) {
     const iconStyle = { width: rem(16), height: rem(16) };
 
     // --- Estados para Filtros Actuales (tipado) ---
@@ -192,8 +203,9 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
     // --- Estados de Resultados ---
     const [displayedResults, setDisplayedResults] = useState<ResultadoAgrupado[]>([]);
     const [expandedRecordIds, setExpandedRecordIds] = useState<string[]>([]);
-    const [selectedResultados, setSelectedResultados] = useState<ResultadoAgrupado[]>([]);
+    const [selectedRecords, setSelectedRecords] = useState<ResultadoAgrupado[]>([]);
     const [loading, setLoading] = useState(false);
+    const [resultsLoading, setResultsLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 10;
@@ -203,6 +215,7 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
     const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
     const [selectedSearchIds, setSelectedSearchIds] = useState<number[]>([]); // Selección en la tabla
     const [activeSearchIds, setActiveSearchIds] = useState<number[]>([]); // Búsquedas activas para cruce
+    const [savedSearchesLoading, setSavedSearchesLoading] = useState(false); // Loading específico búsquedas
 
     // --- Cargar datos iniciales (Ahora usa el nuevo endpoint) ---
     useEffect(() => {
@@ -717,31 +730,55 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
         setLoading(false);
     };
 
-    // --- NUEVOS Handlers para botones de acción de la tabla --- 
-    
+    // --- Handler para gestionar expansión Y marcar interactuado (USA PROP) ---
+    const handleExpansionChange = useCallback((newExpandedIds: unknown[]) => {
+        const stringIds = newExpandedIds.filter((id): id is string => typeof id === 'string');
+        setExpandedRecordIds(stringIds);
+        
+        // Notificar al padre sobre las nuevas matrículas expandidas
+        if (stringIds.length > 0) {
+            addInteractedMatricula(stringIds); // <-- Llamar a la prop
+        }
+    }, [addInteractedMatricula]); // <-- Añadir dependencia
+
+    // --- Handlers Tabla Resultados (Paginación, Ordenación, Selección) ---
+    const handleSortStatusChange = (status: DataTableSortStatus<ResultadoAgrupado>) => {
+        setPage(1);
+        setSortStatus(status);
+    };
+
+    const handleSelectionChange = useCallback((newSelectedRecords: ResultadoAgrupado[]) => {
+        setSelectedRecords(newSelectedRecords);
+        // Notificar al padre sobre las nuevas matrículas seleccionadas
+        const newlySelectedMatriculas = newSelectedRecords.map(record => record.matricula);
+        if (newlySelectedMatriculas.length > 0) {
+             addInteractedMatricula(newlySelectedMatriculas); // <-- Llamar a la prop
+        }
+    }, [addInteractedMatricula]); // <-- Añadir dependencia
+
+    // --- RESTAURAR: Handlers Botones Acción --- 
     const handleMarkRelevant = async () => {
-        if (selectedResultados.length === 0) return;
-        const lectureIdsToMark = selectedResultados.flatMap(r => r.readings.map(l => l.ID_Lectura));
-        if (lectureIdsToMark.length === 0) return;
+        if (selectedRecords.length === 0) return;
+        const lectureIdsToMark = selectedRecords.flatMap(r => r.readings?.map(l => l.ID_Lectura).filter((id): id is number => id !== undefined) ?? []);
+        if (lectureIdsToMark.length === 0) {
+             notifications.show({ title: 'Aviso', message: 'No hay lecturas detalladas para marcar en la selección.', color: 'orange' });
+            return;
+        }
+        if (!window.confirm(`¿Marcar como relevantes ${lectureIdsToMark.length} lecturas de ${selectedRecords.length} matrícula(s) seleccionada(s)?`)) return;
 
-        if (!window.confirm(`¿Marcar como relevantes ${lectureIdsToMark.length} lecturas de ${selectedResultados.length} matrícula(s) seleccionada(s)?`)) return;
-
-        setLoading(true);
+        setResultsLoading(true);
         let successes = 0;
         let errors = 0;
-
-        // Usar Promise.allSettled para manejar múltiples llamadas
         const results = await Promise.allSettled(
-            lectureIdsToMark.map(id => 
-                fetch(`http://localhost:8000/lecturas/${id}/marcar_relevante`, { 
+            lectureIdsToMark.map(id =>
+                fetch(`http://localhost:8000/lecturas/${id}/marcar_relevante`, {
                     method: 'POST',
-                    // Enviar nota vacía o permitir añadirla si se quiere
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ Nota: null }) // Opcional: permitir añadir nota
+                    body: JSON.stringify({ Nota: null }) // Opcional: Permitir nota
                  })
                 .then(response => {
-                    if (!response.ok && response.status !== 409) { // 409 (Conflict) puede significar que ya estaba marcada
-                        return response.json().catch(() => null).then(errorData => {
+                    if (!response.ok && response.status !== 409) { // 409 puede ser ya marcada
+                         return response.json().catch(() => null).then(errorData => {
                              throw new Error(errorData?.detail || `Error ${response.status}`);
                          });
                     }
@@ -749,203 +786,142 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
                  })
             )
         );
-
         results.forEach((result, index) => {
-             const id = lectureIdsToMark[index];
-             if (result.status === 'fulfilled') {
-                 successes++;
-             } else {
-                 errors++;
-                 console.error(`Error marcando relevante lectura ${id}:`, result.reason);
-                  notifications.show({
-                      title: 'Error al Marcar',
-                      message: `No se pudo marcar ID ${id}: ${result.reason.message}`,
-                      color: 'red'
-                  });
-             }
-         });
-
-        if (successes > 0) {
-             notifications.show({
-                 title: 'Lecturas Marcadas',
-                 message: `${successes} lecturas marcadas como relevantes.` + (errors > 0 ? ` ${errors} fallaron.` : ''),
-                 color: errors > 0 ? 'orange' : 'green',
-                 icon: <IconCheck size={18} />
-             });
-        }
-        
-        // Opcional: Limpiar selección tras la acción
-        setSelectedResultados([]);
-        // No es necesario refrescar datos aquí generalmente
-        setLoading(false);
+            if (result.status === 'fulfilled') successes++;
+            else {
+                errors++;
+                 notifications.show({ title: 'Error al Marcar', message: `ID ${lectureIdsToMark[index]}: ${result.reason.message}`, color: 'red' });
+            }
+        });
+        if (successes > 0) notifications.show({ title: 'Lecturas Marcadas', message: `${successes} lecturas marcadas.` + (errors > 0 ? ` ${errors} fallaron.` : ''), color: errors > 0 ? 'orange' : 'green' });
+        setSelectedRecords([]);
+        setResultsLoading(false);
     };
 
     const handleUnmarkRelevant = async () => {
-         if (selectedResultados.length === 0) return;
-         const lectureIdsToUnmark = selectedResultados.flatMap(r => r.readings.map(l => l.ID_Lectura));
-         if (lectureIdsToUnmark.length === 0) return;
+        if (selectedRecords.length === 0) return;
+        const lectureIdsToUnmark = selectedRecords.flatMap(r => r.readings?.map(l => l.ID_Lectura).filter((id): id is number => id !== undefined) ?? []);
+         if (lectureIdsToUnmark.length === 0) {
+             notifications.show({ title: 'Aviso', message: 'No hay lecturas detalladas para desmarcar en la selección.', color: 'orange' });
+            return;
+        }
+        if (!window.confirm(`¿Desmarcar como relevantes ${lectureIdsToUnmark.length} lecturas de ${selectedRecords.length} matrícula(s) seleccionada(s)?`)) return;
 
-         if (!window.confirm(`¿Desmarcar como relevantes ${lectureIdsToUnmark.length} lecturas de ${selectedResultados.length} matrícula(s) seleccionada(s)?`)) return;
-
-         setLoading(true);
-         let successes = 0;
-         let errors = 0;
-
-         const results = await Promise.allSettled(
-             lectureIdsToUnmark.map(id => 
-                 fetch(`http://localhost:8000/lecturas/${id}/desmarcar_relevante`, { method: 'DELETE' })
-                 .then(response => {
-                     if (!response.ok && response.status !== 404) { // 404 puede significar que no estaba marcada
-                          return response.json().catch(() => null).then(errorData => {
-                              throw new Error(errorData?.detail || `Error ${response.status}`);
-                          });
-                     }
-                     return { id };
-                  })
-             )
-         );
-
+        setResultsLoading(true);
+        let successes = 0;
+        let errors = 0;
+        const results = await Promise.allSettled(
+            lectureIdsToUnmark.map(id =>
+                fetch(`http://localhost:8000/lecturas/${id}/desmarcar_relevante`, { method: 'DELETE' })
+                .then(response => {
+                    if (!response.ok && response.status !== 404) { // 404 puede ser que no estuviera marcada
+                        return response.json().catch(() => null).then(errorData => {
+                            throw new Error(errorData?.detail || `Error ${response.status}`);
+                         });
+                    }
+                    return { id };
+                })
+            )
+        );
         results.forEach((result, index) => {
-             const id = lectureIdsToUnmark[index];
-             if (result.status === 'fulfilled') {
-                 successes++;
-             } else {
-                 errors++;
-                 console.error(`Error desmarcando relevante lectura ${id}:`, result.reason);
-                  notifications.show({
-                      title: 'Error al Desmarcar',
-                      message: `No se pudo desmarcar ID ${id}: ${result.reason.message}`,
-                      color: 'red'
-                  });
-             }
-         });
-
-         if (successes > 0) {
-              notifications.show({
-                  title: 'Lecturas Desmarcadas',
-                  message: `${successes} lecturas desmarcadas.` + (errors > 0 ? ` ${errors} fallaron.` : ''),
-                  color: errors > 0 ? 'orange' : 'green',
-                  icon: <IconCheck size={18} />
-              });
-         }
-         
-         setSelectedResultados([]);
-         setLoading(false);
+            if (result.status === 'fulfilled') successes++;
+            else {
+                errors++;
+                 notifications.show({ title: 'Error al Desmarcar', message: `ID ${lectureIdsToUnmark[index]}: ${result.reason.message}`, color: 'red' });
+            }
+        });
+        if (successes > 0) notifications.show({ title: 'Lecturas Desmarcadas', message: `${successes} lecturas desmarcadas.` + (errors > 0 ? ` ${errors} fallaron.` : ''), color: errors > 0 ? 'orange' : 'green' });
+        setSelectedRecords([]);
+        setResultsLoading(false);
     };
 
-    // Adaptar handleGuardarVehiculosAgrupados para que use selectedResultados
     const handleSaveSelectedVehicles = async () => {
-        // Usar selectedResultados en lugar de displayedResults
-        const matriculasUnicas = selectedResultados.map(r => r.matricula);
+        const matriculasUnicas = selectedRecords.map(r => r.matricula);
         if (matriculasUnicas.length === 0) return;
         
-        setLoading(true); 
-        console.log("LprAvanzado: Intentando guardar vehículos seleccionados:", matriculasUnicas);
-
+        setResultsLoading(true); 
         let vehiculosCreados = 0;
         let vehiculosExistentes = 0;
         let errores = 0;
-
         const results = await Promise.allSettled(
-            matriculasUnicas.map(matricula => 
+            matriculasUnicas.map(matricula =>
                 fetch(`http://localhost:8000/vehiculos`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ Matricula: matricula }),
                 }).then(async response => {
-                    if (response.status === 201) return { status: 'created', matricula };
-                    if (response.status === 400) { 
-                         const errorData = await response.json().catch(() => null);
-                         console.warn(`Vehículo ${matricula} ya existe o petición inválida:`, errorData?.detail);
-                         return { status: 'exists', matricula };
-                    }
+                    if (response.status === 201) return { status: 'created' };
+                    if (response.status === 400) return { status: 'exists' }; // Asumir 400 es 'ya existe'
                     const errorData = await response.json().catch(() => null);
                     throw new Error(errorData?.detail || `HTTP ${response.status}`);
                 })
             )
         );
-
         results.forEach(result => {
             if (result.status === 'fulfilled') {
                 if (result.value.status === 'created') vehiculosCreados++;
                 if (result.value.status === 'exists') vehiculosExistentes++;
             } else {
                 errores++;
-                console.error("LprAvanzado: Error guardando vehículo:", result.reason);
-                 notifications.show({ title: 'Error Parcial', message: `No se pudo procesar matrícula: ${result.reason.message}`, color: 'red' });
+                 notifications.show({ title: 'Error Parcial Guardando Vehículo', message: `${result.reason.message}`, color: 'red' });
             }
         });
-
         let message = '';
         if (vehiculosCreados > 0) message += `${vehiculosCreados} vehículo(s) nuevo(s) guardado(s). `; 
-        if (vehiculosExistentes > 0) message += `${vehiculosExistentes} vehículo(s) ya existían. `; 
+        if (vehiculosExistentes > 0) message += `${vehiculosExistentes} ya existían. `; 
         if (errores > 0) message += `${errores} matrícula(s) no se pudieron procesar.`;
-        
-        if (message) {
-            notifications.show({ 
-                title: "Guardar Vehículos Completado", 
-                message: message.trim(), 
-                color: errores > 0 ? (vehiculosCreados > 0 ? 'orange' : 'red') : 'green' 
-            });
-        }
-        
-        setSelectedResultados([]); // Limpiar selección
-        setLoading(false);
+        if (message) notifications.show({ title: "Guardar Vehículos Completado", message: message.trim(), color: errores > 0 ? (vehiculosCreados > 0 ? 'orange' : 'red') : 'green' });
+        setSelectedRecords([]);
+        setResultsLoading(false);
     };
+    // --- FIN RESTAURAR HANDLERS ---
 
-    // --- Definición de Columnas DataTable (Resultados Agrupados) ---
+    // --- RESTAURAR: Definición de Columnas DataTable (Resultados Agrupados) ---
     const columns: DataTableProps<ResultadoAgrupado>['columns'] = [
         { accessor: 'matricula', title: 'Matrícula', sortable: true, width: 100 }, 
         { accessor: 'count', title: 'Nº Pasos', textAlign: 'right', sortable: true, width: 70 },  
         { accessor: 'firstSeen', title: 'Primera Vez', sortable: true, width: 150 },
         { accessor: 'lastSeen', title: 'Última Vez', sortable: true, width: 150 },
     ];
+    // --- FIN RESTAURAR COLUMNS ---
 
-    // *** RESTAURAR DEFINICIÓN DE savedSearchColumns ***
+    // --- RESTAURAR: Definición de Columnas DataTable (Búsquedas Guardadas) ---
     const savedSearchColumns: DataTableProps<SavedSearch>['columns'] = [
         { 
-            accessor: 'nombre', 
-            title: 'Nombre Búsqueda', 
-            width: 150,
+            accessor: 'nombre', title: 'Nombre Búsqueda', width: 150,
+            sortable: true,
         },
         {
-            accessor: 'parametros', 
-            title: 'Parámetros del Filtro',
+            accessor: 'filtros', title: 'Parámetros del Filtro', 
             render: ({ filtros }) => {
                 const summary = formatFiltersSummary(filtros);
                 return (
-                    <Text size="xs" truncate="end">{summary}</Text>
+                    <Tooltip label={summary} multiline w={300} position="top-start" openDelay={500}>
+                         <Text size="xs" truncate="end">{summary}</Text>
+                    </Tooltip>
                 );
             },
         },
         { 
-            accessor: 'color', 
-            title: 'Color', 
-            width: 60,
+            accessor: 'color', title: 'Color', width: 60, 
             render: ({ color }) => (
-                color ? <Box bg={color} w={20} h={20} style={{ borderRadius: '50%' }} /> : null
+                color ? <Box bg={color} w={20} h={20} style={{ borderRadius: '50%', margin: 'auto' }} /> : null
             ),
         },
         { 
-            accessor: 'notas', 
-            title: 'Notas',
+            accessor: 'notas', title: 'Notas', width: 150,
             render: ({ notas }) => (
-                notas ? <Tooltip label={notas} multiline w={200}><Text truncate="end" style={{ maxWidth: 150 }}>{notas}</Text></Tooltip> : '-'
+                notas ? <Tooltip label={notas} multiline w={200}><Text truncate="end" size="xs">{notas}</Text></Tooltip> : '-'
             ),
         },
         { 
-            accessor: 'result_count', 
-            title: 'Nº Matr.',
-            textAlign: 'right',
-            width: 80, 
+            accessor: 'result_count', title: 'Nº Matr.', 
+            textAlign: 'right', width: 80, sortable: true,
             render: ({ result_count }) => result_count ?? '-',
         },
         { 
-            accessor: 'actions', 
-            title: 'Acciones', 
-            width: 100,
-            textAlign: 'center',
-             render: (search) => (
+            accessor: 'actions', title: 'Acciones', width: 100, textAlign: 'center',
+            render: (search) => (
                  <Group gap="xs" justify="center" wrap="nowrap">
                      <Tooltip label="Editar Búsqueda">
                          <ActionIcon variant="subtle" color="blue" onClick={() => handleEditSavedSearch(search)}>
@@ -961,49 +937,53 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
              ),
         },
     ];
-    // *** FIN RESTAURAR ***
+    // --- FIN RESTAURAR SAVEDSEARCHCOLUMNS ---
 
     // --- Renderizado ---
     return (
         <Box style={{ position: 'relative' }}>
-            <style>{customStyles}</style> {/* Añadir estilos CSS */}
+            <style>{customStyles}</style> 
             <LoadingOverlay visible={initialLoading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
             <Grid>
                 {/* Columna Filtros (span 3 ahora) */}
-                <Grid.Col span={{ base: 12, md: 3 }}>
-                    <Paper withBorder shadow="xs" p="md">
-                        <Stack>
-                            <Title order={4}>Definir Filtros</Title>
-                            <Input.Wrapper label="Fecha Inicio">
+                <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
+                    <Paper shadow="sm" p="md" withBorder>
+                        <Stack gap="sm">
+                            <Title order={4} mb="sm">Definir Filtros</Title>
+                            <Input.Wrapper label="Fecha Inicio" size="xs">
                                 <DatePicker
                                     selected={currentFilters.fechaInicio}
-                                    onChange={(date: Date | null) => handleFilterChange('fechaInicio', date)}
+                                    onChange={(date) => handleFilterChange('fechaInicio', date)}
                                     dateFormat="yyyy-MM-dd"
                                     placeholderText="AAAA-MM-DD"
                                     isClearable
-                                    customInput={<Input leftSection={<IconCalendar style={iconStyle} />} style={{ width: '100%' }}/>}
-                                    wrapperClassName="date-picker-wrapper"
+                                    customInput={
+                                        <Input 
+                                            leftSection={<IconCalendar style={iconStyle} />} 
+                                            style={{ width: '100%' }}
+                                        />
+                                    }
                                 />
                             </Input.Wrapper>
-                             <Input.Wrapper label="Fecha Fin">
-                                 <DatePicker
+                            <Input.Wrapper label="Fecha Fin" size="xs">
+                                <DatePicker
                                     selected={currentFilters.fechaFin}
-                                    onChange={(date: Date | null) => handleFilterChange('fechaFin', date)}
+                                    onChange={(date) => handleFilterChange('fechaFin', date)}
                                     dateFormat="yyyy-MM-dd"
                                     placeholderText="AAAA-MM-DD"
                                     isClearable
-                                    customInput={<Input leftSection={<IconCalendar style={iconStyle} />} style={{ width: '100%' }}/>}
-                                    wrapperClassName="date-picker-wrapper"
-                                 />
+                                    customInput={
+                                        <Input 
+                                            leftSection={<IconCalendar style={iconStyle} />} 
+                                            style={{ width: '100%' }}
+                                        />
+                                    }
+                                />
                             </Input.Wrapper>
-                            <Grid>
-                                 <Grid.Col span={6}>
-                                     <TimeInput label="Desde Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeFrom} onChange={(e) => handleFilterChange('timeFrom', e.currentTarget.value)}/>
-                                 </Grid.Col>
-                                 <Grid.Col span={6}>
-                                     <TimeInput label="Hasta Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeTo} onChange={(e) => handleFilterChange('timeTo', e.currentTarget.value)} />
-                                 </Grid.Col>
-                             </Grid>
+                            <Group grow>
+                                 <TimeInput label="Desde Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeFrom} onChange={(e) => handleFilterChange('timeFrom', e.currentTarget.value)}/>
+                                 <TimeInput label="Hasta Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeTo} onChange={(e) => handleFilterChange('timeTo', e.currentTarget.value)} />
+                             </Group>
                              <MultiSelect label="Lectores" placeholder="Todos" data={lectoresList} value={currentFilters.selectedLectores} onChange={(v) => handleFilterChange('selectedLectores', v)} leftSection={<IconDeviceCctv size={16} />} searchable clearable disabled={initialLoading} />
                              <MultiSelect label="Carretera" placeholder="Todas" data={carreterasList} value={currentFilters.selectedCarreteras} onChange={(v) => handleFilterChange('selectedCarreteras', v)} leftSection={<IconRoad size={16} />} searchable clearable disabled={initialLoading} />
                              <MultiSelect
@@ -1018,64 +998,59 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
                                  disabled={initialLoading}
                              />
                              <TextInput label="Matrícula (parcial)" placeholder="Ej: %BC%" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
-                             <Grid>
-                                 <Grid.Col span={6}>
-                                     <NumberInput
-                                        label="Mín. Pasos"
-                                        placeholder="Cualquiera"
-                                        value={currentFilters.minPasos ?? ''}
-                                        onChange={(value) => handleFilterChange('minPasos', typeof value === 'number' ? value : null)}
-                                        min={1}
-                                        step={1}
-                                        allowNegative={false}
-                                        allowDecimal={false}
-                                     />
-                                 </Grid.Col>
-                                 <Grid.Col span={6}>
-                                      <NumberInput
-                                        label="Máx. Pasos"
-                                        placeholder="Cualquiera"
-                                        value={currentFilters.maxPasos ?? ''}
-                                        onChange={(value) => handleFilterChange('maxPasos', typeof value === 'number' ? value : null)}
-                                        min={1}
-                                        step={1}
-                                        allowNegative={false}
-                                        allowDecimal={false}
-                                     />
-                                 </Grid.Col>
-                             </Grid>
+                             <Group grow>
+                                 <NumberInput
+                                    label="Mín. Pasos"
+                                    placeholder="Cualquiera"
+                                    value={currentFilters.minPasos ?? ''}
+                                    onChange={(value) => handleFilterChange('minPasos', typeof value === 'number' ? value : null)}
+                                    min={1}
+                                    step={1}
+                                    allowNegative={false}
+                                    allowDecimal={false}
+                                 />
+                                 <NumberInput
+                                    label="Máx. Pasos"
+                                    placeholder="Cualquiera"
+                                    value={currentFilters.maxPasos ?? ''}
+                                    onChange={(value) => handleFilterChange('maxPasos', typeof value === 'number' ? value : null)}
+                                    min={1}
+                                    step={1}
+                                    allowNegative={false}
+                                    allowDecimal={false}
+                                 />
+                             </Group>
                             
-                            <Group mt="md" justify="space-between">
-                                <div> {/* Grupo para botones principales */} 
-                                    <Button
-                                       leftSection={<IconPlayerPlay size={16} />}
-                                       onClick={handleExecuteFilter}
-                                       disabled={loading || initialLoading}
-                                       mr="sm" // Margen entre botones
-                                   >
-                                       Ejecutar Filtro
-                                   </Button>
-                                   <Button
-                                       leftSection={<IconDeviceFloppy size={16} />}
-                                       variant="outline"
-                                       onClick={handleSaveSearch}
-                                       disabled={loading || initialLoading}
-                                   >
-                                       Guardar Búsqueda
-                                   </Button>
-                                </div>
-                                {/* Botón Limpiar Filtro */} 
-                                 <Tooltip label="Restablecer todos los filtros">
-                                    <ActionIcon 
-                                        variant="default" 
-                                        onClick={handleClearFilters} 
-                                        disabled={loading || initialLoading} 
-                                        size="lg"
-                                    >
-                                        <IconFilterOff size={18} />
-                                    </ActionIcon>
-                                </Tooltip>
-                            </Group>
+                            <Button 
+                                leftSection={<IconPlayerPlay size={16} />} 
+                                onClick={handleExecuteFilter} 
+                                loading={resultsLoading}
+                                size="sm"
+                                fullWidth
+                                mt="md"
+                            >
+                                Ejecutar Filtro
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                leftSection={<IconDeviceFloppy size={16} />} 
+                                onClick={handleSaveSearch} 
+                                loading={loading} // ¿Quizás loading diferente para guardar?
+                                size="sm"
+                                fullWidth
+                            >
+                                Guardar Búsqueda
+                            </Button>
+                            <Button 
+                                variant="subtle" 
+                                color="gray" 
+                                leftSection={<IconFilterOff size={16} />} 
+                                onClick={handleClearFilters} 
+                                size="xs" 
+                                fullWidth
+                            >
+                                Limpiar Filtros Actuales
+                            </Button>
                         </Stack>
                     </Paper>
                 </Grid.Col>
@@ -1116,44 +1091,24 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
                             </Paper>
                         )}
                         
-                        {/* --- NUEVO: Grupo de Botones de Acción --- */}
+                        {/* --- Grupo de Botones de Acción (Usa los handlers restaurados) --- */} 
                         <Group mb="sm">
-                             <Button 
-                                size="xs" 
-                                variant="outline" 
-                                leftSection={<IconBookmark size={16} />} 
-                                onClick={handleMarkRelevant}
-                                disabled={selectedResultados.length === 0 || loading}
-                            >
-                                Marcar Relevante ({selectedResultados.length})
+                             <Button size="xs" variant="outline" leftSection={<IconBookmark size={16} />} onClick={handleMarkRelevant} disabled={selectedRecords.length === 0 || resultsLoading}>
+                                Marcar Relevante ({selectedRecords.length})
                             </Button>
-                             <Button 
-                                size="xs" 
-                                variant="outline" 
-                                color="orange"
-                                leftSection={<IconBookmarkOff size={16} />} 
-                                onClick={handleUnmarkRelevant}
-                                disabled={selectedResultados.length === 0 || loading}
-                            >
-                                Desmarcar Relevante ({selectedResultados.length})
+                             <Button size="xs" variant="outline" color="orange" leftSection={<IconBookmarkOff size={16} />} onClick={handleUnmarkRelevant} disabled={selectedRecords.length === 0 || resultsLoading}>
+                                Desmarcar Relevante ({selectedRecords.length})
                             </Button>
-                            <Button 
-                                size="xs" 
-                                variant="outline" 
-                                color="green"
-                                leftSection={<IconCar size={16} />} 
-                                onClick={handleSaveSelectedVehicles}
-                                disabled={selectedResultados.length === 0 || loading}
-                            >
-                                Guardar Vehículos ({selectedResultados.length})
+                            <Button size="xs" variant="outline" color="green" leftSection={<IconCar size={16} />} onClick={handleSaveSelectedVehicles} disabled={selectedRecords.length === 0 || resultsLoading}>
+                                Guardar Vehículos ({selectedRecords.length})
                             </Button>
                         </Group>
                         
-                        {/* Tabla de Resultados (Agrupados) */}
+                        {/* Tabla de Resultados (Agrupados) (USA PROP `interactedMatriculas`) */} 
                         <Title order={4}>Resultados ({displayedResults.length} Matrículas)</Title>
                         <Box style={{ height: 'calc(100vh - 400px)', position: 'relative' }}>
-                             <LoadingOverlay visible={loading && !initialLoading} zIndex={500} />
-                             {!loading && !initialLoading && displayedResults.length === 0 && (
+                             <LoadingOverlay visible={resultsLoading && !initialLoading} zIndex={500} />
+                             {!resultsLoading && !initialLoading && displayedResults.length === 0 && (
                                  <div style={{ textAlign: 'center', padding: rem(20) }}>
                                      <Text c="dimmed" size="sm">
                                          No se encontraron resultados. Ejecuta un filtro o selecciona búsquedas guardadas.
@@ -1171,45 +1126,45 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
                                      page={page}
                                      onPageChange={setPage}
                                      sortStatus={sortStatus}
-                                     onSortStatusChange={setSortStatus}
-                                     withTableBorder
-                                     borderRadius="sm"
-                                     withColumnBorders
-                                     striped
-                                     highlightOnHover
-                                     minHeight={200}
-                                     noRecordsText="" 
-                                     noRecordsIcon={<></>} 
-                                     selectedRecords={selectedResultados}
-                                     onSelectedRecordsChange={setSelectedResultados}
+                                     onSortStatusChange={handleSortStatusChange}
+                                     withTableBorder borderRadius="sm" withColumnBorders striped highlightOnHover minHeight={200}
+                                     noRecordsText="" noRecordsIcon={<></>}
+                                     selectedRecords={selectedRecords} 
+                                     onSelectedRecordsChange={handleSelectionChange}
+                                     isRecordSelectable={(record) => !resultsLoading}
+                                     rowClassName={({ matricula }) => 
+                                         interactedMatriculas.has(matricula) ? 'highlighted-row' : undefined
+                                     }
                                      rowExpansion={{
                                         allowMultiple: true,
                                         expanded: {
                                             recordIds: expandedRecordIds,
-                                            onRecordIdsChange: setExpandedRecordIds,
+                                            onRecordIdsChange: handleExpansionChange,
                                         },
-                                        content: ({ record }: { record: ResultadoAgrupado }) => (
-                                            <Box p="sm" bg="gray.1" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
-                                                <Stack gap="xs">
-                                                   {record.readings.length > 0 ? (
-                                                        record.readings.map((reading) => (
-                                                            <Paper key={reading.ID_Lectura} shadow="xs" p="xs" withBorder>
-                                                                <Group justify="space-between" gap="xs" wrap="nowrap">
-                                                                    <Text size="xs" fw={500}>{dayjs(reading.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                                                                    <Text size="xs">Sentido: {reading.lector?.Sentido || '-'}</Text>
-                                                                    <Text size="xs">Carretera: {reading.lector?.Carretera || '-'}</Text>
-                                                                    <Text size="xs">Carril: {reading.Carril || '-'}</Text>
-                                                                    {/* Añadir más detalles si se desea, como ID Lector */}
-                                                                    {/* <Text size="xs">Lector: {reading.ID_Lector || '-'}</Text> */}
-                                                                </Group>
-                                                            </Paper>
-                                                        ))
-                                                    ) : (
-                                                        <Text size="xs" c="dimmed">No hay lecturas individuales disponibles para esta matrícula.</Text>
-                                                    )}
-                                                </Stack>
-                                            </Box>
-                                        ),
+                                        content: ({ record }: { record: ResultadoAgrupado }) => {
+                                            return (
+                                                 <Box p="sm" bg="gray.1" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+                                                     <Stack gap="xs">
+                                                       {record.readings.length > 0 ? (
+                                                            record.readings.map((reading) => (
+                                                                <Paper key={reading.ID_Lectura} shadow="xs" p="xs" withBorder>
+                                                                    <Group justify="space-between" gap="xs" wrap="nowrap">
+                                                                        <Text size="xs" fw={500}>{dayjs(reading.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+                                                                        <Text size="xs">Sentido: {reading.lector?.Sentido || '-'}</Text>
+                                                                        <Text size="xs">Carretera: {reading.lector?.Carretera || '-'}</Text>
+                                                                        <Text size="xs">Carril: {reading.Carril || '-'}</Text>
+                                                                        {/* Añadir más detalles si se desea, como ID Lector */}
+                                                                        {/* <Text size="xs">Lector: {reading.ID_Lector || '-'}</Text> */}
+                                                                    </Group>
+                                                                </Paper>
+                                                            ))
+                                                        ) : (
+                                                            <Text size="xs" c="dimmed">No hay lecturas individuales disponibles para esta matrícula.</Text>
+                                                        )}
+                                                    </Stack>
+                                                 </Box>
+                                            );
+                                        },
                                      }}
                                  />
                              )}
@@ -1217,7 +1172,7 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
                     </Stack>
                  </Grid.Col>
 
-                {/* --- COLUMNA PARA BÚSQUEDAS GUARDADAS (span 12) --- */}
+                {/* --- Columna Búsquedas Guardadas (Usa savedSearchColumns restaurado) --- */} 
                 <Grid.Col span={12}>
                      <Box mt="xl" mb="md" style={{ position: 'relative' }}>
                          <Group justify="space-between" mb="sm">
@@ -1256,14 +1211,10 @@ function LprAvanzadoPanel({ casoId }: LprAvanzadoPanelProps) {
                                 records={savedSearches}
                                 columns={savedSearchColumns}
                                 minHeight={150}
-                                withTableBorder
-                                borderRadius="sm"
-                                noRecordsText="" 
-                                noRecordsIcon={<></>} 
+                                withTableBorder borderRadius="sm"
+                                noRecordsText="" noRecordsIcon={<></>}
                                 selectedRecords={savedSearches.filter(s => selectedSearchIds.includes(s.id))}
-                                onSelectedRecordsChange={(newSelectedRecords) =>
-                                    setSelectedSearchIds(newSelectedRecords.map(s => s.id))
-                                }
+                                onSelectedRecordsChange={(newSelectedRecords) => setSelectedSearchIds(newSelectedRecords.map(s => s.id))}
                                 idAccessor="id"
                             />
                          )}
