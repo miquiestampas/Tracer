@@ -19,15 +19,24 @@ import shutil # Para guardar archivos subidos
 import pathlib # Importar pathlib para rutas absolutas
 from dateutil import parser # Importar dateutil.parser
 import re # Importar re para expresiones regulares
+from sqlalchemy import select, distinct # Importar select y distinct
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Llamar a la función para crear tablas al inicio (si no existen)
-models.create_db_and_tables()
+# Eliminar la llamada directa aquí
+# models.create_db_and_tables()
 
 app = FastAPI(title="Tracer API", description="API para la aplicación de análisis vehicular Tracer", version="0.1.0")
+
+# Definir un evento de inicio para crear tablas
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Ejecutando evento de inicio: Creando tablas si no existen...")
+    # Llamar aquí a la función para crear tablas
+    models.create_db_and_tables()
+    logger.info("Evento de inicio completado.")
 
 # --- Manejador de Excepción para Errores de Validación (422) ---
 @app.exception_handler(RequestValidationError)
@@ -155,19 +164,20 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ya existe un caso con el mismo nombre y año.")
     try:
         caso_data = caso.model_dump(exclude_unset=True)
-        estado_enum_del_modelo = models.EstadoCasoEnum.NUEVO
+        estado_str = models.EstadoCasoEnum.NUEVO.value # Default
         if 'Estado' in caso_data and caso_data['Estado'] is not None:
-            try:
-                estado_enum_del_modelo = models.EstadoCasoEnum(caso_data['Estado'])
-            except ValueError:
-                logger.error(f"Valor de Estado inválido proporcionado: {caso_data['Estado']}")
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor de Estado inválido: {caso_data['Estado']}")
+            estado_str = caso_data['Estado']
+            # Validar que el string es un valor válido del Enum
+            if estado_str not in [item.value for item in models.EstadoCasoEnum]:
+                logger.error(f"Valor de Estado inválido proporcionado: {estado_str}")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor de Estado inválido: {estado_str}")
+        
         db_caso = models.Caso(
             Nombre_del_Caso=caso_data['Nombre_del_Caso'],
             Año=caso_data['Año'],
             NIV=caso_data.get('NIV'),
             Descripcion=caso_data.get('Descripcion'),
-            Estado=estado_enum_del_modelo
+            Estado=estado_str # Asignar el string validado
         )
         db.add(db_caso)
         db.commit()
@@ -183,8 +193,30 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
 
 @app.get("/casos", response_model=List[schemas.Caso])
 def read_casos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    casos = db.query(models.Caso).offset(skip).limit(limit).all()
-    return casos
+    logger.info(f"GET /casos - skip: {skip}, limit: {limit}")
+    try:
+        casos_db = db.query(models.Caso).order_by(models.Caso.ID_Caso).offset(skip).limit(limit).all()
+        
+        # --- Log de depuración --- 
+        logger.info(f"Se obtuvieron {len(casos_db)} casos de la BD.")
+        for i, caso_obj in enumerate(casos_db):
+            estado_valor_raw = None
+            try:
+                # Intentar acceder al valor directamente (puede ser ya el Enum o el string si native_enum=False funciona)
+                estado_valor_raw = caso_obj.Estado
+                logger.info(f"  Caso {i+1} (ID: {caso_obj.ID_Caso}): Estado leído = {repr(estado_valor_raw)} (Tipo: {type(estado_valor_raw)})")
+                # Forzar la validación aquí para ver si falla
+                validated_enum = models.EstadoCasoEnum(estado_valor_raw.value if isinstance(estado_valor_raw, models.EstadoCasoEnum) else estado_valor_raw)
+                logger.info(f"    Estado validado como Enum del modelo: {validated_enum}")
+            except Exception as e_log:
+                # Si falla el acceso o la validación forzada, loguear
+                logger.error(f"  Caso {i+1} (ID: {caso_obj.ID_Caso}): Error al procesar/validar estado '{estado_valor_raw}': {e_log}")
+        # --- Fin Log de depuración ---
+
+        return casos_db # Devolver la lista original para que Pydantic/FastAPI la procese
+    except Exception as e:
+        logger.error(f"Error general al obtener casos: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al obtener casos: {e}")
 
 @app.get("/casos/{caso_id}", response_model=schemas.Caso)
 def read_caso(caso_id: int, db: Session = Depends(get_db)):
@@ -195,16 +227,23 @@ def read_caso(caso_id: int, db: Session = Depends(get_db)):
 
 @app.put("/casos/{caso_id}/estado", response_model=schemas.Caso)
 def update_caso_estado(caso_id: int, estado_update: schemas.CasoEstadoUpdate, db: Session = Depends(get_db)):
-    logger.info(f"Solicitud PUT para actualizar estado del caso ID: {caso_id} a {estado_update.Estado.value}")
+    logger.info(f"Solicitud PUT para actualizar estado del caso ID: {caso_id} a {estado_update.Estado}")
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
         logger.warning(f"[Update Estado Caso] Caso con ID {caso_id} no encontrado.")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+    
+    # Validar que el nuevo estado (string) es válido
+    nuevo_estado_str = estado_update.Estado
+    if nuevo_estado_str not in [item.value for item in models.EstadoCasoEnum]:
+         logger.error(f"Valor de Estado inválido para actualizar: {nuevo_estado_str}")
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor de Estado inválido: {nuevo_estado_str}")
+
     try:
-        db_caso.Estado = estado_update.Estado # Asignar el valor del Enum
+        db_caso.Estado = nuevo_estado_str # Asignar el string validado
         db.commit()
         db.refresh(db_caso)
-        logger.info(f"[Update Estado Caso] Estado del caso ID {caso_id} actualizado a {db_caso.Estado.value}")
+        logger.info(f"[Update Estado Caso] Estado del caso ID {caso_id} actualizado a {db_caso.Estado}")
         return db_caso
     except Exception as e:
         db.rollback()
@@ -703,9 +742,9 @@ def read_lecturas(
     lector_ids: Optional[List[str]] = Query(None), 
     caso_ids: Optional[List[int]] = Query(None), 
     carretera_ids: Optional[List[str]] = Query(None),
-    sentido: Optional[List[str]] = Query(None), # Añadir sentido si no estaba
+    sentido: Optional[List[str]] = Query(None),
     matricula: Optional[str] = None, 
-    tipo_fuente: Optional[str] = Query(None), # Permitir filtrar por LPR o GPS
+    tipo_fuente: Optional[str] = Query(None),
     solo_relevantes: Optional[bool] = False,
     db: Session = Depends(get_db)
 ):
@@ -988,3 +1027,151 @@ async def get_lecturas_relevantes_por_caso(caso_id: int, db: Session = Depends(g
     except Exception as e:
         logger.error(f"Error al obtener lecturas relevantes para caso {caso_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al obtener lecturas relevantes.")
+
+# === BÚSQUEDAS GUARDADAS ===
+
+@app.post("/casos/{caso_id}/saved_searches", response_model=schemas.SavedSearch, status_code=status.HTTP_201_CREATED)
+def create_saved_search(caso_id: int, saved_search_data: schemas.SavedSearchCreate, db: Session = Depends(get_db)):
+    logger.info(f"POST /casos/{caso_id}/saved_searches con datos: {saved_search_data.nombre}")
+    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if not db_caso:
+        logger.warning(f"[Create SavedSearch] Caso con ID {caso_id} no encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+
+    # Calcular result_count y unique_plates
+    filtros = saved_search_data.filtros
+    logger.info(f"Calculando resultados para filtros: {filtros}")
+    
+    # Construir la consulta base para lecturas filtradas
+    query = select(models.Lectura.Matricula).distinct()
+    # Aplicar filtro por caso_id (implícito si las lecturas están vinculadas a archivos del caso)
+    # Necesitamos unir ArchivoExcel para filtrar por caso_id
+    query = query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id)
+    
+    # Aplicar filtros dinámicamente
+    if filtros.get("fechaInicio"): # Asumiendo que el filtro guardado usa 'fechaInicio'
+        query = query.filter(models.Lectura.Fecha_y_Hora >= dayjs(filtros["fechaInicio"]).start_of('day').to_pydatetime())
+    if filtros.get("fechaFin"): # Asumiendo 'fechaFin'
+        query = query.filter(models.Lectura.Fecha_y_Hora <= dayjs(filtros["fechaFin"]).end_of('day').to_pydatetime())
+    if filtros.get("timeFrom"): # Asumiendo 'timeFrom'
+        # Convertir HH:MM a segundos desde medianoche para comparación
+        try:
+            h, m = map(int, filtros["timeFrom"].split(':'))
+            seconds_from = h * 3600 + m * 60
+            query = query.filter((extract('hour', models.Lectura.Fecha_y_Hora) * 3600 + extract('minute', models.Lectura.Fecha_y_Hora) * 60 + extract('second', models.Lectura.Fecha_y_Hora)) >= seconds_from)
+        except ValueError:
+            logger.warning(f"Formato de hora inicio inválido: {filtros['timeFrom']}")
+    if filtros.get("timeTo"): # Asumiendo 'timeTo'
+        try:
+            h, m = map(int, filtros["timeTo"].split(':'))
+            seconds_to = h * 3600 + m * 60
+            query = query.filter((extract('hour', models.Lectura.Fecha_y_Hora) * 3600 + extract('minute', models.Lectura.Fecha_y_Hora) * 60 + extract('second', models.Lectura.Fecha_y_Hora)) <= seconds_to)
+        except ValueError:
+            logger.warning(f"Formato de hora fin inválido: {filtros['timeTo']}")
+
+    if filtros.get("selectedLectores") and len(filtros["selectedLectores"]) > 0:
+        query = query.filter(models.Lectura.ID_Lector.in_(filtros["selectedLectores"]))
+    
+    # Unir con Lector si se filtra por carretera O por sentido
+    needs_lector_join_saved = False
+    if filtros.get("selectedCarreteras") and len(filtros["selectedCarreteras"]) > 0:
+         needs_lector_join_saved = True
+    if filtros.get("selectedSentidos") and len(filtros["selectedSentidos"]) > 0:
+         needs_lector_join_saved = True
+         
+    if needs_lector_join_saved:
+         # Unir Lectura con Lector (asegurarse que no se une dos veces si ya estaba por otro filtro)
+         # SQLAlchemy es generalmente inteligente con esto, pero ser explícito puede ayudar
+         if models.Lector not in [j.entity.class_ for j in query.get_final_froms()]:
+             query = query.join(models.Lector, models.Lectura.ID_Lector == models.Lector.ID_Lector)
+
+    # Filtro por carretera
+    if filtros.get("selectedCarreteras") and len(filtros["selectedCarreteras"]) > 0:
+         query = query.filter(models.Lector.Carretera.in_(filtros["selectedCarreteras"]))
+         
+    # Filtro por sentido
+    if filtros.get("selectedSentidos") and len(filtros["selectedSentidos"]) > 0:
+         query = query.filter(models.Lector.Sentido.in_(filtros["selectedSentidos"]))
+
+    # Ejecutar la consulta para obtener matrículas únicas
+    try:
+        result = db.execute(query)
+        unique_plates_list = [row[0] for row in result.fetchall()]
+        result_count = len(unique_plates_list)
+        logger.info(f"Consulta ejecutada. Matrículas únicas encontradas: {result_count}")
+    except Exception as e_query:
+        logger.error(f"Error al ejecutar la consulta para calcular resultados: {e_query}", exc_info=True)
+        # Decidir si fallar la creación o guardar con counts nulos
+        # Por ahora, guardaremos con nulos para no impedir el guardado
+        unique_plates_list = None
+        result_count = None
+        notifications.show({ title: 'Advertencia', message: 'No se pudo calcular el número de resultados para la búsqueda guardada.', color: 'orange' })
+
+    # Crear la instancia del modelo con los datos calculados
+    db_saved_search = models.SavedSearch(
+        caso_id=caso_id,
+        nombre=saved_search_data.nombre,
+        filtros=saved_search_data.filtros, # Guardar el objeto de filtros original
+        color=saved_search_data.color,
+        notas=saved_search_data.notas,
+        result_count=result_count,      # Guardar el recuento calculado
+        unique_plates=unique_plates_list # Guardar la lista de matrículas
+    )
+
+    try:
+        db.add(db_saved_search)
+        db.commit()
+        db.refresh(db_saved_search)
+        logger.info(f"Búsqueda guardada exitosamente con ID: {db_saved_search.id}")
+        return db_saved_search
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al guardar SavedSearch en BD: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al guardar la búsqueda.")
+
+@app.get("/casos/{caso_id}/saved_searches", response_model=List[schemas.SavedSearch])
+def read_saved_searches(caso_id: int, db: Session = Depends(get_db)):
+    logger.info(f"GET /casos/{caso_id}/saved_searches - Listando búsquedas guardadas.")
+    searches = db.query(models.SavedSearch).filter(models.SavedSearch.caso_id == caso_id).order_by(models.SavedSearch.nombre).all()
+    return searches
+
+@app.put("/saved_searches/{search_id}", response_model=schemas.SavedSearch)
+def update_saved_search(search_id: int, search_update_data: schemas.SavedSearchUpdate, db: Session = Depends(get_db)):
+    logger.info(f"PUT /saved_searches/{search_id} - Actualizando búsqueda guardada.")
+    db_search = db.query(models.SavedSearch).filter(models.SavedSearch.id == search_id).first()
+    if db_search is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Búsqueda guardada no encontrada.")
+    
+    try:
+        update_data = search_update_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(db_search, key, value)
+        
+        # Nota: Si se permitiera actualizar filtros, aquí habría que recalcular result_count/unique_plates.
+        
+        db.commit()
+        db.refresh(db_search)
+        logger.info(f"Búsqueda guardada ID {search_id} actualizada.")
+        return db_search
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al actualizar búsqueda guardada ID {search_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al actualizar búsqueda.")
+
+@app.delete("/saved_searches/{search_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_saved_search(search_id: int, db: Session = Depends(get_db)):
+    logger.info(f"DELETE /saved_searches/{search_id} - Eliminando búsqueda guardada.")
+    db_search = db.query(models.SavedSearch).filter(models.SavedSearch.id == search_id).first()
+    if db_search is None:
+        logger.warning(f"Intento de eliminar búsqueda guardada ID {search_id} no encontrada.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Búsqueda guardada no encontrada.")
+    
+    try:
+        db.delete(db_search)
+        db.commit()
+        logger.info(f"Búsqueda guardada ID {search_id} eliminada.")
+        return None # Retornar None o Response(status_code=204)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al eliminar búsqueda guardada ID {search_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al eliminar búsqueda.")

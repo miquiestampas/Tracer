@@ -1,17 +1,10 @@
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Union, Tuple
+from typing import Optional, List, Union, Tuple, Dict, Any
 import datetime
 import enum # Importar enum
 
-# Importar el Enum definido en models.py (o redefinirlo aquí)
-# Si lo importas, asegúrate de que no cause importación circular
-# Redefinirlo puede ser más seguro si la estructura es simple:
-class EstadoCasoEnum(str, enum.Enum):
-    NUEVO = "Nuevo"
-    ESPERANDO_ARCHIVOS = "Esperando Archivos"
-    EN_ANALISIS = "En Análisis"
-    PENDIENTE_INFORME = "Pendiente Informe"
-    CERRADO = "Cerrado"
+# Importar el Enum desde models.py
+from models import EstadoCasoEnum 
 
 # --- Schemas Base ---
 class CasoBase(BaseModel):
@@ -19,7 +12,7 @@ class CasoBase(BaseModel):
     Año: int = Field(..., example=2024)
     NIV: Optional[str] = Field(None, example="ABC123XYZ789DEF", max_length=50) # Añadir max_length si se usa String(50) en el modelo
     Descripcion: Optional[str] = Field(None, example="Investigación sobre el robo ocurrido el...")
-    Estado: Optional[EstadoCasoEnum] = Field(default=EstadoCasoEnum.NUEVO, example=EstadoCasoEnum.NUEVO) # Añadir Estado, default Nuevo
+    Estado: Optional[str] = Field(default=EstadoCasoEnum.NUEVO.value, example=EstadoCasoEnum.NUEVO.value)
 
 class ArchivoExcelBase(BaseModel):
     Nombre_del_Archivo: str = Field(..., example="camaras_entrada_sur.xlsx")
@@ -123,7 +116,7 @@ class VehiculoUpdate(BaseModel):
 # --- Schemas para Actualización (PUT/PATCH) ---
 # Nuevo schema para actualizar solo el estado
 class CasoEstadoUpdate(BaseModel):
-    Estado: EstadoCasoEnum = Field(..., example=EstadoCasoEnum.EN_ANALISIS)
+    Estado: str = Field(..., example=EstadoCasoEnum.EN_ANALISIS.value)
 
 # --- Schemas para Lectura (GET) ---
 class Caso(CasoBase):
@@ -232,6 +225,40 @@ class LecturaIntersectionRequest(BaseModel):
     matriculas: List[str]
     caso_id: int
     tipo_fuente: str
+
+# --- Schemas para Búsquedas Guardadas ---
+class SavedSearchBase(BaseModel):
+    nombre: str = Field(..., example="Vehículos sospechosos Zona Norte")
+    filtros: Dict[str, Any] = Field(..., example={
+        "fechaInicio": "2024-01-10", 
+        "timeFrom": "10:00", 
+        "selectedLectores": ["CAM001", "CAM005"], 
+        "selectedCarreteras": [],
+        "matricula": ""
+        # Añadir más campos si existen en el filtro
+    })
+    color: Optional[str] = Field(None, example="#FF5733", pattern="^#[0-9a-fA-F]{6}$")
+    notas: Optional[str] = Field(None, example="Búsqueda inicial tras aviso.")
+
+class SavedSearchCreate(SavedSearchBase):
+    pass
+
+class SavedSearchUpdate(BaseModel):
+    nombre: Optional[str] = None
+    # Filtros no se actualizan por ahora para simplificar
+    # filtros: Optional[Dict[str, Any]] = None
+    color: Optional[str] = Field(None, pattern="^#[0-9a-fA-F]{6}$")
+    notas: Optional[str] = None
+
+# Schema para la respuesta (GET)
+class SavedSearch(SavedSearchBase):
+    id: int
+    caso_id: int
+    result_count: Optional[int] = None
+    unique_plates: Optional[List[str]] = None
+
+    class Config:
+        from_attributes = True
 
 # Caso.update_forward_refs()
 # ArchivoExcel.update_forward_refs()
