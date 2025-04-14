@@ -107,7 +107,7 @@ class Lector(LectorBase): # Hereda ID_Lector, Coordenada_X, Coordenada_Y
     Contacto: Optional[str] = None
     Texto_Libre: Optional[str] = None
     Imagen_Path: Optional[str] = None
-    # lecturas: List[Lectura] = [] # Descomentar si se quiere devolver lecturas asociadas
+    # lecturas: List[Lectura] = [] # Evitar referencias circulares profundas aquí
     
     class Config:
         from_attributes = True
@@ -148,6 +148,8 @@ class Lectura(LecturaBase):
     ID_Archivo: int
     # Incluir información de relevancia opcionalmente
     relevancia: Optional['LecturaRelevante'] = None # Usar string forward reference
+    # Añadir el lector asociado para obtener Sentido/Orientacion
+    lector: Optional[Lector] = None # Añadir lector opcional
 
     class Config:
         from_attributes = True
@@ -206,6 +208,17 @@ class LectorCoordenadas(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Schema reutilizable para opciones de Select/MultiSelect ---
+class SelectOption(BaseModel):
+    value: str
+    label: str
+
+# --- NUEVO: Schema para la Respuesta de Filtros Disponibles por Caso ---
+class FiltrosDisponiblesResponse(BaseModel):
+    # Usar la clase SelectOption definida arriba
+    lectores: List[SelectOption] = Field(default_factory=list, description="Lectores con lecturas en este caso")
+    carreteras: List[SelectOption] = Field(default_factory=list, description="Carreteras asociadas a los lectores con lecturas en este caso")
+
 # === NUEVO: Esquema para Sugerencias en Edición de Lector ===
 class LectorSugerenciasResponse(BaseModel):
     provincias: List[str] = []
@@ -213,6 +226,12 @@ class LectorSugerenciasResponse(BaseModel):
     carreteras: List[str] = []
     organismos: List[str] = []
     contactos: List[str] = []
+
+# --- NUEVO: Schema para la Petición POST de Intersección ---
+class LecturaIntersectionRequest(BaseModel):
+    matriculas: List[str]
+    caso_id: int
+    tipo_fuente: str
 
 # Caso.update_forward_refs()
 # ArchivoExcel.update_forward_refs()

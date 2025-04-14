@@ -1,10 +1,10 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request, Query
 from fastapi.middleware.cors import CORSMiddleware # Importar middleware CORS
 from fastapi.exceptions import RequestValidationError # Importar excepción
 from fastapi.responses import JSONResponse, FileResponse # Importar para respuesta personalizada y FileResponse
 from fastapi.encoders import jsonable_encoder # Importar para codificar errores
-from sqlalchemy.orm import Session
-from sqlalchemy.sql import func # Importar func para count
+from sqlalchemy.orm import Session, joinedload # Añadir joinedload
+from sqlalchemy.sql import func, extract # Importar func para count y extract para la hora
 import models, schemas # Importar nuestros modelos y schemas
 from database import SessionLocal, engine, get_db # Importar configuración de BD y get_db
 import pandas as pd
@@ -691,79 +691,100 @@ def delete_vehiculo(matricula: str, db: Session = Depends(get_db)):
 
 
 # === LECTURAS ===
-@app.get("/lecturas", response_model=List[schemas.Lectura]) # TODO: Cambiar a respuesta paginada
+@app.get("/lecturas", response_model=List[schemas.Lectura])
 def read_lecturas(
-    skip: int = 0, limit: int = 1000, caso_id: Optional[int] = None,
-    archivo_id: Optional[int] = None, matricula: Optional[str] = None,
-    fecha_hora_inicio: Optional[str] = None, fecha_hora_fin: Optional[str] = None,
-    lector_id: Optional[str] = None, tipo_fuente: Optional[str] = None,
-    # Nuevo filtro para relevancia
-    solo_relevantes: Optional[bool] = False, 
+    skip: int = 0, limit: int = 2000, 
+    # Filtros de Fecha/Hora
+    fecha_inicio: Optional[str] = None,
+    fecha_fin: Optional[str] = None,
+    hora_inicio: Optional[str] = None, 
+    hora_fin: Optional[str] = None, 
+    # Filtros de Identificadores (Listas)
+    lector_ids: Optional[List[str]] = Query(None), 
+    caso_ids: Optional[List[int]] = Query(None), 
+    carretera_ids: Optional[List[str]] = Query(None),
+    sentido: Optional[List[str]] = Query(None), # Añadir sentido si no estaba
+    matricula: Optional[str] = None, 
+    tipo_fuente: Optional[str] = Query(None), # Permitir filtrar por LPR o GPS
+    solo_relevantes: Optional[bool] = False,
     db: Session = Depends(get_db)
 ):
-    logger.info(
-        f"GET /lecturas: caso={caso_id}, archivo={archivo_id}, matricula={matricula}, "
-        f"inicio='{fecha_hora_inicio}', fin='{fecha_hora_fin}', lector={lector_id}, "
-        f"tipo={tipo_fuente}, skip={skip}, limit={limit}, relevantes_solo={solo_relevantes}"
-    )
-    query = db.query(models.Lectura)
+    logger.info(f"GET /lecturas - Filtros: ... carreteras={carretera_ids} ...") # Actualizar log opcionalmente
+    
+    # Unir con Lector para poder filtrar y cargar datos de lector
+    query = db.query(models.Lectura).join(models.Lector)
+    
+    # --- Aplicar filtros dinámicamente ---
 
-    # Filtro por caso_id (a través de ArchivoExcel)
-    if caso_id is not None:
-        query = query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id)
-        logger.info(f"Filtrando por caso_id: {caso_id}")
+    # Filtro por Caso(s)
+    if caso_ids:
+        # Necesitamos unir con ArchivoExcel 
+        # (Asegurarse que el join con Lector no interfiera, o hacer join selectivo)
+        # Re-evaluar si es necesario hacer doble join o si la relación lo permite
+        # Por simplicidad, asumimos que se puede join ArchivoExcel desde Lectura
+        query = query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
 
-    # Filtro por archivo_id
-    if archivo_id is not None:
-        query = query.filter(models.Lectura.ID_Archivo == archivo_id)
-        logger.info(f"Filtrando por archivo_id: {archivo_id}")
+    # Filtro por Lector(es)
+    if lector_ids:
+        # Ya estamos unidos a Lector
+        query = query.filter(models.Lectura.ID_Lector.in_(lector_ids))
 
-    # Filtro por matrícula (case-insensitive)
+    # NUEVO: Filtro por Carretera(s)
+    if carretera_ids:
+        # Ya estamos unidos a Lector
+        query = query.filter(models.Lector.Carretera.in_(carretera_ids))
+
+    # Filtro por Sentido
+    if sentido:
+        query = query.filter(models.Lector.Sentido.in_(sentido))
+
+    # Filtro por Matrícula (parcial, insensible a mayúsculas)
     if matricula:
-        matricula_decoded = unquote(matricula).strip()
-        query = query.filter(models.Lectura.Matricula.ilike(f"%{matricula_decoded}%"))
-        logger.info(f"Filtrando por matricula (ilike): {matricula_decoded}")
-
-    # Filtro por rango de fecha/hora
-    dt_inicio = parse_flexible_datetime(fecha_hora_inicio)
-    dt_fin = parse_flexible_datetime(fecha_hora_fin)
-    if dt_inicio:
-        query = query.filter(models.Lectura.Fecha_y_Hora >= dt_inicio)
-        logger.info(f"Filtrando desde fecha/hora: {dt_inicio}")
-    if dt_fin:
-        # Ajuste para incluir todo el día si solo se da fecha
-        if dt_fin.hour == 0 and dt_fin.minute == 0 and dt_fin.second == 0:
-            dt_fin_ajustado = dt_fin + datetime.timedelta(days=1)
-            query = query.filter(models.Lectura.Fecha_y_Hora < dt_fin_ajustado)
-            logger.info(f"Filtrando hasta fecha (fin día): {dt_fin}")
-        else:
-             query = query.filter(models.Lectura.Fecha_y_Hora <= dt_fin)
-             logger.info(f"Filtrando hasta fecha/hora: {dt_fin}")
-
-    # Filtro por ID Lector (case-insensitive)
-    if lector_id:
-        lector_id_stripped = lector_id.strip()
-        query = query.filter(models.Lectura.ID_Lector.ilike(f"%{lector_id_stripped}%"))
-        logger.info(f"Filtrando por lector_id (ilike): {lector_id_stripped}")
+        query = query.filter(models.Lectura.Matricula.ilike(f"%{matricula}%"))
 
     # Filtro por Tipo de Fuente
     if tipo_fuente:
-        tipo_fuente_stripped = tipo_fuente.strip().upper()
-        if tipo_fuente_stripped in ['LPR', 'GPS']:
-             query = query.filter(models.Lectura.Tipo_Fuente == tipo_fuente_stripped)
-             logger.info(f"Filtrando por tipo_fuente: {tipo_fuente_stripped}")
-        else:
-            logger.warning(f"Valor tipo_fuente inválido: '{tipo_fuente}'. Ignorado.")
-            
-    # NUEVO: Filtro por relevancia
-    if solo_relevantes:
-        query = query.join(models.LecturaRelevante) # Inner join para incluir solo las que tienen entrada en LecturaRelevante
-        logger.info("Filtrando solo lecturas relevantes.")
+        query = query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
 
-    # Aplicar paginación y ordenación (DESPUÉS de todos los filtros)
-    # TODO: Añadir conteo total para paginación real
-    lecturas = query.order_by(models.Lectura.Fecha_y_Hora.desc()).offset(skip).limit(limit).all()
-    logger.info(f"Devolviendo {len(lecturas)} lecturas.")
+    # Filtro por Rango de Fechas
+    try:
+        if fecha_inicio:
+            fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            query = query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+        if fecha_fin:
+            # Añadir 1 día para incluir todo el día final
+            fecha_fin_dt = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+            query = query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt) 
+    except ValueError:
+        logger.warning("Formato de fecha inválido recibido.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha inválido. Usar YYYY-MM-DD.")
+
+    # Filtro por Rango de Horas
+    try:
+        if hora_inicio:
+            hora_inicio_time = datetime.datetime.strptime(hora_inicio, "%H:%M").time()
+            # Filtrar por la parte de la hora del campo datetime
+            query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
+        if hora_fin:
+            hora_fin_time = datetime.datetime.strptime(hora_fin, "%H:%M").time()
+            query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
+    except ValueError:
+        logger.warning("Formato de hora inválido recibido.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de hora inválido. Usar HH:MM.")
+
+    # Filtro por Lecturas Relevantes
+    if solo_relevantes:
+        # Unir con LecturaRelevante y asegurarse de que existe la relación
+        query = query.join(models.LecturaRelevante)
+
+    # Ordenar y cargar datos del lector relacionado
+    query = query.order_by(models.Lectura.Fecha_y_Hora.desc())
+    query = query.options(joinedload(models.Lectura.lector)) # Asegurar que se carguen los datos del lector para la respuesta
+    
+    # Aplicar paginación (skip/limit)
+    lecturas = query.offset(skip).limit(limit).all()
+
+    logger.info(f"GET /lecturas - Encontradas {len(lecturas)} lecturas tras aplicar filtros.")
     return lecturas
 
 
@@ -858,3 +879,112 @@ async def simple_ping():
 # import uvicorn
 # if __name__ == "__main__":
 #    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# --- NUEVO ENDPOINT POST PARA INTERSECCIÓN (Usar schemas.LecturaIntersectionRequest) --- 
+@app.post("/lecturas/por_matriculas_y_filtros_combinados", response_model=List[schemas.Lectura])
+def read_lecturas_por_matriculas(
+    request_data: schemas.LecturaIntersectionRequest, # Usar el schema importado
+    db: Session = Depends(get_db)
+):
+    logger.info(f"POST /lecturas/por_matriculas - Caso ID: {request_data.caso_id}, Matrículas: {len(request_data.matriculas)}, Tipo: {request_data.tipo_fuente}")
+    if not request_data.matriculas:
+        logger.warning("Se recibió una lista de matrículas vacía.")
+        return [] # No hay matrículas para buscar
+
+    try:
+        query = db.query(models.Lectura)\
+                  .options(joinedload(models.Lectura.lector)) # Eager load lector
+        
+        # Filtrar por las matrículas proporcionadas
+        query = query.filter(models.Lectura.Matricula.in_(request_data.matriculas))
+
+        # Filtrar por tipo de fuente
+        query = query.filter(models.Lectura.Tipo_Fuente == request_data.tipo_fuente)
+
+        # Filtrar por caso_id (requiere join)
+        query = query.join(models.ArchivoExcel)\
+                     .filter(models.ArchivoExcel.ID_Caso == request_data.caso_id)
+        
+        # Podríamos añadir aquí filtros adicionales si vinieran en el request_data (fechas, etc.)
+        
+        # Ordenar por fecha/hora para una visualización consistente
+        query = query.order_by(models.Lectura.Fecha_y_Hora)
+
+        # Aplicar un límite razonable para evitar sobrecarga si no se implementa paginación aquí
+        lecturas = query.limit(10000).all()
+        
+        logger.info(f"Encontradas {len(lecturas)} lecturas para la intersección.")
+        return lecturas
+        
+    except Exception as e:
+        logger.error(f"Error al consultar lecturas por matrículas: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al buscar lecturas por matrículas.")
+
+# --- NUEVO: Endpoint para obtener filtros disponibles para un caso específico ---
+@app.get("/casos/{caso_id}/filtros_disponibles", response_model=schemas.FiltrosDisponiblesResponse)
+async def get_filtros_disponibles_por_caso(caso_id: int, db: Session = Depends(get_db)):
+    logger.info(f"GET /casos/{caso_id}/filtros_disponibles - Obteniendo lectores y carreteras únicos.")
+    try:
+        # 1. Encontrar ID_Lector únicos para el caso
+        distinct_lector_ids = db.query(models.Lectura.ID_Lector)\
+                                .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                                .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+                                .distinct()\
+                                .all()
+        
+        # Extraer los IDs de la lista de tuplas
+        lector_ids_list = [lector_id[0] for lector_id in distinct_lector_ids if lector_id[0] is not None]
+        logger.debug(f"Lectores únicos encontrados para caso {caso_id}: {lector_ids_list}")
+        
+        if not lector_ids_list:
+            # Si no hay lecturas/lectores para este caso, devolver listas vacías
+            logger.warning(f"No se encontraron lectores con lecturas para el caso {caso_id}.")
+            return schemas.FiltrosDisponiblesResponse(lectores=[], carreteras=[])
+
+        # 2. Obtener detalles de esos lectores (incluyendo la carretera)
+        lectores_en_caso = db.query(models.Lector)\
+                             .filter(models.Lector.ID_Lector.in_(lector_ids_list))\
+                             .order_by(models.Lector.Nombre)\
+                             .all()
+
+        # 3. Formatear lectores para SelectOption
+        lectores_options: List[schemas.SelectOption] = [
+            schemas.SelectOption(value=l.ID_Lector, label=f"{l.Nombre or 'Sin Nombre'} ({l.ID_Lector})")
+            for l in lectores_en_caso
+        ]
+        
+        # 4. Obtener carreteras únicas de estos lectores y formatear
+        carreteras_unicas = sorted(list(set(l.Carretera for l in lectores_en_caso if l.Carretera)))
+        carreteras_options: List[schemas.SelectOption] = [
+            schemas.SelectOption(value=c, label=c) for c in carreteras_unicas
+        ]
+        
+        logger.info(f"Filtros disponibles para caso {caso_id}: {len(lectores_options)} lectores, {len(carreteras_options)} carreteras.")
+        return schemas.FiltrosDisponiblesResponse(lectores=lectores_options, carreteras=carreteras_options)
+
+    except Exception as e:
+        logger.error(f"Error al obtener filtros disponibles para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al obtener filtros disponibles.")
+
+# --- NUEVO: Endpoint para obtener lecturas relevantes por caso ---
+@app.get("/casos/{caso_id}/lecturas_relevantes", response_model=List[schemas.Lectura])
+async def get_lecturas_relevantes_por_caso(caso_id: int, db: Session = Depends(get_db)):
+    """
+    Obtiene todas las lecturas marcadas como relevantes para un caso específico.
+    """
+    logger.info(f"GET /casos/{caso_id}/lecturas_relevantes - Obteniendo lecturas relevantes.")
+    try:
+        lecturas_relevantes = db.query(models.Lectura)\
+            .options(joinedload(models.Lectura.lector), joinedload(models.Lectura.relevancia))\
+            .join(models.LecturaRelevante, models.Lectura.ID_Lectura == models.LecturaRelevante.ID_Lectura)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+            .order_by(models.Lectura.Fecha_y_Hora)\
+            .all()
+        
+        logger.info(f"Encontradas {len(lecturas_relevantes)} lecturas relevantes para el caso {caso_id}.")
+        return lecturas_relevantes
+
+    except Exception as e:
+        logger.error(f"Error al obtener lecturas relevantes para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al obtener lecturas relevantes.")

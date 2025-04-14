@@ -1,0 +1,601 @@
+import React, { useState, useEffect } from 'react';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip } from '@mantine/core';
+import { TimeInput } from '@mantine/dates';
+import { MultiSelect, MultiSelectProps } from '@mantine/core';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
+import { DataTable, DataTableSortStatus } from 'mantine-datatable';
+import dayjs from 'dayjs';
+import _ from 'lodash';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+
+// --- Interfaces (Asegurarse que estén completas) ---
+interface Lector {
+    ID_Lector: string;
+    Nombre?: string | null;
+    Carretera?: string | null;
+    Provincia?: string | null;
+    Localidad?: string | null;
+    Sentido?: string | null;
+    Orientacion?: string | null;
+    // ... (otros campos de Lector si son necesarios) ...
+}
+
+interface Lectura {
+    ID_Lectura: number;
+    ID_Archivo: number;
+    Matricula: string;
+    Fecha_y_Hora: string; 
+    Carril?: string | null;
+    Velocidad?: number | null;
+    ID_Lector?: string | null;
+    Coordenada_X?: number | null;
+    Coordenada_Y?: number | null;
+    Tipo_Fuente: string;
+    relevancia?: { ID_Relevante: number, Nota?: string | null } | null;
+    lector?: Lector | null;
+    pasos?: number;
+}
+
+type SelectOption = { value: string; label: string };
+
+// --- Props del Componente ---
+interface AnalisisLecturasPanelProps {
+    casoIdFijo?: number | null; 
+    permitirSeleccionCaso?: boolean; 
+    mostrarTitulo?: boolean; 
+    tipoFuenteFijo?: 'LPR' | 'GPS' | null;
+}
+
+function AnalisisLecturasPanel({ 
+    casoIdFijo = null,
+    permitirSeleccionCaso = true,
+    mostrarTitulo = true,
+    tipoFuenteFijo = null
+}: AnalisisLecturasPanelProps) {
+    const iconStyle = { width: rem(16), height: rem(16) }; // Añadir iconStyle
+
+    // --- Estados (completos) ---
+    const [fechaInicio, setFechaInicio] = useState<Date | null>(null);
+    const [fechaFin, setFechaFin] = useState<Date | null>(null);
+    const [timeFrom, setTimeFrom] = useState('');
+    const [timeTo, setTimeTo] = useState('');
+    const [selectedLectores, setSelectedLectores] = useState<string[]>([]);
+    const [selectedCasos, setSelectedCasos] = useState<string[]>([]);
+    const [selectedCarreteras, setSelectedCarreteras] = useState<string[]>([]);
+    const [selectedSentidos, setSelectedSentidos] = useState<string[]>([]);
+    const [matricula, setMatricula] = useState('');
+    const [minPasos, setMinPasos] = useState<number | ''>('');
+    const [lectoresList, setLectoresList] = useState<SelectOption[]>([]);
+    const [casosList, setCasosList] = useState<SelectOption[]>([]);
+    const [carreterasList, setCarreterasList] = useState<SelectOption[]>([]);
+    const [sentidosList, setSentidosList] = useState<SelectOption[]>([
+        { value: 'C', label: 'Creciente' },
+        { value: 'D', label: 'Decreciente' },
+    ]);
+    const [loading, setLoading] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true); 
+    const [results, setResults] = useState<Lectura[]>([]);
+    const [selectedRecords, setSelectedRecords] = useState<Lectura[]>([]);
+    const [page, setPage] = useState(1);
+    const PAGE_SIZE = 15;
+    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
+
+    // --- Procesar datos (completo) ---
+    const sortedAndPaginatedResults = React.useMemo(() => {
+        const data = _.orderBy(results, [sortStatus.columnAccessor], [sortStatus.direction]);
+        return data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    }, [results, sortStatus, page, PAGE_SIZE]);
+
+    // --- Cargar datos iniciales (Condicional según casoIdFijo) ---
+    useEffect(() => {
+        const fetchInitialData = async () => {
+            setInitialLoading(true);
+            // Limpiar listas siempre al iniciar
+            setLectoresList([]);
+            setCarreterasList([]);
+            setCasosList([]); 
+
+            try {
+                if (casoIdFijo) {
+                    // --- Cargar filtros específicos del caso --- 
+                    console.log(`AnalisisLecturasPanel: Fetching filtros disponibles para caso ${casoIdFijo}...`);
+                    const response = await fetch(`http://localhost:8000/casos/${casoIdFijo}/filtros_disponibles`);
+                    if (!response.ok) throw new Error(`Filtros caso ${casoIdFijo}: ${response.statusText || response.status}`);
+                    const data = await response.json();
+                    if (data && data.lectores && data.carreteras) {
+                        setLectoresList(data.lectores);
+                        setCarreterasList(data.carreteras);
+                         console.log(`AnalisisLecturasPanel: Filtros específicos cargados - ${data.lectores.length} lectores, ${data.carreteras.length} carreteras.`);
+                    } else { throw new Error("Formato inesperado para filtros específicos"); }
+                    // No necesitamos cargar la lista de casos aquí
+
+                } else {
+                     // --- Cargar filtros globales (comportamiento anterior) --- 
+                     console.log("AnalisisLecturasPanel: Fetching filtros globales...");
+                     const fetches: (Promise<Response> | null)[] = [];
+                     // Cargar TODOS los lectores
+                     fetches.push(fetch('http://localhost:8000/lectores?limit=2000'));
+                     // Cargar TODOS los casos (si se permite selección)
+                     if (permitirSeleccionCaso) {
+                         fetches.push(fetch('http://localhost:8000/casos?limit=1000'));
+                     } else { fetches.push(null); }
+
+                     const responses = await Promise.all(fetches);
+
+                     const lectoresResponse = responses[0];
+                     if (lectoresResponse instanceof Response) {
+                         if (!lectoresResponse.ok) throw new Error(`Lectores Globales: ${lectoresResponse.statusText || lectoresResponse.status}`);
+                         const lectoresData = await lectoresResponse.json();
+                         // ... (Lógica para procesar lectoresData y derivar carreteras globales) ...
+                         if (lectoresData && Array.isArray(lectoresData.lectores)) { // Asume formato {lectores: [...]} 
+                            const formattedLectores: SelectOption[] = lectoresData.lectores.map((l: any) => ({ value: String(l.ID_Lector), label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` }));
+                            setLectoresList(formattedLectores);
+                            const todasCarreteras = lectoresData.lectores.map((l: any) => l.Carretera?.trim());
+                            const carreterasFiltradas = todasCarreteras.filter((c): c is string => !!c);
+                            const uniqueCarreteras = Array.from(new Set<string>(carreterasFiltradas)).sort((a, b) => a.localeCompare(b));
+                            setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
+                            console.log("AnalisisLecturasPanel: Filtros globales cargados.");
+                         } else {
+                             // Intentar formato array directo si el anterior falla
+                             if (lectoresData && Array.isArray(lectoresData)) {
+                                 const formattedLectores: SelectOption[] = lectoresData.map((l: any) => ({ value: String(l.ID_Lector), label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` }));
+                                 setLectoresList(formattedLectores);
+                                 const todasCarreteras = lectoresData.map((l: any) => l.Carretera?.trim());
+                                 const carreterasFiltradas = todasCarreteras.filter((c): c is string => !!c);
+                                 const uniqueCarreteras = Array.from(new Set<string>(carreterasFiltradas)).sort((a, b) => a.localeCompare(b));
+                                 setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
+                                 console.log("AnalisisLecturasPanel: Filtros globales cargados (formato array).");
+                             } else {
+                                 throw new Error("Formato inesperado para lectores globales");
+                             }
+                         }
+                     }
+
+                     const casosResponse = responses[1];
+                     if (permitirSeleccionCaso && casosResponse instanceof Response) {
+                         if (!casosResponse.ok) throw new Error(`Casos Globales: ${casosResponse.statusText || casosResponse.status}`);
+                         const casosData = await casosResponse.json();
+                         if (Array.isArray(casosData)) {
+                            const formattedCasos: SelectOption[] = casosData.map((c: any) => ({ value: String(c.ID_Caso), label: c.Nombre_del_Caso || 'Caso sin nombre' }));
+                            setCasosList(formattedCasos);
+                            console.log("AnalisisLecturasPanel: Lista de casos globales cargada.");
+                         } else { throw new Error("Formato inesperado para casos globales"); }
+                     }
+                }
+            } catch (error) {
+                 notifications.show({ title: 'Error al cargar opciones de filtro', message: `${error instanceof Error ? error.message : String(error)}`, color: 'red', });
+                 console.error("AnalisisLecturasPanel: Error fetching initial filter data:", error);
+            } finally { setInitialLoading(false); }
+        };
+        fetchInitialData();
+     // Depender de casoIdFijo para decidir qué cargar
+    }, [casoIdFijo, permitirSeleccionCaso]);
+
+    // --- Función de Búsqueda (completa) ---
+    const handleSearch = async () => {
+        setLoading(true);
+        setResults([]);
+        let rawResults: Lectura[] = [];
+        const params = new URLSearchParams();
+        if (fechaInicio) params.append('fecha_inicio', dayjs(fechaInicio).format('YYYY-MM-DD'));
+        if (fechaFin) params.append('fecha_fin', dayjs(fechaFin).format('YYYY-MM-DD'));
+        if (timeFrom) params.append('hora_inicio', timeFrom);
+        if (timeTo) params.append('hora_fin', timeTo);
+        selectedLectores.forEach(id => params.append('lector_ids', id));
+        selectedCarreteras.forEach(id => params.append('carretera_ids', id));
+        selectedSentidos.forEach(s => params.append('sentido', s));
+        if (casoIdFijo) {
+            params.append('caso_ids', String(casoIdFijo));
+        } else if (permitirSeleccionCaso) {
+            selectedCasos.forEach(id => params.append('caso_ids', id));
+        }
+        if (matricula.trim()) params.append('matricula', matricula.trim());
+        if (tipoFuenteFijo) {
+            params.append('tipo_fuente', tipoFuenteFijo);
+        }
+        const queryString = params.toString();
+        const apiUrl = `http://localhost:8000/lecturas?${queryString}&limit=10000`;
+        console.log(`Llamando a API (${tipoFuenteFijo || 'Todos'}):`, apiUrl);
+        try {
+            const response = await fetch(apiUrl);
+            if (!response.ok) { 
+                let errorDetail = `HTTP error! status: ${response.statusText || response.status}`;
+                try { const errorData = await response.json(); errorDetail = errorData.detail || JSON.stringify(errorData); } catch (e) {} 
+                throw new Error(errorDetail);
+             }
+            rawResults = await response.json();
+            let processedResults = rawResults;
+            if (rawResults.length > 0) {
+                const plateCounts = rawResults.reduce((acc, lectura) => { acc[lectura.Matricula] = (acc[lectura.Matricula] || 0) + 1; return acc; }, {} as Record<string, number>);
+                processedResults = rawResults.map(lectura => ({ ...lectura, pasos: plateCounts[lectura.Matricula] }));
+                const minPasosValue = typeof minPasos === 'number' ? minPasos : parseInt(minPasos, 10);
+                if (!isNaN(minPasosValue) && minPasosValue > 1) {
+                    processedResults = processedResults.filter(lectura => lectura.pasos && lectura.pasos >= minPasosValue);
+                }
+            }
+            setResults(processedResults);
+            setPage(1);
+            notifications.show({ title: 'Búsqueda completada', message: `Se encontraron ${processedResults.length} lecturas.`, color: 'teal', autoClose: 3000 });
+        } catch (error) {
+            notifications.show({ title: 'Error en la búsqueda', message: `No se pudieron obtener los resultados. ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
+            console.error("Error during search:", error);
+        } finally { setLoading(false); }
+    };
+
+    // --- Funciones para Acciones ---
+    const handleMarcarRelevante = async () => {
+        if (selectedRecords.length === 0) return;
+        setLoading(true); // Mostrar indicador de carga durante la acción
+        const idsToMark = selectedRecords.map(r => r.ID_Lectura);
+        console.log("Marcando como relevante IDs:", idsToMark);
+
+        const results = await Promise.allSettled(
+            idsToMark.map(id => 
+                fetch(`http://localhost:8000/lecturas/${id}/marcar_relevante`, { method: 'POST' })
+                    .then(response => {
+                        if (!response.ok) { 
+                            // Intentar leer detalle del error si existe
+                            return response.json().catch(() => null).then(errorData => {
+                                const detail = errorData?.detail || `HTTP ${response.status}`;
+                                throw new Error(`Error marcando ${id}: ${detail}`);
+                            });
+                        }
+                        return response.json(); // Devolver los datos de relevancia creados
+                    })
+            )
+        );
+
+        let successCount = 0;
+        const updatedRelevanciaMap = new Map<number, any>();
+
+        results.forEach((result, index) => {
+            const id = idsToMark[index];
+            if (result.status === 'fulfilled') {
+                successCount++;
+                updatedRelevanciaMap.set(id, result.value); // Guardar los datos de relevancia devueltos por la API
+                console.log(`Lectura ${id} marcada como relevante.`);
+            } else {
+                console.error(`Error marcando lectura ${id}:`, result.reason);
+                notifications.show({ title: 'Error Parcial', message: `No se pudo marcar la lectura ID ${id}: ${result.reason.message}`, color: 'red' });
+            }
+        });
+
+        if (successCount > 0) {
+             notifications.show({ title: 'Éxito', message: `${successCount} de ${idsToMark.length} lecturas marcadas como relevantes.`, color: 'green' });
+            // Actualizar estado local para reflejar cambios
+            setResults(prevResults => prevResults.map(lectura => {
+                if (updatedRelevanciaMap.has(lectura.ID_Lectura)) {
+                    return { ...lectura, relevancia: updatedRelevanciaMap.get(lectura.ID_Lectura) };
+                }
+                return lectura;
+            }));
+        }
+
+        setSelectedRecords([]); // Limpiar selección
+        setLoading(false);
+    };
+
+    const handleDesmarcarRelevante = async () => {
+        const recordsToUnmark = selectedRecords.filter(r => r.relevancia);
+        if (recordsToUnmark.length === 0) {
+            notifications.show({ title: 'Nada que hacer', message: 'Ninguna de las lecturas seleccionadas está marcada como relevante.', color: 'blue' });
+            setSelectedRecords([]);
+            return;
+        }
+        setLoading(true);
+        const idsToUnmark = recordsToUnmark.map(r => r.ID_Lectura);
+        console.log("Desmarcando como relevante IDs:", idsToUnmark);
+
+        const results = await Promise.allSettled(
+            idsToUnmark.map(id => 
+                fetch(`http://localhost:8000/lecturas/${id}/desmarcar_relevante`, { method: 'DELETE' })
+                    .then(response => {
+                        if (!response.ok) {
+                             return response.json().catch(() => null).then(errorData => {
+                                const detail = errorData?.detail || `HTTP ${response.status}`;
+                                throw new Error(`Error desmarcando ${id}: ${detail}`);
+                            });
+                        }
+                        return id; // Devolver el ID en caso de éxito
+                    })
+            )
+        );
+        
+        let successCount = 0;
+        const unmarkedIds = new Set<number>();
+
+        results.forEach((result, index) => {
+            const id = idsToUnmark[index];
+            if (result.status === 'fulfilled') {
+                successCount++;
+                unmarkedIds.add(id);
+                console.log(`Lectura ${id} desmarcada como relevante.`);
+            } else {
+                console.error(`Error desmarcando lectura ${id}:`, result.reason);
+                notifications.show({ title: 'Error Parcial', message: `No se pudo desmarcar la lectura ID ${id}: ${result.reason.message}`, color: 'red' });
+            }
+        });
+
+        if (successCount > 0) {
+             notifications.show({ title: 'Éxito', message: `${successCount} de ${idsToUnmark.length} lecturas desmarcadas.`, color: 'green' });
+            // Actualizar estado local
+             setResults(prevResults => prevResults.map(lectura => {
+                if (unmarkedIds.has(lectura.ID_Lectura)) {
+                    return { ...lectura, relevancia: null };
+                }
+                return lectura;
+            }));
+        }
+
+        setSelectedRecords([]); // Limpiar selección
+        setLoading(false);
+    };
+
+    // --- NUEVA Función para Guardar Vehículos ---
+    const handleGuardarVehiculos = async () => {
+        const matriculasUnicas = Array.from(new Set(selectedRecords.map(r => r.Matricula)));
+        if (matriculasUnicas.length === 0) return;
+        
+        setLoading(true); // Usar el mismo loading state general
+        console.log("Intentando guardar vehículos con matrículas:", matriculasUnicas);
+
+        let vehiculosCreados = 0;
+        let vehiculosExistentes = 0;
+        let errores = 0;
+
+        // Podríamos verificar primero cuáles ya existen con un GET /vehiculos?matricula=..., 
+        // pero por simplicidad, intentaremos crear y manejaremos el error 400 (Conflict/Bad Request).
+
+        const results = await Promise.allSettled(
+            matriculasUnicas.map(matricula => 
+                fetch(`http://localhost:8000/vehiculos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ Matricula: matricula }), // Enviar solo matrícula
+                }).then(async response => {
+                    if (response.status === 201) return { status: 'created', matricula }; // Creado
+                    if (response.status === 400) { // Asumimos 400 para "ya existe"
+                         // Intentar leer el detalle por si da más info
+                         const errorData = await response.json().catch(() => null);
+                         console.warn(`Vehículo ${matricula} ya existe o petición inválida:`, errorData?.detail);
+                         return { status: 'exists', matricula }; // Ya existía
+                    }
+                     // Otro error
+                    const errorData = await response.json().catch(() => null);
+                    throw new Error(errorData?.detail || `HTTP ${response.status}`);
+                })
+            )
+        );
+
+        results.forEach(result => {
+            if (result.status === 'fulfilled') {
+                if (result.value.status === 'created') vehiculosCreados++;
+                if (result.value.status === 'exists') vehiculosExistentes++;
+            } else {
+                errores++;
+                console.error("Error guardando vehículo:", result.reason);
+                notifications.show({ title: 'Error Parcial', message: `No se pudo procesar una matrícula: ${result.reason.message}`, color: 'red' });
+            }
+        });
+
+        let message = '';
+        if (vehiculosCreados > 0) message += `${vehiculosCreados} vehículo(s) nuevo(s) guardado(s). `; 
+        if (vehiculosExistentes > 0) message += `${vehiculosExistentes} vehículo(s) ya existían. `; 
+        if (errores > 0) message += `${errores} matrícula(s) no se pudieron procesar.`;
+        
+        if (message) {
+            notifications.show({ 
+                title: "Guardar Vehículos Completado", 
+                message: message.trim(), 
+                color: errores > 0 ? (vehiculosCreados > 0 ? 'orange' : 'red') : 'green' 
+            });
+        }
+
+        setSelectedRecords([]); // Limpiar selección
+        setLoading(false);
+    };
+
+    // --- Renderizado (completo) ---
+    return (
+        <Grid>
+             <LoadingOverlay visible={initialLoading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
+             {/* --- Columna Filtros --- */} 
+             <Grid.Col span={{ base: 12, md: 4 }}>
+                 <Stack>
+                     {mostrarTitulo && <Title order={4}>Filtros</Title>}
+                     <Input.Wrapper label="Fecha Inicio">
+                         <DatePicker
+                             selected={fechaInicio}
+                             onChange={(date: Date | null) => setFechaInicio(date)}
+                             dateFormat="yyyy-MM-dd"
+                             placeholderText="AAAA-MM-DD"
+                             isClearable
+                             customInput={<Input leftSection={<IconCalendar style={iconStyle} />} style={{ width: '100%' }} />}
+                             wrapperClassName="date-picker-wrapper"
+                         />
+                     </Input.Wrapper>
+                     <Input.Wrapper label="Fecha Fin">
+                         <DatePicker
+                             selected={fechaFin}
+                             onChange={(date: Date | null) => setFechaFin(date)}
+                             dateFormat="yyyy-MM-dd"
+                             placeholderText="AAAA-MM-DD"
+                             isClearable
+                             customInput={<Input leftSection={<IconCalendar style={iconStyle} />} style={{ width: '100%' }} />}
+                             wrapperClassName="date-picker-wrapper"
+                         />
+                     </Input.Wrapper>
+                    <Grid>
+                         <Grid.Col span={6}>
+                             <TimeInput
+                                 label="Desde Hora"
+                                 placeholder="HH:MM"
+                                 leftSection={<IconClock size={16} />}
+                                 value={timeFrom}
+                                 onChange={(event) => setTimeFrom(event.currentTarget.value)}
+                             />
+                         </Grid.Col>
+                         <Grid.Col span={6}>
+                             <TimeInput
+                                 label="Hasta Hora"
+                                 placeholder="HH:MM"
+                                 leftSection={<IconClock size={16} />}
+                                 value={timeTo}
+                                 onChange={(event) => setTimeTo(event.currentTarget.value)}
+                             />
+                         </Grid.Col>
+                     </Grid>
+                     <MultiSelect
+                         label="Lectores"
+                         placeholder="Todos los lectores"
+                         data={lectoresList}
+                         value={selectedLectores}
+                         onChange={setSelectedLectores}
+                         leftSection={<IconDeviceCctv size={16} />}
+                         searchable clearable disabled={loading || initialLoading}
+                     />
+                     <MultiSelect
+                         label="Carretera"
+                         placeholder="Todas las carreteras"
+                         data={carreterasList}
+                         value={selectedCarreteras}
+                         onChange={setSelectedCarreteras}
+                         leftSection={<IconRoad size={16} />}
+                         searchable clearable disabled={loading || initialLoading}
+                     />
+                     <MultiSelect
+                         label="Sentido"
+                         placeholder="Ambos sentidos"
+                         data={sentidosList}
+                         value={selectedSentidos}
+                         onChange={setSelectedSentidos}
+                         leftSection={<IconArrowsUpDown size={16} />}
+                         clearable 
+                         disabled={loading || initialLoading}
+                     />
+                     {permitirSeleccionCaso && (
+                         <MultiSelect
+                             label="Casos"
+                             placeholder="Todos los casos"
+                             data={casosList}
+                             value={selectedCasos}
+                             onChange={setSelectedCasos}
+                             leftSection={<IconFolder size={16} />}
+                             searchable clearable disabled={loading || initialLoading}
+                         />
+                     )}
+                     <TextInput
+                         label="Matrícula (completa o parcial)"
+                         placeholder="Ej: 1234ABC, %BC%"
+                         value={matricula}
+                         onChange={(event) => setMatricula(event.currentTarget.value)}
+                         leftSection={<IconLicense size={16} />}
+                     />
+                     <NumberInput
+                         label="Mínimo de Pasos"
+                         placeholder="Ej: 2"
+                         value={minPasos}
+                         onChange={(value) => setMinPasos(value === '' ? '' : Number(value))}
+                         min={1}
+                         step={1}
+                         allowDecimal={false}
+                     />
+                     <Button onClick={handleSearch} loading={loading} leftSection={<IconSearch size={16}/>}>
+                         Buscar Lecturas
+                     </Button>
+                 </Stack>
+             </Grid.Col>
+             
+             {/* --- Columna Resultados --- */} 
+             <Grid.Col span={{ base: 12, md: 8 }}>
+                 <Stack>
+                     {mostrarTitulo && <Title order={4}>Resultados ({results.length})</Title>}
+                     <Group justify="flex-start" mb="sm">
+                         <Button 
+                             leftSection={<IconStar size={16} />} 
+                             disabled={selectedRecords.length === 0 || loading}
+                             onClick={handleMarcarRelevante}
+                             variant="light"
+                             color="yellow"
+                         >
+                             Marcar Relevante ({selectedRecords.length})
+                         </Button>
+                         <Button 
+                             leftSection={<IconStarOff size={16} />} 
+                             disabled={selectedRecords.length === 0 || loading}
+                             onClick={handleDesmarcarRelevante}
+                             variant="light"
+                             color="gray"
+                          >
+                             Desmarcar Relevante ({selectedRecords.length})
+                         </Button>
+                         <Button 
+                             leftSection={<IconDeviceFloppy size={16} />}
+                             disabled={selectedRecords.length === 0 || loading}
+                             onClick={handleGuardarVehiculos}
+                             variant="outline"
+                             color="blue"
+                         >
+                             Guardar Vehículo(s) ({Array.from(new Set(selectedRecords.map(r => r.Matricula))).length})
+                         </Button>
+                     </Group>
+                     <Box style={{ height: 'calc(100vh - 450px)', position: 'relative' }}> 
+                          <LoadingOverlay visible={loading && !initialLoading} zIndex={500} overlayProps={{ radius: "sm", blur: 2 }}/>
+                          {!loading && !initialLoading && results.length === 0 && (
+                              <div style={{ textAlign: 'center', padding: rem(20) }}>
+                                  No se encontraron resultados para los filtros seleccionados.
+                              </div>
+                          )}
+                          {!initialLoading && results.length > 0 && (
+                              <DataTable<Lectura>
+                                  withTableBorder
+                                  borderRadius="sm"
+                                  withColumnBorders
+                                  striped
+                                  highlightOnHover
+                                  records={sortedAndPaginatedResults}
+                                  columns={[
+                                      {
+                                        accessor: 'relevancia',
+                                        title: 'Rel',
+                                        width: 40,
+                                        textAlign: 'center',
+                                        render: (record) => 
+                                            record.relevancia ? (
+                                                <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
+                                                    <IconStar size={16} color="orange" />
+                                                </Tooltip>
+                                            ) : null,
+                                      },
+                                      { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
+                                      { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
+                                      { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true, width: 150 },
+                                      { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true, width: 100 },
+                                      { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true, width: 100 },
+                                      { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true, width: 100 },
+                                      { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true, width: 70 },
+                                      { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 },
+                                  ]}
+                                  minHeight={results.length === 0 ? 150 : 0} 
+                                  totalRecords={results.length}
+                                  recordsPerPage={PAGE_SIZE}
+                                  page={page}
+                                  onPageChange={setPage}
+                                  sortStatus={sortStatus}
+                                  onSortStatusChange={setSortStatus}
+                                  selectedRecords={selectedRecords}
+                                  onSelectedRecordsChange={setSelectedRecords}
+                                  idAccessor="ID_Lectura"
+                                  isRecordSelectable={(record) => !loading}
+                              />
+                          )}
+                     </Box>
+                 </Stack>
+             </Grid.Col>
+        </Grid>
+    );
+}
+
+export default AnalisisLecturasPanel; 

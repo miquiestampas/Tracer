@@ -11,7 +11,7 @@ const navItems = [
   { icon: IconUsers, label: 'Gestión de Lectores', path: '/lectores' },
   { icon: IconFileImport, label: 'Importar Datos', path: '/importar' },
   { icon: IconMap2, label: 'Vista de Mapa', path: '/mapa' },
-  { icon: IconSearch, label: 'Búsqueda y Análisis', path: '/busqueda' },
+  { icon: IconSearch, label: 'Análisis Global / Multi-Caso', path: '/busqueda' },
   { icon: IconActivity, label: 'Detección de Patrones', path: '/patrones' },
   // ... más items si los necesitas
 ];

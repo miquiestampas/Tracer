@@ -1,5 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// Importar CSS global
+import './index.css';
 import App from './App'; // Importa tu componente principal
 
 // Busca el elemento root en tu index.html
