@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, TextInput, NumberInput, Textarea, Button, Group, SimpleGrid, LoadingOverlay, Select, Combobox, useCombobox, InputBase, CheckIcon, Pill, Loader, Input } from '@mantine/core';
+import { Modal, TextInput, NumberInput, Textarea, Button, Group, SimpleGrid, LoadingOverlay, Select, Combobox, useCombobox, InputBase, CheckIcon, Pill, Loader, Input, InputWrapper, Text } from '@mantine/core';
 import type { Lector, LectorUpdateData, LectorSugerenciasResponse } from '../../types/data';
 import { getLectorSugerencias } from '../../services/lectoresApi';
 
@@ -15,6 +15,12 @@ const ORIENTACION_OPTIONS = [
   { value: 'NO', label: 'Noroeste (NO)' },
 ];
 
+// *** Añadir de nuevo: Opciones para el selector de Sentido ***
+const SENTIDO_OPTIONS = [
+    { value: 'Creciente', label: 'Creciente' },
+    { value: 'Decreciente', label: 'Decreciente' },
+];
+
 interface EditLectorModalProps {
   opened: boolean;
   onClose: () => void;
@@ -23,8 +29,7 @@ interface EditLectorModalProps {
 }
 
 // Componente auxiliar para el Combobox (Versión Corregida)
-function SuggestionCombobox({ label, placeholder, value, onChange, data, loading, disabled }: {
-    label: string;
+function SuggestionCombobox({ placeholder, value, onChange, data, loading, disabled }: {
     placeholder: string;
     value: string | null;
     onChange: (value: string) => void;
@@ -224,95 +229,98 @@ const EditLectorModal: React.FC<EditLectorModalProps> = ({
           onChange={(e) => handleChange('Nombre', e.currentTarget.value)}
           disabled={isSaving}
         />
-        <SuggestionCombobox
-            label="Carretera / Vía"
+        <Input.Wrapper label="Carretera / Vía">
+          <SuggestionCombobox
             placeholder="Ej: A-4, M-30..."
             value={formData.Carretera || null}
             onChange={(val) => handleChange('Carretera', val)}
             data={sugerencias?.carreteras || []}
             loading={loadingSugerencias}
             disabled={isSaving}
-        />
-        <SuggestionCombobox
-            label="Provincia"
+          />
+        </Input.Wrapper>
+        <Input.Wrapper label="Provincia">
+          <SuggestionCombobox
             placeholder="Ej: Madrid..."
             value={formData.Provincia || null}
             onChange={(val) => handleChange('Provincia', val)}
             data={sugerencias?.provincias || []}
             loading={loadingSugerencias}
             disabled={isSaving}
-        />
-        <SuggestionCombobox
-            label="Localidad"
+          />
+        </Input.Wrapper>
+        <Input.Wrapper label="Localidad">
+          <SuggestionCombobox
             placeholder="Ej: Getafe..."
             value={formData.Localidad || null}
             onChange={(val) => handleChange('Localidad', val)}
             data={sugerencias?.localidades || []}
             loading={loadingSugerencias}
             disabled={isSaving}
-        />
-         <TextInput
+          />
+        </Input.Wrapper>
+        <Select
           label="Sentido"
-          placeholder="Ej: Creciente, Decreciente, Norte, Sur..."
-          value={formData.Sentido || ''}
-          onChange={(e) => handleChange('Sentido', e.currentTarget.value)}
+          placeholder="Selecciona el sentido"
+          value={formData.Sentido || null}
+          onChange={(value) => handleChange('Sentido', value)}
+          data={SENTIDO_OPTIONS}
+          clearable
           disabled={isSaving}
         />
-         <Select
-            label="Orientación Cámara"
-            placeholder="Selecciona una orientación"
-            data={ORIENTACION_OPTIONS}
-            value={formData.Orientacion}
-            onChange={(value) => handleChange('Orientacion', value)}
-            disabled={isSaving}
-            clearable
+        <Select
+          label="Orientación"
+          placeholder="Selecciona la orientación"
+          value={formData.Orientacion || null}
+          onChange={(value) => handleChange('Orientacion', value)}
+          data={ORIENTACION_OPTIONS}
+          clearable
+          disabled={isSaving}
         />
-        <SuggestionCombobox
-            label="Organismo Regulador"
+        <Input.Wrapper label="Organismo Regulador">
+          <SuggestionCombobox
             placeholder="Ej: DGT, Ayuntamiento..."
             value={formData.Organismo_Regulador || null}
             onChange={(val) => handleChange('Organismo_Regulador', val)}
             data={sugerencias?.organismos || []}
             loading={loadingSugerencias}
             disabled={isSaving}
-        />
-        <SuggestionCombobox
-            label="Contacto"
-            placeholder="Email o teléfono..."
+          />
+        </Input.Wrapper>
+        <Input.Wrapper label="Contacto">
+          <SuggestionCombobox
+            placeholder="Ej: policia@municipio.es..."
             value={formData.Contacto || null}
             onChange={(val) => handleChange('Contacto', val)}
             data={sugerencias?.contactos || []}
             loading={loadingSugerencias}
             disabled={isSaving}
+          />
+        </Input.Wrapper>
+        <TextInput
+          label="Ubicación (Lat, Lon / Enlace Maps)"
+          placeholder="Ej: 40.123, -3.456 o enlace Google Maps"
+          value={formData.UbicacionInput || ''}
+          onChange={(e) => handleChange('UbicacionInput', e.currentTarget.value)}
+          disabled={isSaving}
         />
         <TextInput
-          label="Ruta Imagen (Opcional)"
-          placeholder="Ej: /static/lector_1.jpg"
+          label="Ruta Imagen (opcional)"
+          placeholder="Ej: /static/images/lector1.jpg"
           value={formData.Imagen_Path || ''}
           onChange={(e) => handleChange('Imagen_Path', e.currentTarget.value)}
           disabled={isSaving}
         />
       </SimpleGrid>
       <Textarea
-        label="Ubicación (Coordenadas / Enlace Google Maps)"
-        placeholder="Pega aquí las coordenadas (ej: 40.416775, -3.703790) o un enlace de Google Maps"
-        value={formData.UbicacionInput || ''}
-        onChange={(e) => handleChange('UbicacionInput', e.currentTarget.value)}
-        mt="md"
-        minRows={2}
-        autosize
+        label="Texto Libre / Notas"
+        placeholder="Añade información adicional sobre el lector"
+        value={formData.Texto_Libre || ''}
+        onChange={(e) => handleChange('Texto_Libre', e.currentTarget.value)}
+        rows={3}
         disabled={isSaving}
+        mt="md"
       />
-      <Textarea
-          label="Texto Libre / Notas"
-          placeholder="Añade información adicional sobre el lector..."
-          value={formData.Texto_Libre || ''}
-          onChange={(e) => handleChange('Texto_Libre', e.currentTarget.value)}
-          mt="md"
-          minRows={3}
-          autosize
-          disabled={isSaving}
-        />
       <Group justify="flex-end" mt="xl">
         <Button variant="default" onClick={handleModalClose} disabled={isSaving}>
           Cancelar

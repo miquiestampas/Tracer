@@ -1,5 +1,5 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, Date, DateTime, Float, ForeignKey, CheckConstraint, Index, Enum as SQLAlchemyEnum, Boolean
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy import create_engine, Column, Integer, String, Text, Date, DateTime, Float, ForeignKey, CheckConstraint, Index, Enum as SQLAlchemyEnum, Boolean, JSON
+from sqlalchemy.orm import relationship, declarative_base, Session
 from sqlalchemy.sql import func
 import datetime
 import enum # Importar enum
@@ -23,9 +23,10 @@ class Caso(Base):
     NIV = Column(String(50), nullable=True) # Opcional, String con longitud por si acaso
     Descripcion = Column(Text)
     Fecha_de_Creacion = Column(Date, nullable=False, default=datetime.date.today)
-    Estado = Column(SQLAlchemyEnum(EstadoCasoEnum), default=EstadoCasoEnum.NUEVO, nullable=False, index=True)
+    Estado = Column(String(50), default=EstadoCasoEnum.NUEVO.value, nullable=False, index=True)
 
     archivos = relationship("ArchivoExcel", back_populates="caso", cascade="all, delete-orphan")
+    saved_searches = relationship("SavedSearch", back_populates="caso", cascade="all, delete-orphan")
 
 class ArchivoExcel(Base):
     __tablename__ = "ArchivosExcel"
@@ -100,6 +101,22 @@ class Vehiculo(Base):
     Alquiler = Column(Text, CheckConstraint("Alquiler IN ('Si', 'No')"))
     Operaciones = Column(Text, nullable=True) # Cambiado a Text por si es largo
     Fecha_Añadido = Column(Date, nullable=False, default=datetime.date.today)
+
+# Nueva Tabla para Búsquedas Guardadas
+class SavedSearch(Base):
+    __tablename__ = "saved_searches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    caso_id = Column(Integer, ForeignKey("Casos.ID_Caso", ondelete="CASCADE"), nullable=False, index=True)
+    nombre = Column(String(150), nullable=False)
+    # Usar JSON o JSONB si es PostgreSQL
+    filtros = Column(JSON, nullable=False) 
+    color = Column(String(7), nullable=True) # Para código hexadecimal #RRGGBB
+    notas = Column(Text, nullable=True)
+    result_count = Column(Integer, nullable=True) 
+    unique_plates = Column(JSON, nullable=True) # Guardar matrículas como array JSON
+
+    caso = relationship("Caso", back_populates="saved_searches")
 
 # Función para crear las tablas (la llamaremos desde main.py)
 def create_db_and_tables():

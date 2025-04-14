@@ -122,7 +122,7 @@ function CasoDetailPage() {
                 <Tabs.List>
                     <Tabs.Tab value="analisis-lpr" leftSection={<IconAnalyze size={14} />}>Análisis LPR</Tabs.Tab>
                     <Tabs.Tab value="analisis-gps" leftSection={<IconMapPin size={14} />}>Análisis GPS</Tabs.Tab>
-                    <Tabs.Tab value="lpr-avanzado" leftSection={<IconFlask size={14} />}>LPR Avanzado</Tabs.Tab>
+                    <Tabs.Tab value="busqueda-cruzada-lpr" leftSection={<IconFlask size={14} />}>Búsqueda Cruzada LPR</Tabs.Tab>
                     <Tabs.Tab value="lecturas-relevantes" leftSection={<IconBook size={14} />}>Lecturas Relevantes</Tabs.Tab>
                     <Tabs.Tab value="mapa" leftSection={<IconMapPin size={14} />}>Mapa General</Tabs.Tab>
                     <Tabs.Tab value="archivos" leftSection={<IconFiles size={14} />}>Archivos ({archivos.length})</Tabs.Tab>
@@ -155,7 +155,7 @@ function CasoDetailPage() {
                     )}
                 </Tabs.Panel>
 
-                <Tabs.Panel value="lpr-avanzado" pt="lg">
+                <Tabs.Panel value="busqueda-cruzada-lpr" pt="lg">
                     {idCasoNum ? (
                         <LprAvanzadoPanel casoId={idCasoNum} />
                     ) : (
