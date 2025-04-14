@@ -46,6 +46,18 @@ function CasoDetailPage() {
     // Estado para pestaña principal
     const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
 
+    // ---- NUEVO: Estado compartido para filas interactuadas ----
+    const [interactedMatriculas, setInteractedMatriculas] = useState<Set<string>>(new Set());
+
+    const addInteractedMatricula = useCallback((matriculas: string[]) => {
+        setInteractedMatriculas(prev => {
+            const updated = new Set(prev);
+            matriculas.forEach(m => updated.add(m));
+            return updated;
+        });
+    }, []);
+    // ---- FIN NUEVO ESTADO ----
+
     // Función para cargar archivos (necesaria para carga inicial y después de borrar)
     const fetchArchivos = useCallback(async () => {
         if (!idCasoNum || isNaN(idCasoNum)) return;
@@ -136,6 +148,8 @@ function CasoDetailPage() {
                             permitirSeleccionCaso={false}
                             mostrarTitulo={false}
                             tipoFuenteFijo='LPR'
+                            interactedMatriculas={interactedMatriculas}
+                            addInteractedMatricula={addInteractedMatricula}
                         />
                     ) : (
                         <Alert color="orange">ID de caso no válido.</Alert>
@@ -149,6 +163,8 @@ function CasoDetailPage() {
                             permitirSeleccionCaso={false}
                             mostrarTitulo={false}
                             tipoFuenteFijo='GPS'
+                            interactedMatriculas={interactedMatriculas}
+                            addInteractedMatricula={addInteractedMatricula}
                         />
                     ) : (
                         <Alert color="orange">ID de caso no válido.</Alert>
@@ -157,7 +173,11 @@ function CasoDetailPage() {
 
                 <Tabs.Panel value="busqueda-cruzada-lpr" pt="lg">
                     {idCasoNum ? (
-                        <LprAvanzadoPanel casoId={idCasoNum} />
+                        <LprAvanzadoPanel 
+                            casoId={idCasoNum}
+                            interactedMatriculas={interactedMatriculas}
+                            addInteractedMatricula={addInteractedMatricula}
+                        />
                     ) : (
                         <Alert color="orange">ID de caso no válido.</Alert>
                     )}

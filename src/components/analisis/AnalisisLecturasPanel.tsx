@@ -1,14 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip } from '@mantine/core';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy } from '@tabler/icons-react';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus } from 'mantine-datatable';
 import dayjs from 'dayjs';
 import _ from 'lodash';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+
+// --- Estilos específicos (añadidos aquí también) ---
+const customStyles = `
+  .highlighted-row {
+    background-color: var(--mantine-color-blue-0) !important; /* Azul muy claro */
+  }
+  .highlighted-row:hover {
+    background-color: var(--mantine-color-blue-1) !important; /* Un azul ligeramente más oscuro */
+  }
+`;
 
 // --- Interfaces (Asegurarse que estén completas) ---
 interface Lector {
@@ -40,19 +50,23 @@ interface Lectura {
 
 type SelectOption = { value: string; label: string };
 
-// --- Props del Componente ---
+// --- Props del Componente (Actualizadas) ---
 interface AnalisisLecturasPanelProps {
     casoIdFijo?: number | null; 
     permitirSeleccionCaso?: boolean; 
     mostrarTitulo?: boolean; 
     tipoFuenteFijo?: 'LPR' | 'GPS' | null;
+    interactedMatriculas: Set<string>;                  // <-- Prop recibida
+    addInteractedMatricula: (matriculas: string[]) => void; // <-- Prop recibida
 }
 
 function AnalisisLecturasPanel({ 
     casoIdFijo = null,
     permitirSeleccionCaso = true,
     mostrarTitulo = true,
-    tipoFuenteFijo = null
+    tipoFuenteFijo = null,
+    interactedMatriculas,                              // <-- Recibir prop
+    addInteractedMatricula                             // <-- Recibir prop
 }: AnalisisLecturasPanelProps) {
     const iconStyle = { width: rem(16), height: rem(16) }; // Añadir iconStyle
 
@@ -83,8 +97,9 @@ function AnalisisLecturasPanel({
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
 
     // --- Procesar datos (completo) ---
-    const sortedAndPaginatedResults = React.useMemo(() => {
-        const data = _.orderBy(results, [sortStatus.columnAccessor], [sortStatus.direction]);
+    const sortedAndPaginatedResults = useMemo(() => {
+        const accessor = sortStatus.columnAccessor as keyof Lectura;
+        const data = _.orderBy(results, [accessor], [sortStatus.direction]);
         return data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     }, [results, sortStatus, page, PAGE_SIZE]);
 
@@ -223,6 +238,16 @@ function AnalisisLecturasPanel({
             console.error("Error during search:", error);
         } finally { setLoading(false); }
     };
+
+    // --- NUEVO: Handler de selección que notifica al padre --- 
+    const handleSelectionChange = useCallback((newSelectedRecords: Lectura[]) => {
+        setSelectedRecords(newSelectedRecords);
+        // Notificar al padre sobre las nuevas matrículas seleccionadas
+        const newlySelectedMatriculas = newSelectedRecords.map(record => record.Matricula); // Usar Matricula
+        if (newlySelectedMatriculas.length > 0) {
+             addInteractedMatricula(newlySelectedMatriculas); // <-- Llamar a la prop
+        }
+    }, [addInteractedMatricula]); // <-- Añadir dependencia
 
     // --- Funciones para Acciones ---
     const handleMarcarRelevante = async () => {
@@ -399,202 +424,226 @@ function AnalisisLecturasPanel({
 
     // --- Renderizado (completo) ---
     return (
-        <Grid>
-             <LoadingOverlay visible={initialLoading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
-             {/* --- Columna Filtros --- */} 
-             <Grid.Col span={{ base: 12, md: 4 }}>
-                 <Stack>
-                     {mostrarTitulo && <Title order={4}>Filtros</Title>}
-                     <Input.Wrapper label="Fecha Inicio">
-                         <DatePicker
-                             selected={fechaInicio}
-                             onChange={(date: Date | null) => setFechaInicio(date)}
-                             dateFormat="yyyy-MM-dd"
-                             placeholderText="AAAA-MM-DD"
-                             isClearable
-                             customInput={<Input leftSection={<IconCalendar style={iconStyle} />} style={{ width: '100%' }} />}
-                             wrapperClassName="date-picker-wrapper"
-                         />
-                     </Input.Wrapper>
-                     <Input.Wrapper label="Fecha Fin">
-                         <DatePicker
-                             selected={fechaFin}
-                             onChange={(date: Date | null) => setFechaFin(date)}
-                             dateFormat="yyyy-MM-dd"
-                             placeholderText="AAAA-MM-DD"
-                             isClearable
-                             customInput={<Input leftSection={<IconCalendar style={iconStyle} />} style={{ width: '100%' }} />}
-                             wrapperClassName="date-picker-wrapper"
-                         />
-                     </Input.Wrapper>
-                    <Grid>
-                         <Grid.Col span={6}>
-                             <TimeInput
-                                 label="Desde Hora"
-                                 placeholder="HH:MM"
-                                 leftSection={<IconClock size={16} />}
-                                 value={timeFrom}
-                                 onChange={(event) => setTimeFrom(event.currentTarget.value)}
-                             />
-                         </Grid.Col>
-                         <Grid.Col span={6}>
-                             <TimeInput
-                                 label="Hasta Hora"
-                                 placeholder="HH:MM"
-                                 leftSection={<IconClock size={16} />}
-                                 value={timeTo}
-                                 onChange={(event) => setTimeTo(event.currentTarget.value)}
-                             />
-                         </Grid.Col>
-                     </Grid>
-                     <MultiSelect
-                         label="Lectores"
-                         placeholder="Todos los lectores"
-                         data={lectoresList}
-                         value={selectedLectores}
-                         onChange={setSelectedLectores}
-                         leftSection={<IconDeviceCctv size={16} />}
-                         searchable clearable disabled={loading || initialLoading}
-                     />
-                     <MultiSelect
-                         label="Carretera"
-                         placeholder="Todas las carreteras"
-                         data={carreterasList}
-                         value={selectedCarreteras}
-                         onChange={setSelectedCarreteras}
-                         leftSection={<IconRoad size={16} />}
-                         searchable clearable disabled={loading || initialLoading}
-                     />
-                     <MultiSelect
-                         label="Sentido"
-                         placeholder="Ambos sentidos"
-                         data={sentidosList}
-                         value={selectedSentidos}
-                         onChange={setSelectedSentidos}
-                         leftSection={<IconArrowsUpDown size={16} />}
-                         clearable 
-                         disabled={loading || initialLoading}
-                     />
-                     {permitirSeleccionCaso && (
-                         <MultiSelect
-                             label="Casos"
-                             placeholder="Todos los casos"
-                             data={casosList}
-                             value={selectedCasos}
-                             onChange={setSelectedCasos}
-                             leftSection={<IconFolder size={16} />}
-                             searchable clearable disabled={loading || initialLoading}
-                         />
-                     )}
-                     <TextInput
-                         label="Matrícula (completa o parcial)"
-                         placeholder="Ej: 1234ABC, %BC%"
-                         value={matricula}
-                         onChange={(event) => setMatricula(event.currentTarget.value)}
-                         leftSection={<IconLicense size={16} />}
-                     />
-                     <NumberInput
-                         label="Mínimo de Pasos"
-                         placeholder="Ej: 2"
-                         value={minPasos}
-                         onChange={(value) => setMinPasos(value === '' ? '' : Number(value))}
-                         min={1}
-                         step={1}
-                         allowDecimal={false}
-                     />
-                     <Button onClick={handleSearch} loading={loading} leftSection={<IconSearch size={16}/>}>
-                         Buscar Lecturas
-                     </Button>
-                 </Stack>
-             </Grid.Col>
-             
-             {/* --- Columna Resultados --- */} 
-             <Grid.Col span={{ base: 12, md: 8 }}>
-                 <Stack>
-                     {mostrarTitulo && <Title order={4}>Resultados ({results.length})</Title>}
-                     <Group justify="flex-start" mb="sm">
-                         <Button 
-                             leftSection={<IconStar size={16} />} 
-                             disabled={selectedRecords.length === 0 || loading}
-                             onClick={handleMarcarRelevante}
-                             variant="light"
-                             color="yellow"
-                         >
-                             Marcar Relevante ({selectedRecords.length})
-                         </Button>
-                         <Button 
-                             leftSection={<IconStarOff size={16} />} 
-                             disabled={selectedRecords.length === 0 || loading}
-                             onClick={handleDesmarcarRelevante}
-                             variant="light"
-                             color="gray"
-                          >
-                             Desmarcar Relevante ({selectedRecords.length})
-                         </Button>
-                         <Button 
-                             leftSection={<IconDeviceFloppy size={16} />}
-                             disabled={selectedRecords.length === 0 || loading}
-                             onClick={handleGuardarVehiculos}
-                             variant="outline"
-                             color="blue"
-                         >
-                             Guardar Vehículo(s) ({Array.from(new Set(selectedRecords.map(r => r.Matricula))).length})
-                         </Button>
-                     </Group>
-                     <Box style={{ height: 'calc(100vh - 450px)', position: 'relative' }}> 
-                          <LoadingOverlay visible={loading && !initialLoading} zIndex={500} overlayProps={{ radius: "sm", blur: 2 }}/>
-                          {!loading && !initialLoading && results.length === 0 && (
-                              <div style={{ textAlign: 'center', padding: rem(20) }}>
-                                  No se encontraron resultados para los filtros seleccionados.
-                              </div>
-                          )}
-                          {!initialLoading && results.length > 0 && (
-                              <DataTable<Lectura>
-                                  withTableBorder
-                                  borderRadius="sm"
-                                  withColumnBorders
-                                  striped
-                                  highlightOnHover
-                                  records={sortedAndPaginatedResults}
-                                  columns={[
-                                      {
-                                        accessor: 'relevancia',
-                                        title: 'Rel',
-                                        width: 40,
-                                        textAlign: 'center',
-                                        render: (record) => 
-                                            record.relevancia ? (
-                                                <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
-                                                    <IconStar size={16} color="orange" />
-                                                </Tooltip>
-                                            ) : null,
-                                      },
-                                      { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
-                                      { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
-                                      { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true, width: 150 },
-                                      { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true, width: 100 },
-                                      { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true, width: 100 },
-                                      { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true, width: 100 },
-                                      { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true, width: 70 },
-                                      { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 },
-                                  ]}
-                                  minHeight={results.length === 0 ? 150 : 0} 
-                                  totalRecords={results.length}
-                                  recordsPerPage={PAGE_SIZE}
-                                  page={page}
-                                  onPageChange={setPage}
-                                  sortStatus={sortStatus}
-                                  onSortStatusChange={setSortStatus}
-                                  selectedRecords={selectedRecords}
-                                  onSelectedRecordsChange={setSelectedRecords}
-                                  idAccessor="ID_Lectura"
-                                  isRecordSelectable={(record) => !loading}
-                              />
-                          )}
+        <Box style={{ position: 'relative' }}>
+            <style>{customStyles}</style> {/* Añadir estilos */} 
+            <Grid>
+                 <LoadingOverlay visible={initialLoading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
+                 {/* --- Columna Filtros --- */} 
+                 <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
+                     <Paper shadow="sm" p="md" withBorder>
+                         <Stack gap="sm">
+                             <Title order={4} mb="sm">Definir Filtros</Title>
+                             {permitirSeleccionCaso && (
+                                 <MultiSelect
+                                     label="Casos"
+                                     placeholder="Seleccionar casos..."
+                                     data={casosList}
+                                     value={selectedCasos}
+                                     onChange={setSelectedCasos}
+                                     searchable
+                                     clearable
+                                     disabled={initialLoading}
+                                     leftSection={<IconFolder style={iconStyle} />}
+                                 />
+                             )}
+                             <Input.Wrapper label="Fecha Inicio" size="xs">
+                                <DatePicker
+                                    selected={fechaInicio}
+                                    onChange={(date) => setFechaInicio(date)}
+                                    dateFormat="yyyy-MM-dd"
+                                    placeholderText="AAAA-MM-DD"
+                                    isClearable
+                                    customInput={
+                                        <Input 
+                                            leftSection={<IconCalendar style={iconStyle} />} 
+                                            style={{ width: '100%' }}
+                                        />
+                                    }
+                                />
+                            </Input.Wrapper>
+                            
+                            <Input.Wrapper label="Fecha Fin" size="xs">
+                             <DatePicker
+                                selected={fechaFin}
+                                onChange={(date) => setFechaFin(date)}
+                                dateFormat="yyyy-MM-dd"
+                                placeholderText="AAAA-MM-DD"
+                                isClearable
+                                customInput={
+                                    <Input 
+                                        leftSection={<IconCalendar style={iconStyle} />} 
+                                        style={{ width: '100%' }}
+                                    />
+                                }
+                            />
+                            </Input.Wrapper>
+                            <Group grow>
+                                <TimeInput 
+                                    label="Desde Hora" 
+                                    value={timeFrom} 
+                                    onChange={(event) => setTimeFrom(event.currentTarget.value)} 
+                                    leftSection={<IconClock style={iconStyle} />} 
+                                />
+                                <TimeInput 
+                                    label="Hasta Hora" 
+                                    value={timeTo} 
+                                    onChange={(event) => setTimeTo(event.currentTarget.value)} 
+                                    leftSection={<IconClock style={iconStyle} />} 
+                                />
+                            </Group>
+                            <MultiSelect
+                                label="Lectores"
+                                placeholder="Todos"
+                                data={lectoresList}
+                                value={selectedLectores}
+                                onChange={setSelectedLectores}
+                                searchable
+                                clearable
+                                disabled={initialLoading}
+                                leftSection={<IconDeviceCctv style={iconStyle} />}
+                            />
+                            <MultiSelect
+                                label="Carretera"
+                                placeholder="Todas"
+                                data={carreterasList}
+                                value={selectedCarreteras}
+                                onChange={setSelectedCarreteras}
+                                searchable
+                                clearable
+                                disabled={initialLoading}
+                                leftSection={<IconRoad style={iconStyle} />}
+                            />
+                            {tipoFuenteFijo === 'LPR' && (
+                                <MultiSelect
+                                    label="Sentido"
+                                    placeholder="Ambos"
+                                    data={sentidosList}
+                                    value={selectedSentidos}
+                                    onChange={setSelectedSentidos}
+                                    clearable
+                                    leftSection={<IconArrowsUpDown style={iconStyle} />}
+                                />
+                            )}
+                            <TextInput
+                                label="Matrícula (parcial)"
+                                placeholder="Ej: %BC%"
+                                value={matricula}
+                                onChange={(event) => setMatricula(event.currentTarget.value)}
+                                leftSection={<IconLicense style={iconStyle} />}
+                            />
+                            {tipoFuenteFijo === 'LPR' && (
+                                <NumberInput
+                                    label="Mín. Pasos"
+                                    placeholder="Cualquiera"
+                                    value={minPasos}
+                                    onChange={(value) => setMinPasos(value === '' ? '' : Number(value))}
+                                    min={1}
+                                    allowDecimal={false}
+                                    allowNegative={false}
+                                    clampBehavior="strict"
+                                />
+                            )}
+                            <Button 
+                                onClick={handleSearch} 
+                                loading={loading} 
+                                disabled={initialLoading} 
+                                leftSection={<IconSearch style={iconStyle} />} 
+                                size="sm"
+                                variant="filled"
+                                fullWidth 
+                                mt="md"
+                            >
+                                Ejecutar Filtro
+                            </Button>
+                         </Stack>
+                     </Paper>
+                 </Grid.Col>
+                 
+                 {/* --- Columna Resultados --- */} 
+                 <Grid.Col span={{ base: 12, md: 9 }}>
+                     <Box style={{ position: 'relative' }}>
+                        <LoadingOverlay visible={loading && !initialLoading} zIndex={500} />
+                        
+                        <Group mb="sm">
+                             <Button 
+                                size="xs" 
+                                variant="outline" 
+                                leftSection={<IconBookmark size={16} />}
+                                onClick={handleMarcarRelevante} 
+                                disabled={selectedRecords.length === 0 || loading}
+                            >
+                                Marcar Relevante ({selectedRecords.length})
+                            </Button>
+                             <Button 
+                                size="xs" 
+                                variant="outline" 
+                                color="orange" 
+                                leftSection={<IconBookmarkOff size={16} />}
+                                onClick={handleDesmarcarRelevante} 
+                                disabled={selectedRecords.length === 0 || loading}
+                            >
+                                Desmarcar Relevante ({selectedRecords.length})
+                            </Button>
+                             <Button 
+                                size="xs" 
+                                variant="outline" 
+                                color="green" 
+                                leftSection={<IconCar size={16} />}
+                                onClick={handleGuardarVehiculos} 
+                                disabled={selectedRecords.length === 0 || loading}
+                            >
+                                Guardar Vehículos ({selectedRecords.length})
+                            </Button>
+                        </Group>
+                        
+                        <DataTable<Lectura>
+                           withTableBorder
+                           borderRadius="sm"
+                           withColumnBorders
+                           striped
+                           highlightOnHover
+                           records={sortedAndPaginatedResults}
+                           columns={[
+                               {
+                                 accessor: 'relevancia',
+                                 title: 'Rel',
+                                 width: 40,
+                                 textAlign: 'center',
+                                 render: (record) => 
+                                     record.relevancia ? (
+                                         <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
+                                             <IconStar size={16} color="orange" />
+                                         </Tooltip>
+                                     ) : null,
+                               },
+                               { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
+                               { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
+                               { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true, width: 150 },
+                               { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true, width: 100 },
+                               { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true, width: 100 },
+                               { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true, width: 100 },
+                               { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true, width: 70 },
+                               { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 },
+                           ]}
+                           minHeight={results.length === 0 ? 150 : 0} 
+                           totalRecords={results.length}
+                           recordsPerPage={PAGE_SIZE}
+                           page={page}
+                           onPageChange={setPage}
+                           sortStatus={sortStatus}
+                           onSortStatusChange={setSortStatus}
+                           selectedRecords={selectedRecords}
+                           onSelectedRecordsChange={handleSelectionChange}
+                           idAccessor="ID_Lectura"
+                           isRecordSelectable={(record) => !loading}
+                           rowClassName={({ Matricula }) => 
+                               interactedMatriculas.has(Matricula) ? 'highlighted-row' : undefined
+                           }
+                        />
                      </Box>
-                 </Stack>
-             </Grid.Col>
-        </Grid>
+                 </Grid.Col>
+            </Grid>
+        </Box>
     );
 }
 
