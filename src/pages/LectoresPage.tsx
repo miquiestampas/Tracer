@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
     Box, Title, Table, Loader, Alert, Pagination, Select, Group, Text, ActionIcon, Tooltip, Button, Tabs, SimpleGrid, MultiSelect, Space, Checkbox, LoadingOverlay,
-    Autocomplete
+    Autocomplete, ScrollArea, Collapse
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconEdit, IconTrash, IconCheck, IconMap, IconList, IconFileExport, IconUpload, IconSearch, IconX } from '@tabler/icons-react';
+import { IconEdit, IconTrash, IconCheck, IconMap, IconList, IconFileExport, IconUpload, IconSearch, IconX, IconListDetails, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { getLectores, updateLector, getLectoresParaMapa, deleteLector, importarLectores } from '../services/lectoresApi';
 import type { Lector, LectorUpdateData, LectorCoordenadas } from '../types/data';
 import EditLectorModal from '../components/modals/EditLectorModal';
@@ -39,6 +39,32 @@ const SENTIDO_OPTIONS = [
   { value: 'Decreciente', label: 'Decreciente' },
 ];
 
+// *** NUEVO: Importar CSS de leaflet-draw aquí ***
+import 'leaflet-draw/dist/leaflet.draw.css';
+// *** FIN: Importar CSS ***
+
+// *** NUEVO: Importar componente DrawControl ***
+import DrawControl from '../components/map/DrawControl'; 
+// *** FIN: Importar DrawControl ***
+
+// Turf para análisis espacial
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { point as turfPoint, polygon as turfPolygon } from '@turf/helpers';
+
+// Función helper para obtener GeoJSON (CON EL TS-IGNORE)
+function getShapeGeoJSONGeometry(layer: L.Layer | null): any | null {
+  if (layer && (layer instanceof L.Polygon || layer instanceof L.Rectangle)) {
+    try {
+      // @ts-ignore 
+      return layer.toGeoJSON().geometry;
+    } catch (e) {
+      console.error("Error al convertir la forma a GeoJSON:", e);
+      return null;
+    }
+  }
+  return null;
+}
+
 function LectoresPage() {
   const [lectores, setLectores] = useState<Lector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +90,14 @@ function LectoresPage() {
   const analisisPanelRef = useRef<AnalisisLecturasPanelHandle>(null);
 
   const [importModalOpened, { open: openImportModal, close: closeImportModal }] = useDisclosure(false);
+
+  // *** NUEVO: Estado para la forma dibujada ***
+  const [drawnShape, setDrawnShape] = useState<L.Layer | null>(null);
+  // *** FIN: Estado forma dibujada ***
+
+  // *** Cambiar estado para controlar Collapse ***
+  const [resultsListOpened, { toggle: toggleResultsList }] = useDisclosure(false);
+  // *** Fin cambio estado ***
 
   const fetchLectoresTabla = useCallback(async (page: number, pageSize: number) => {
     setLoading(true);
@@ -147,10 +181,13 @@ function LectoresPage() {
     return Array.from(suggestions).sort();
   }, [mapLectores]);
 
+  // Lógica de Filtrado (usa la función helper)
   const lectoresFiltradosMapa = useMemo(() => {
     const textoBusquedaLower = filtroTextoLibre.toLowerCase().trim();
-    
+    const drawnPolygonGeoJSON = getShapeGeoJSONGeometry(drawnShape);
+
     return mapLectores.filter(lector => {
+      // Filtros existentes
       const provinciaMatch = filtroProvincia.length === 0 || (lector.Provincia && filtroProvincia.includes(lector.Provincia));
       const carreteraMatch = filtroCarretera.length === 0 || (lector.Carretera && filtroCarretera.includes(lector.Carretera));
       const organismoMatch = filtroOrganismo.length === 0 || (lector.Organismo_Regulador && filtroOrganismo.includes(lector.Organismo_Regulador));
@@ -158,9 +195,42 @@ function LectoresPage() {
                          (lector.ID_Lector && lector.ID_Lector.toLowerCase().includes(textoBusquedaLower)) ||
                          (lector.Nombre && lector.Nombre.toLowerCase().includes(textoBusquedaLower));
       const sentidoMatch = filtroSentido === null || (lector.Sentido && lector.Sentido === filtroSentido);
-      return provinciaMatch && carreteraMatch && organismoMatch && textoMatch && sentidoMatch;
+
+      // Filtro espacial (usa drawnPolygonGeoJSON)
+      let spatialMatch = true; 
+      if (drawnPolygonGeoJSON && lector.Coordenada_X != null && lector.Coordenada_Y != null) {
+        try {
+          const lectorPoint = turfPoint([lector.Coordenada_X, lector.Coordenada_Y]);
+          spatialMatch = booleanPointInPolygon(lectorPoint, drawnPolygonGeoJSON);
+        } catch (turfError) {
+          console.error("Error en comprobación espacial con Turf.js:", turfError);
+          spatialMatch = false; 
+        }
+      } 
+      // else: spatialMatch sigue siendo true si no hay polígono o el lector no tiene coords
+
+      // Devolver true solo si todos los filtros coinciden
+      return provinciaMatch && carreteraMatch && organismoMatch && textoMatch && sentidoMatch && spatialMatch;
     });
-  }, [mapLectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido]);
+  }, [mapLectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido, drawnShape]);
+  
+  // Callback cuando se dibuja una forma
+  const handleShapeDrawn = useCallback((layer: L.Layer) => { 
+      // @ts-ignore 
+      console.log("Forma dibujada (GeoJSON):", layer.toGeoJSON()); 
+      setDrawnShape(layer); 
+  }, []);
+  
+  // Callback cuando se elimina una forma DESDE LOS CONTROLES DE DIBUJO
+  const handleShapeDeleted = useCallback(() => {
+    // *** Añadir Log para diagnóstico ***
+    console.log('handleShapeDeleted llamado'); 
+    setDrawnShape(prevState => {
+        console.log('Estado drawnShape antes:', prevState);
+        console.log('Estado drawnShape después: null');
+        return null; // Limpiar el estado
+    });
+  }, []);
 
   const handlePageChange = (newPage: number) => {
     setPagination(prev => ({ ...prev, page: newPage }));
@@ -442,6 +512,17 @@ function LectoresPage() {
 
   const totalPages = Math.ceil(pagination.totalCount / pagination.pageSize);
 
+  const drawerRows = lectoresFiltradosMapa.map((lector) => (
+    <Table.Tr key={`list-${lector.ID_Lector}`}>
+      <Table.Td>{lector.ID_Lector}</Table.Td>
+      <Table.Td>{lector.Nombre || '-'}</Table.Td>
+      <Table.Td>{lector.Carretera || '-'}</Table.Td>
+      <Table.Td>{lector.Provincia || '-'}</Table.Td>
+      <Table.Td>{lector.Sentido || '-'}</Table.Td>
+      <Table.Td>{lector.Organismo_Regulador || '-'}</Table.Td>
+    </Table.Tr>
+  ));
+
   return (
     <Box p="md">
       <Group justify="space-between" mb="xl">
@@ -611,9 +692,25 @@ function LectoresPage() {
                 />
               </SimpleGrid>
               
-              <Text size="sm" mb="md">Mostrando {lectoresFiltradosMapa.length} de {mapLectores.length} lectores con coordenadas.</Text>
+              <Group justify="space-between" mb="md">
+                  <Text size="sm">
+                     Mostrando {lectoresFiltradosMapa.length} de {mapLectores.length} lectores con coordenadas.
+                     {drawnShape && <span style={{ color: 'blue' }}> (Filtrados por área dibujada)</span>}
+                  </Text>
+                  {lectoresFiltradosMapa.length > 0 && (
+                       <Button
+                           leftSection={resultsListOpened ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
+                           onClick={toggleResultsList}
+                           variant="light"
+                           size="xs"
+                           disabled={mapLoading}
+                       >
+                           {resultsListOpened ? 'Ocultar' : 'Ver'} Lista Filtrada ({lectoresFiltradosMapa.length})
+                       </Button>
+                  )}
+              </Group>
 
-              <Box style={{ height: '600px', width: '100%' }}>
+              <Box style={{ height: '450px', width: '100%' }}>
                  {mapLectores.length > 0 ? (
                     <MapContainer 
                       center={[40.416775, -3.703790]} 
@@ -625,6 +722,12 @@ function LectoresPage() {
                         url="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png"
                         attribution='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://www.stamen.com/" target="_blank">Stamen Design</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
                       />
+                      
+                      <DrawControl 
+                         onShapeDrawn={handleShapeDrawn}
+                         onShapeDeleted={handleShapeDeleted}
+                      />
+                      
                       {lectoresFiltradosMapa.map(lector => {
                         const useFuchsiaIcon = lector.Organismo_Regulador === 'ZBE Madrid';
                         
@@ -648,6 +751,31 @@ function LectoresPage() {
                     <Text>No hay lectores con coordenadas para mostrar en el mapa.</Text>
                  )}
               </Box>
+
+              <Collapse in={resultsListOpened} transitionDuration={200}>
+                  <Box mt="md" pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+                      <ScrollArea h={300}>
+                          {drawerRows.length > 0 ? (
+                              <Table striped highlightOnHover withTableBorder>
+                                  <Table.Thead>
+                                      <Table.Tr>
+                                          <Table.Th>ID Lector</Table.Th>
+                                          <Table.Th>Nombre</Table.Th>
+                                          <Table.Th>Carretera</Table.Th>
+                                          <Table.Th>Provincia</Table.Th>
+                                          <Table.Th>Sentido</Table.Th>
+                                          <Table.Th>Organismo</Table.Th>
+                                      </Table.Tr>
+                                  </Table.Thead>
+                                  <Table.Tbody>{drawerRows}</Table.Tbody>
+                              </Table>
+                          ) : (
+                              <Text>No hay lectores que coincidan con los filtros actuales.</Text>
+                          )}
+                      </ScrollArea>
+                  </Box>
+              </Collapse>
+
             </>
           )}
         </Tabs.Panel>
@@ -665,7 +793,7 @@ function LectoresPage() {
         onClose={closeImportModal}
         onImport={handleImportLectores}
       />
-      
+
       <Box style={{ display: 'none' }}>
         <AnalisisLecturasPanel 
           ref={analisisPanelRef}
