@@ -134,4 +134,108 @@ export const getLectorSugerencias = async (): Promise<LectorSugerenciasResponse>
     // Devolver listas vacías en caso de error para no bloquear el UI
     return { provincias: [], localidades: [], carreteras: [], organismos: [], contactos: [] };
   }
+};
+
+/**
+ * Resultado de la importación, incluye errores si los hubo.
+ */
+interface ImportResult {
+  imported: number;
+  updated: number;
+  errors: string[];
+}
+
+/**
+ * Importa múltiples lectores al sistema.
+ * Intenta actualizar si el lector tiene ID, si falla por no encontrado (404), intenta crearlo.
+ * @param lectores Array de objetos con los datos de lectores a importar.
+ * @returns Promise<ImportResult> - Contador de lectores importados/actualizados y lista de errores.
+ */
+export const importarLectores = async (lectores: any[]): Promise<ImportResult> => {
+  let imported = 0;
+  let updated = 0;
+  const errores: string[] = [];
+  
+  console.log(`Intentando importar ${lectores.length} lectores`);
+  
+  const results = await Promise.allSettled(
+    lectores.map(async (lector) => {
+      const lectorData = {
+        ...lector,
+        ID_Lector: lector.ID_Lector ? String(lector.ID_Lector) : undefined
+      };
+      
+      console.log(`Procesando lector:`, lectorData);
+      
+      try {
+        if (lectorData.ID_Lector) {
+          console.log(`Intentando actualizar (PUT) /lectores/${lectorData.ID_Lector}`);
+          try {
+            const response = await apiClient.put(`/lectores/${lectorData.ID_Lector}`, lectorData);
+            console.log(`Respuesta actualización (PUT):`, response.data);
+            return { status: 'updated', id: lectorData.ID_Lector, data: response.data };
+          } catch (putError) {
+            if (axios.isAxiosError(putError) && putError.response?.status === 404) {
+              console.log(`Lector ${lectorData.ID_Lector} no encontrado, intentando crear (POST)...`);
+              const { ID_Lector, ...dataToCreate } = lectorData; // Usar los datos originales para POST
+              const response = await apiClient.post('/lectores', lectorData);
+              console.log(`Respuesta creación (POST tras PUT fallido):`, response.data);
+              return { status: 'created', id: response.data.ID_Lector, data: response.data };
+            } else {
+              throw putError; // Lanzar otros errores del PUT
+            }
+          }
+        } else {
+          console.log(`Intentando crear (POST) /lectores`);
+          const response = await apiClient.post('/lectores', lectorData);
+          console.log(`Respuesta creación (POST):`, response.data);
+          return { status: 'created', id: response.data.ID_Lector, data: response.data };
+        }
+      } catch (error) {
+        // Captura errores del POST inicial, POST tras PUT fallido, o errores no-404 del PUT
+        console.error(`Error procesando lector ID=${lectorData.ID_Lector || 'N/A'}:`, error);
+        let errorMessage = 'Error desconocido';
+        if (axios.isAxiosError(error)) {
+          const errorData = error.response?.data;
+          errorMessage = `API (${error.response?.status}): ${errorData?.detail || error.message}`;
+          console.error(`Error API detalle:`, errorData);
+        } else if (error instanceof Error) {
+          errorMessage = error.message;
+        }
+        // Registrar el error y devolver un estado de error
+        const errorMsg = `ID=${lectorData.ID_Lector || 'Nuevo (falló creación)'}: ${errorMessage}`;
+        errores.push(errorMsg);
+        return { 
+          status: 'error', 
+          id: lectorData.ID_Lector,
+          error: errorMsg // Devolver el mensaje de error formateado
+        };
+      }
+    })
+  );
+  
+  // Contar resultados y recopilar errores finales
+  results.forEach(result => {
+    if (result.status === 'fulfilled') {
+      if (result.value.status === 'created') imported++;
+      else if (result.value.status === 'updated') updated++;
+      // Si el estado fue 'error', ya se añadió a 'errores' dentro del catch
+    } else {
+      // Capturar rechazos de Promise.allSettled (errores inesperados)
+      console.error("Error no manejado en Promise.allSettled:", result.reason);
+      errores.push(`Error inesperado en procesamiento: ${result.reason}`);
+    }
+  });
+
+  console.warn(`Errores durante la importación:`, errores);
+  
+  // Lanzar error solo si NINGUNO se importó/actualizó
+  if (imported === 0 && updated === 0 && errores.length > 0) {
+    const errorDetails = errores.length <= 5 ? errores.join("; ") : `${errores.slice(0, 5).join("; ")} y ${errores.length - 5} más...`;
+    throw new Error(`Ningún lector pudo ser importado o actualizado. Errores: ${errorDetails}`);
+  } 
+  
+  console.log(`Importación finalizada: ${imported} nuevos, ${updated} actualizados, ${errores.length} errores`);
+  // Devolver siempre la estructura completa, incluyendo la lista de errores
+  return { imported, updated, errors: errores }; 
 }; 

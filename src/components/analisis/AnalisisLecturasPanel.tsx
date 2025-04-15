@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme } from '@mantine/core';
 import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar } from '@tabler/icons-react';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport } from '@tabler/icons-react';
 import { notifications, showNotification } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus, DataTableColumn } from 'mantine-datatable';
 import dayjs from 'dayjs';
@@ -11,6 +11,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { format } from 'date-fns';
 import type { Lectura, Lector } from '../../types/data'; // Importar tipos necesarios
+import * as XLSX from 'xlsx'; // Importación para la exportación a Excel
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -59,28 +60,36 @@ interface Lectura {
 
 type SelectOption = { value: string; label: string };
 
-// --- Props del Componente (Actualizadas) ---
+// --- Props del Componente ---
 interface AnalisisLecturasPanelProps {
-    casoIdFijo?: number | null; 
-    permitirSeleccionCaso?: boolean; 
-    mostrarTitulo?: boolean; 
+    casoIdFijo?: number | null;
+    permitirSeleccionCaso?: boolean;
+    mostrarTitulo?: boolean;
     tipoFuenteFijo?: 'LPR' | 'GPS' | null;
-    interactedMatriculas: Set<string>;                  // <-- Prop recibida
-    addInteractedMatricula: (matriculas: string[]) => void; // <-- Prop recibida
+    interactedMatriculas: Set<string>;
+    addInteractedMatricula: (matriculas: string[]) => void;
 }
 
-function AnalisisLecturasPanel({ 
-    casoIdFijo = null,
-    permitirSeleccionCaso = true,
-    mostrarTitulo = true,
-    tipoFuenteFijo = null,
-    interactedMatriculas,                              // <-- Recibir prop
-    addInteractedMatricula                             // <-- Recibir prop
-}: AnalisisLecturasPanelProps) {
-    const iconStyle = { width: rem(16), height: rem(16) }; // Añadir iconStyle
+// --- Interfaz para métodos expuestos ---
+export interface AnalisisLecturasPanelHandle {
+  exportarListaLectores: () => Promise<void>;
+}
+
+// --- Componente con forwardRef ---
+const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLecturasPanelProps>((props, ref) => {
+    const {
+      casoIdFijo = null,
+      permitirSeleccionCaso = true,
+      mostrarTitulo = true,
+      tipoFuenteFijo = null,
+      interactedMatriculas,
+      addInteractedMatricula
+    } = props;
+
+    const iconStyle = { width: rem(16), height: rem(16) };
     const theme = useMantineTheme();
 
-    // --- Estados (completos) ---
+    // --- Estados ---
     const [fechaInicio, setFechaInicio] = useState<Date | null>(null);
     const [fechaFin, setFechaFin] = useState<Date | null>(null);
     const [timeFrom, setTimeFrom] = useState('');
@@ -99,35 +108,29 @@ function AnalisisLecturasPanel({
         { value: 'D', label: 'Decreciente' },
     ]);
     const [loading, setLoading] = useState(false);
-    const [initialLoading, setInitialLoading] = useState(true); 
+    const [initialLoading, setInitialLoading] = useState(true);
     const [results, setResults] = useState<Lectura[]>([]);
     const [selectedRecords, setSelectedRecords] = useState<Lectura[]>([]);
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 15;
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
-    const [allSelected, setAllSelected] = useState(false);
-    const [someSelected, setSomeSelected] = useState(false);
-    const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
-
-    // --- Procesar datos (completo) ---
+    
+    // --- Procesar datos ---
     const sortedAndPaginatedResults = useMemo(() => {
         const accessor = sortStatus.columnAccessor as keyof Lectura;
         const data = _.orderBy(results, [accessor], [sortStatus.direction]);
         return data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
     }, [results, sortStatus, page, PAGE_SIZE]);
 
-    // --- Cargar datos iniciales (Condicional según casoIdFijo) ---
+    // --- Cargar datos iniciales ---
     useEffect(() => {
         const fetchInitialData = async () => {
             setInitialLoading(true);
-            // Limpiar listas siempre al iniciar
             setLectoresList([]);
             setCarreterasList([]);
             setCasosList([]); 
-
             try {
                 if (casoIdFijo) {
-                    // --- Cargar filtros específicos del caso --- 
                     console.log(`AnalisisLecturasPanel: Fetching filtros disponibles para caso ${casoIdFijo}...`);
                     const response = await fetch(`http://localhost:8000/casos/${casoIdFijo}/filtros_disponibles`);
                     if (!response.ok) throw new Error(`Filtros caso ${casoIdFijo}: ${response.statusText || response.status}`);
@@ -137,50 +140,32 @@ function AnalisisLecturasPanel({
                         setCarreterasList(data.carreteras);
                          console.log(`AnalisisLecturasPanel: Filtros específicos cargados - ${data.lectores.length} lectores, ${data.carreteras.length} carreteras.`);
                     } else { throw new Error("Formato inesperado para filtros específicos"); }
-                    // No necesitamos cargar la lista de casos aquí
-
                 } else {
-                     // --- Cargar filtros globales (comportamiento anterior) --- 
                      console.log("AnalisisLecturasPanel: Fetching filtros globales...");
                      const fetches: (Promise<Response> | null)[] = [];
-                     // Cargar TODOS los lectores
-                     fetches.push(fetch('http://localhost:8000/lectores?limit=2000'));
-                     // Cargar TODOS los casos (si se permite selección)
+                     fetches.push(fetch('http://localhost:8000/lectores?limit=2000')); // Límite alto para obtener todos
                      if (permitirSeleccionCaso) {
                          fetches.push(fetch('http://localhost:8000/casos?limit=1000'));
                      } else { fetches.push(null); }
-
                      const responses = await Promise.all(fetches);
-
                      const lectoresResponse = responses[0];
                      if (lectoresResponse instanceof Response) {
                          if (!lectoresResponse.ok) throw new Error(`Lectores Globales: ${lectoresResponse.statusText || lectoresResponse.status}`);
                          const lectoresData = await lectoresResponse.json();
-                         // ... (Lógica para procesar lectoresData y derivar carreteras globales) ...
-                         if (lectoresData && Array.isArray(lectoresData.lectores)) { // Asume formato {lectores: [...]} 
+                         if (lectoresData && Array.isArray(lectoresData.lectores)) {
                             const formattedLectores: SelectOption[] = lectoresData.lectores.map((l: any) => ({ value: String(l.ID_Lector), label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` }));
                             setLectoresList(formattedLectores);
-                            const todasCarreteras = lectoresData.lectores.map((l: any) => l.Carretera?.trim());
-                            const carreterasFiltradas = todasCarreteras.filter((c): c is string => !!c);
-                            const uniqueCarreteras = Array.from(new Set<string>(carreterasFiltradas)).sort((a, b) => a.localeCompare(b));
+                            const todasCarreteras = lectoresData.lectores.map((l: any) => l.Carretera?.trim()).filter((c): c is string => !!c);
+                            const uniqueCarreteras = Array.from(new Set<string>(todasCarreteras)).sort((a, b) => a.localeCompare(b));
                             setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
-                            console.log("AnalisisLecturasPanel: Filtros globales cargados.");
-                         } else {
-                             // Intentar formato array directo si el anterior falla
-                             if (lectoresData && Array.isArray(lectoresData)) {
-                                 const formattedLectores: SelectOption[] = lectoresData.map((l: any) => ({ value: String(l.ID_Lector), label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` }));
-                                 setLectoresList(formattedLectores);
-                                 const todasCarreteras = lectoresData.map((l: any) => l.Carretera?.trim());
-                                 const carreterasFiltradas = todasCarreteras.filter((c): c is string => !!c);
-                                 const uniqueCarreteras = Array.from(new Set<string>(carreterasFiltradas)).sort((a, b) => a.localeCompare(b));
-                                 setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
-                                 console.log("AnalisisLecturasPanel: Filtros globales cargados (formato array).");
-                             } else {
-                                 throw new Error("Formato inesperado para lectores globales");
-                             }
-                         }
+                         } else if (lectoresData && Array.isArray(lectoresData)) {
+                             const formattedLectores: SelectOption[] = lectoresData.map((l: any) => ({ value: String(l.ID_Lector), label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` }));
+                             setLectoresList(formattedLectores);
+                             const todasCarreteras = lectoresData.map((l: any) => l.Carretera?.trim()).filter((c): c is string => !!c);
+                             const uniqueCarreteras = Array.from(new Set<string>(todasCarreteras)).sort((a, b) => a.localeCompare(b));
+                             setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
+                         } else { throw new Error("Formato inesperado para lectores globales"); }
                      }
-
                      const casosResponse = responses[1];
                      if (permitirSeleccionCaso && casosResponse instanceof Response) {
                          if (!casosResponse.ok) throw new Error(`Casos Globales: ${casosResponse.statusText || casosResponse.status}`);
@@ -188,7 +173,6 @@ function AnalisisLecturasPanel({
                          if (Array.isArray(casosData)) {
                             const formattedCasos: SelectOption[] = casosData.map((c: any) => ({ value: String(c.ID_Caso), label: c.Nombre_del_Caso || 'Caso sin nombre' }));
                             setCasosList(formattedCasos);
-                            console.log("AnalisisLecturasPanel: Lista de casos globales cargada.");
                          } else { throw new Error("Formato inesperado para casos globales"); }
                      }
                 }
@@ -198,10 +182,9 @@ function AnalisisLecturasPanel({
             } finally { setInitialLoading(false); }
         };
         fetchInitialData();
-     // Depender de casoIdFijo para decidir qué cargar
     }, [casoIdFijo, permitirSeleccionCaso]);
 
-    // --- Función de Búsqueda (completa) ---
+    // --- Función de Búsqueda ---
     const handleSearch = async () => {
         setLoading(true);
         setResults([]);
@@ -252,17 +235,70 @@ function AnalisisLecturasPanel({
         } finally { setLoading(false); }
     };
 
-    // --- NUEVO: Handler de selección que notifica al padre --- 
+    // --- Handler de selección ---
     const handleSelectionChange = useCallback((newSelectedRecords: Lectura[]) => {
         setSelectedRecords(newSelectedRecords);
-        // Notificar al padre sobre las nuevas matrículas seleccionadas
-        const newlySelectedMatriculas = newSelectedRecords.map(record => record.Matricula); // Usar Matricula
+        const newlySelectedMatriculas = newSelectedRecords.map(record => record.Matricula);
         if (newlySelectedMatriculas.length > 0) {
-             addInteractedMatricula(newlySelectedMatriculas); // <-- Llamar a la prop
+             addInteractedMatricula(newlySelectedMatriculas);
         }
-    }, [addInteractedMatricula]); // <-- Añadir dependencia
+    }, [addInteractedMatricula]);
 
-    // --- Funciones para Acciones ---
+    // --- Función para exportar a Excel ---
+    const exportarListaLectores = useCallback(async () => {
+        setLoading(true);
+        try {
+            console.log("Exportando: Obteniendo todos los lectores...");
+            const response = await fetch(`http://localhost:8000/lectores?limit=10000`);
+            if (!response.ok) throw new Error(`Error al obtener lectores: ${response.statusText}`);
+            const data = await response.json();
+            let lectoresParaExportar: Lector[] = [];
+            if (data && Array.isArray(data.lectores)) {
+                lectoresParaExportar = data.lectores;
+            } else if (data && Array.isArray(data)) {
+                lectoresParaExportar = data;
+            } else {
+                throw new Error("Formato de respuesta inesperado al obtener lectores para exportar");
+            }
+            console.log(`Exportando: ${lectoresParaExportar.length} lectores obtenidos.`);
+            if (lectoresParaExportar.length === 0) {
+                notifications.show({ title: 'Nada que Exportar', message: 'No hay lectores para incluir en el archivo.', color: 'blue' });
+                return;
+            }
+            const dataToExport = lectoresParaExportar.map(l => ({
+                'ID Lector': l.ID_Lector,
+                'Nombre': l.Nombre,
+                'Carretera': l.Carretera,
+                'Provincia': l.Provincia,
+                'Localidad': l.Localidad,
+                'Sentido': l.Sentido,
+                'Orientación': l.Orientacion,
+                'Organismo': l.Organismo_Regulador,
+                'Latitud': l.Coordenada_Y,
+                'Longitud': l.Coordenada_X,
+                'Contacto': l.Contacto,
+                'Notas': l.Texto_Libre,
+            }));
+            const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Lectores');
+            const fileName = `Lista_Lectores_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+            XLSX.writeFile(workbook, fileName);
+            notifications.show({ title: 'Exportación Completa', message: `Se ha descargado el archivo ${fileName}`, color: 'green' });
+        } catch (error) {
+            console.error("Error al exportar lectores:", error);
+            notifications.show({ title: 'Error en Exportación', message: error instanceof Error ? error.message : 'Error desconocido', color: 'red' });
+        } finally {
+            setLoading(false);
+        }
+    }, []); // Dependencias vacías, ya que no usa props ni estado que cambie
+
+    // --- Exponer métodos mediante useImperativeHandle ---
+    useImperativeHandle(ref, () => ({
+        exportarListaLectores
+    }), [exportarListaLectores]); // Asegúrate de incluir la función en las dependencias
+
+    // --- Funciones para Acciones (Marcar, Desmarcar, Guardar Vehículos) ---
     const handleMarcarRelevante = async () => {
         if (selectedRecords.length === 0) return;
         setLoading(true);
@@ -385,7 +421,6 @@ function AnalisisLecturasPanel({
         setLoading(false);
     };
 
-    // --- NUEVA Función para Guardar Vehículos ---
     const handleGuardarVehiculos = async () => {
         const matriculasUnicas = Array.from(new Set(selectedRecords.map(r => r.Matricula)));
         if (matriculasUnicas.length === 0) return;
@@ -449,6 +484,7 @@ function AnalisisLecturasPanel({
         setLoading(false);
     };
 
+    // --- Definición de Columnas ---
     const columns: DataTableColumn<Lectura>[] = useMemo(() => {
         // Estado del checkbox "Seleccionar Todo" para la página actual
         const recordIdsOnPageSet = new Set(sortedAndPaginatedResults.map(r => r.ID_Lectura));
@@ -518,13 +554,12 @@ function AnalisisLecturasPanel({
         ];
     }, [sortedAndPaginatedResults, selectedRecords]);
 
-    // --- Renderizado (completo) ---
+    // --- Renderizado ---
     return (
         <Box style={{ position: 'relative' }}>
-            <style>{customStyles}</style> {/* Añadir estilos */} 
+            <style>{customStyles}</style>
             <Grid>
                  <LoadingOverlay visible={initialLoading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
-                 {/* --- Columna Filtros --- */} 
                  <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
                      <Paper shadow="sm" p="md" withBorder>
                          <Stack gap="sm">
@@ -654,12 +689,9 @@ function AnalisisLecturasPanel({
                          </Stack>
                      </Paper>
                  </Grid.Col>
-                 
-                 {/* --- Columna Resultados --- */} 
                  <Grid.Col span={{ base: 12, md: 9 }}>
                      <Box style={{ position: 'relative' }}>
                         <LoadingOverlay visible={loading && !initialLoading} zIndex={500} />
-                        
                         <Group mb="sm">
                              <Button 
                                 size="xs" 
@@ -691,7 +723,6 @@ function AnalisisLecturasPanel({
                                 Guardar Vehículos ({selectedRecords.length})
                             </Button>
                         </Group>
-                        
                         <DataTable<Lectura>
                            withTableBorder
                            borderRadius="sm"
@@ -708,8 +739,10 @@ function AnalisisLecturasPanel({
                            sortStatus={sortStatus}
                            onSortStatusChange={setSortStatus}
                            idAccessor="ID_Lectura"
-                           noRecordsText=""
+                           noRecordsText={loading ? 'Cargando...' : (results.length === 0 ? 'No se encontraron resultados con los filtros aplicados' : '')}
                            noRecordsIcon={<></>}
+                           selectedRecords={selectedRecords}
+                           onSelectedRecordsChange={handleSelectionChange}
                            rowClassName={({ Matricula }) => 
                                interactedMatriculas.has(Matricula) ? 'highlighted-row' : undefined
                            }
@@ -719,6 +752,6 @@ function AnalisisLecturasPanel({
             </Grid>
         </Box>
     );
-}
+});
 
 export default AnalisisLecturasPanel; 
