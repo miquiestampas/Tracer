@@ -47,14 +47,23 @@ export interface Lectura {
   ID_Lectura: number;
   ID_Archivo: number;
   Matricula: string;
-  Fecha_y_Hora: string; // Datetime viene como string ISO
+  Fecha_y_Hora: string; // Considerar usar Date | string
   Carril?: string | null;
   Velocidad?: number | null;
   ID_Lector?: string | null;
   Coordenada_X?: number | null;
   Coordenada_Y?: number | null;
-  Tipo_Fuente: 'LPR' | 'GPS';
-  relevancia?: LecturaRelevante | null; // Añadir información de relevancia
+  Tipo_Fuente: string;
+  // Añadir campos que faltan según el linter
+  relevancia?: { ID_Relevante: number, Nota?: string | null } | null; // Asumiendo que relevancia también es global
+  lector?: Lector | null; // Relación con Lector
+  pasos?: number; // Campo calculado o de la API
+  // Otros campos existentes...
+  ID_Vehiculo?: number | null;
+  FotoMatricula?: string | null;
+  Confiabilidad?: string | null;
+  Procesado?: boolean;
+  // Asegúrate de que todos los campos usados en la app estén aquí
 }
 
 // --- NUEVA INTERFAZ LECTURA RELEVANTE ---
@@ -157,3 +166,20 @@ export interface SavedSearchUpdatePayload {
 }
 
 // Podrías añadir interfaces para Vehiculo, etc. si las necesitas 
+
+// --- NUEVO: Interfaz para Vehiculo (respuesta GET) ---
+export interface Vehiculo {
+    ID_Vehiculo: number;
+    Matricula: string;
+    Marca: string | null;
+    Modelo: string | null;
+    Color: string | null;
+    Propiedad: string | null;
+    Alquiler: boolean;
+    Observaciones: string | null;
+    Comprobado: boolean;
+    Sospechoso: boolean;
+    total_lecturas_lpr_caso?: number;
+    // Podríamos añadir aquí el recuento de lecturas si la API lo devuelve en el futuro
+    // totalLecturas?: number;
+} 

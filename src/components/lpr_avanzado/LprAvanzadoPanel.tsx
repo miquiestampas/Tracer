@@ -13,6 +13,8 @@ import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
 import { updateSavedSearch } from '../../services/casosApi';
 import type { SavedSearch, SavedSearchUpdatePayload } from '../../types/data';
+import apiClient from '../../services/api';
+import appEventEmitter from '../../utils/eventEmitter';
 
 // Definir logger (usando console)
 const logger = console;

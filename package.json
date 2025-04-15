@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@changey/react-leaflet-markercluster": "^4.0.0-rc1",
     "@emotion/react": "^11.14.0",
     "@mantine/core": "^7.17.4",
     "@mantine/dates": "^7.17.4",
@@ -25,6 +26,7 @@
     "leaflet": "^1.9.4",
     "lodash": "^4.17.21",
     "mantine-datatable": "^7.17.1",
+    "mitt": "^3.0.1",
     "react": "^18.3.1",
     "react-beautiful-dnd": "^13.1.1",
     "react-datepicker": "^8.3.0",
