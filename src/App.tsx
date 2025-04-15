@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
+import { ModalsProvider } from '@mantine/modals';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/layout/Layout'; // Asumiendo esta ruta
 import { lazy } from 'react';
@@ -32,26 +33,28 @@ function App() {
     <React.StrictMode>
       <MantineProvider theme={theme}>
         <Notifications />
-        <BrowserRouter>
-          {/* Envolver Routes con Suspense para el fallback */}
-          <Suspense fallback={<div>Cargando página...</div>}> 
-            <Routes>
-              <Route path="/" element={<Layout />}>
-                <Route index element={<DashboardPage />} />
-                <Route path="casos" element={<CasosPage />} />
-                <Route path="casos/detalle/:idCaso" element={<CasoDetailPage />} />
-                <Route path="importar" element={<ImportarPage />} />
-                <Route path="lectores" element={<LectoresPage />} />
-                <Route path="busqueda" element={<AnalisisPage />} />
-                {/* <Route path="lectores" element={<LectoresPage />} /> */}
-                {/* <Route path="mapa" element={<MapaPage />} /> */}
-                {/* <Route path="busqueda" element={<BusquedaPage />} /> */}
-                {/* <Route path="patrones" element={<PatronesPage />} /> */}
-                <Route path="*" element={<div>404 - Página no encontrada</div>} />
-              </Route>
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
+        <ModalsProvider>
+          <BrowserRouter>
+            {/* Envolver Routes con Suspense para el fallback */}
+            <Suspense fallback={<div>Cargando página...</div>}> 
+              <Routes>
+                <Route path="/" element={<Layout />}>
+                  <Route index element={<DashboardPage />} />
+                  <Route path="casos" element={<CasosPage />} />
+                  <Route path="casos/detalle/:idCaso" element={<CasoDetailPage />} />
+                  <Route path="importar" element={<ImportarPage />} />
+                  <Route path="lectores" element={<LectoresPage />} />
+                  <Route path="busqueda" element={<AnalisisPage />} />
+                  {/* <Route path="lectores" element={<LectoresPage />} /> */}
+                  {/* <Route path="mapa" element={<MapaPage />} /> */}
+                  {/* <Route path="busqueda" element={<BusquedaPage />} /> */}
+                  {/* <Route path="patrones" element={<PatronesPage />} /> */}
+                  <Route path="*" element={<div>404 - Página no encontrada</div>} />
+                </Route>
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
+        </ModalsProvider>
       </MantineProvider>
     </React.StrictMode>
   );

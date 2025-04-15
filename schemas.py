@@ -31,10 +31,13 @@ class LecturaBase(BaseModel):
 class VehiculoBase(BaseModel):
     Matricula: str = Field(..., example="1234ABC")
     Marca: Optional[str] = Field(None, example="Seat")
-    Año: Optional[int] = Field(None, example=2020)
-    Propietario: Optional[str] = Field(None, example="Juan Pérez")
-    Alquiler: Optional[str] = Field(None, example="No", pattern="^(Si|No)$")
-    Operaciones: Optional[str] = Field(None, example="Seguimiento activo")
+    Modelo: Optional[str] = Field(None, example="Ibiza")
+    Color: Optional[str] = Field(None, example="Rojo")
+    Propiedad: Optional[str] = Field(None, example="Juan Pérez")
+    Alquiler: bool = Field(default=False)
+    Observaciones: Optional[str] = Field(None, example="Visto cerca del lugar")
+    Comprobado: bool = Field(default=False)
+    Sospechoso: bool = Field(default=False)
 
 # --- Schemas para Creación (POST) ---
 class CasoCreate(CasoBase):
@@ -46,8 +49,17 @@ class ArchivoExcelCreate(ArchivoExcelBase):
 class LecturaCreate(LecturaBase):
     ID_Archivo: int
 
-class VehiculoCreate(VehiculoBase):
-    pass
+class VehiculoCreate(BaseModel):
+    # Solo matrícula obligatoria, el resto opcional al crear
+    Matricula: str = Field(..., example="1234ABC")
+    Marca: Optional[str] = Field(None, example="Seat")
+    Modelo: Optional[str] = Field(None, example="Ibiza")
+    Color: Optional[str] = Field(None, example="Rojo")
+    Propiedad: Optional[str] = Field(None, example="Juan Pérez")
+    Alquiler: Optional[bool] = Field(None)
+    Observaciones: Optional[str] = Field(None, example="Visto cerca del lugar")
+    Comprobado: Optional[bool] = Field(None)
+    Sospechoso: Optional[bool] = Field(None)
 
 # --- Actualizar Schemas Lector ---
 
@@ -107,11 +119,15 @@ class Lector(LectorBase): # Hereda ID_Lector, Coordenada_X, Coordenada_Y
 
 # --- Schemas para Actualización (PUT) ---
 class VehiculoUpdate(BaseModel):
-    Marca: Optional[str] = None
-    Año: Optional[int] = None
-    Propietario: Optional[str] = None
-    Alquiler: Optional[str] = Field(None, pattern="^(Si|No)$")
-    Operaciones: Optional[str] = None
+    # Todos opcionales para permitir actualización parcial
+    Marca: Optional[str] = Field(None, example="Seat")
+    Modelo: Optional[str] = Field(None, example="Ibiza")
+    Color: Optional[str] = Field(None, example="Rojo")
+    Propiedad: Optional[str] = Field(None, example="Juan Pérez")
+    Alquiler: Optional[bool] = Field(None)
+    Observaciones: Optional[str] = Field(None, example="Actualización de notas")
+    Comprobado: Optional[bool] = Field(None)
+    Sospechoso: Optional[bool] = Field(None)
 
 # --- Schemas para Actualización (PUT/PATCH) ---
 # Nuevo schema para actualizar solo el estado
@@ -148,7 +164,8 @@ class Lectura(LecturaBase):
         from_attributes = True
 
 class Vehiculo(VehiculoBase):
-    Fecha_Añadido: datetime.date
+    ID_Vehiculo: int
+    total_lecturas_lpr_caso: Optional[int] = None # <-- NUEVO CAMPO
 
     class Config:
         from_attributes = True

@@ -1,173 +1,91 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Box, LoadingOverlay, Title, Stack, Text, Button, Group, Modal, Textarea, Tooltip, ActionIcon, Checkbox } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
-import { IconStarOff, IconPencil, IconTrash, IconCar } from '@tabler/icons-react';
+import { DataTable, type DataTableProps, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
+import { IconStarOff, IconPencil, IconTrash, IconCar, IconX } from '@tabler/icons-react';
 import { openConfirmModal } from '@mantine/modals';
 import dayjs from 'dayjs';
 import _ from 'lodash';
-import apiClient from '../../services/api';
+import type { Lectura, Lector } from '../../types/data';
 
-// Reutilizar interfaces (asegurarse que están disponibles o importarlas)
-interface Lector { ID_Lector: string; Nombre?: string | null; Carretera?: string | null; Sentido?: string | null; Orientacion?: string | null; }
-interface Lectura {
-    ID_Lectura: number; Matricula: string; Fecha_y_Hora: string; Carril?: string | null; ID_Lector?: string | null;
-    relevancia: { ID_Relevante: number, Nota?: string | null } | null; // Relevancia es OBLIGATORIA aquí
-    lector?: Lector | null;
-}
-
+// --- NUEVA INTERFAZ DE PROPS ---
 interface LecturasRelevantesPanelProps {
-    casoId: number;
+    // Datos
+    lecturas: Lectura[];
+    loading: boolean;
+    totalRecords: number;
+    // Paginación
+    page: number;
+    onPageChange: (page: number) => void;
+    pageSize: number;
+    // Ordenación
+    sortStatus: DataTableSortStatus<Lectura>;
+    onSortStatusChange: (status: DataTableSortStatus<Lectura>) => void;
+    // Selección
+    selectedRecordIds: number[];
+    onSelectionChange: (selectedIds: number[]) => void;
+    // Acciones
+    onEditNota: (lectura: Lectura) => void;
+    onDesmarcar: (idLectura: number) => void;
+    onDesmarcarSeleccionados: () => void;
+    onGuardarVehiculo: (lectura: Lectura) => void;
+    onGuardarVehiculosSeleccionados: () => void;
 }
 
-function LecturasRelevantesPanel({ casoId }: LecturasRelevantesPanelProps) {
-    const [loading, setLoading] = useState(true);
-    const [lecturas, setLecturas] = useState<Lectura[]>([]);
-    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'asc' });
-    const [page, setPage] = useState(1);
-    const PAGE_SIZE = 15;
-    const [editingLectura, setEditingLectura] = useState<Lectura | null>(null);
-    const [notaEdit, setNotaEdit] = useState('');
-    const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
+function LecturasRelevantesPanel({
+    lecturas,
+    loading,
+    totalRecords,
+    page,
+    onPageChange,
+    pageSize,
+    sortStatus,
+    onSortStatusChange,
+    selectedRecordIds,
+    onSelectionChange,
+    onEditNota,
+    onDesmarcar,
+    onDesmarcarSeleccionados,
+    onGuardarVehiculo,
+    onGuardarVehiculosSeleccionados,
+}: LecturasRelevantesPanelProps) {
 
-    // Cargar datos
-    const fetchLecturasRelevantes = async () => {
-        setLoading(true);
-        try {
-            const response = await fetch(`http://localhost:8000/casos/${casoId}/lecturas_relevantes`);
-            if (!response.ok) {
-                throw new Error(`Error ${response.status}: No se pudieron cargar las lecturas relevantes`);
-            }
-            const data = await response.json();
-            setLecturas(data as Lectura[]);
-        } catch (error) {
-            console.error("Error fetching lecturas relevantes:", error);
-            notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Error desconocido', color: 'red' });
-        } finally {
-            setLoading(false);
-        }
-    };
+    // --- Lógica de Selección (adaptada a props y con useCallback) ---
+    const handleCheckboxChange = useCallback((id: number, checked: boolean) => {
+        const newSelectedIds = checked
+            ? [...selectedRecordIds, id]
+            : selectedRecordIds.filter((recordId) => recordId !== id);
+        onSelectionChange(newSelectedIds);
+    }, [selectedRecordIds, onSelectionChange]);
 
-    useEffect(() => {
-        fetchLecturasRelevantes();
-    }, [casoId]);
+    const handleSelectAll = useCallback((checked: boolean) => {
+        const allIds = Array.isArray(lecturas) ? lecturas.map(l => l.ID_Lectura) : [];
+        onSelectionChange(checked ? allIds : []);
+    }, [lecturas, onSelectionChange]);
 
-    // Datos para la tabla
-    const sortedRecords = React.useMemo(() => {
-        const data = _.orderBy(lecturas, [sortStatus.columnAccessor], [sortStatus.direction]);
-        return data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-    }, [lecturas, sortStatus, page]);
+    // --- Datos Paginados/Ordenados (Asume que el padre los pasa así) ---
+    // Si el padre pasa los datos ya filtrados/paginados/ordenados, esta línea se va
+    // const sortedAndPaginatedRecords = lecturas; 
+    // Si el padre pasa TODOS los datos y este componente pagina/ordena:
+    const sortedAndPaginatedRecords = useMemo(() => {
+       let data = Array.isArray(lecturas) ? [...lecturas] : [];
+       if (sortStatus?.columnAccessor) {
+           data = _.orderBy(data, [sortStatus.columnAccessor], [sortStatus.direction]);
+       }
+       const start = (page - 1) * pageSize;
+       const end = start + pageSize;
+       return data.slice(start, end);
+   }, [lecturas, sortStatus, page, pageSize]);
 
-    // --- Acciones --- 
-    const openEditModal = (lectura: Lectura) => {
-        setEditingLectura(lectura);
-        setNotaEdit(lectura.relevancia?.Nota || '');
-    };
-
-    const handleGuardarNota = async () => {
-        if (!editingLectura || !editingLectura.relevancia) return;
-        const idRelevante = editingLectura.relevancia.ID_Relevante;
-        setLoading(true);
-        try {
-            const response = await fetch(`http://localhost:8000/lecturas_relevantes/${idRelevante}/nota`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ Nota: notaEdit }),
-            });
-            if (!response.ok) {
-                throw new Error('No se pudo guardar la nota.');
-            }
-            notifications.show({ title: 'Éxito', message: 'Nota actualizada.', color: 'green' });
-            setEditingLectura(null);
-            fetchLecturasRelevantes(); // Recargar datos
-        } catch (error) {
-            notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Error desconocido', color: 'red' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleDesmarcar = async (idLectura: number) => {
-        if (!confirm(`¿Seguro que quieres desmarcar esta lectura (${idLectura}) como relevante?`)) return;
-        setLoading(true);
-        try {
-            const response = await fetch(`http://localhost:8000/lecturas/${idLectura}/desmarcar_relevante`, { method: 'DELETE' });
-            if (!response.ok) {
-                throw new Error('No se pudo desmarcar la lectura.');
-            }
-            notifications.show({ title: 'Éxito', message: `Lectura ${idLectura} desmarcada.`, color: 'green' });
-            fetchLecturasRelevantes(); // Recargar datos
-        } catch (error) {
-             notifications.show({ title: 'Error', message: error instanceof Error ? error.message : 'Error desconocido', color: 'red' });
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // --- Handler para el cambio del checkbox individual ---
-    const handleCheckboxChange = (id: number, checked: boolean) => {
-        setSelectedRecordIds((prevIds) =>
-            checked ? [...prevIds, id] : prevIds.filter((recordId) => recordId !== id)
-        );
-    };
-
-    // --- Handler para seleccionar/deseleccionar TODOS --- 
-    const handleSelectAll = (checked: boolean) => {
-        setSelectedRecordIds(checked ? lecturas.map(l => l.ID_Lectura) : []);
-    };
-
-    const handleSaveVehiculoFromLectura = async (lectura: Lectura) => {
-        if (!lectura.Matricula) {
-            notifications.show({ title: 'Error', message: 'La lectura no tiene matrícula asociada.', color: 'red' });
-            return;
-        }
-
-        openConfirmModal({
-            title: 'Confirmar Guardado',
-            centered: true,
-            children: (
-                <Text size="sm">
-                    ¿Estás seguro de que quieres guardar el vehículo con matrícula {lectura.Matricula} en la tabla general de Vehículos?
-                </Text>
-            ),
-            labels: { confirm: 'Guardar Vehículo', cancel: "Cancelar" },
-            confirmProps: { color: 'green' },
-            onConfirm: async () => {
-                setLoading(true);
-                try {
-                    const response = await fetch(`${apiClient.defaults.baseURL}/vehiculos`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ Matricula: lectura.Matricula }),
-                    });
-
-                    if (response.status === 201) {
-                        notifications.show({ title: 'Éxito', message: `Vehículo ${lectura.Matricula} guardado.`, color: 'green' });
-                    } else if (response.status === 400 || response.status === 409) {
-                        notifications.show({ title: 'Vehículo Existente', message: `El vehículo ${lectura.Matricula} ya existe.`, color: 'blue' });
-                    } else {
-                        const errorData = await response.json().catch(() => ({ detail: 'Error desconocido' }));
-                        throw new Error(errorData.detail || `Error ${response.status}`);
-                    }
-                } catch (error: any) {
-                    notifications.show({ title: 'Error', message: error.message || 'No se pudo guardar.', color: 'red' });
-                } finally {
-                    setLoading(false);
-                }
-            },
-        });
-    };
-
-    // --- Columnas (Añadir columna checkbox al principio) ---
+    // --- Columnas (adaptadas para usar props) ---
     const columns: DataTableColumn<Lectura>[] = useMemo(() => {
-        // --- Calcular estado del checkbox "Seleccionar Todo" ---
-        const allSelected = lecturas.length > 0 && selectedRecordIds.length === lecturas.length;
-        const someSelected = selectedRecordIds.length > 0 && selectedRecordIds.length < lecturas.length;
+        const safeLecturas = Array.isArray(lecturas) ? lecturas : [];
+        const allSelected = safeLecturas.length > 0 && selectedRecordIds.length === safeLecturas.length;
+        const someSelected = selectedRecordIds.length > 0 && selectedRecordIds.length < safeLecturas.length;
 
         return [
         {
             accessor: 'select', 
-            // --- Renderizar Checkbox en la Cabecera --- 
             title: (
                 <Checkbox
                     aria-label="Seleccionar todas las filas"
@@ -177,7 +95,6 @@ function LecturasRelevantesPanel({ casoId }: LecturasRelevantesPanelProps) {
                 />
             ),
             width: '0%',
-            textAlign: 'center',
             styles: {
                  cell: {
                      paddingLeft: 'var(--mantine-spacing-xs)',
@@ -189,7 +106,6 @@ function LecturasRelevantesPanel({ casoId }: LecturasRelevantesPanelProps) {
                     aria-label={`Seleccionar fila ${record.ID_Lectura}`}
                     checked={selectedRecordIds.includes(record.ID_Lectura)}
                     onChange={(e) => handleCheckboxChange(record.ID_Lectura, e.currentTarget.checked)}
-                    // Detener la propagación para evitar que el clic en el checkbox seleccione/deseleccione la fila entera (si highlightOnHover está activo)
                     onClick={(e) => e.stopPropagation()}
                 />
             ),
@@ -202,17 +118,17 @@ function LecturasRelevantesPanel({ casoId }: LecturasRelevantesPanelProps) {
             render: (record) => (
                 <Group gap="xs" justify="center" wrap="nowrap">
                     <Tooltip label="Editar Nota">
-                        <ActionIcon variant="subtle" color="blue" onClick={() => openEditModal(record)} disabled={!record.relevancia}>
+                        <ActionIcon variant="subtle" color="blue" onClick={() => onEditNota(record)} disabled={!record.relevancia}>
                             <IconPencil size={16} />
                         </ActionIcon>
                     </Tooltip>
                     <Tooltip label="Guardar Vehículo">
-                         <ActionIcon variant="subtle" color="green" onClick={() => handleSaveVehiculoFromLectura(record)} disabled={!record.Matricula}>
+                         <ActionIcon variant="subtle" color="green" onClick={() => onGuardarVehiculo(record)} disabled={!record.Matricula}>
                              <IconCar size={16} />
                          </ActionIcon>
                      </Tooltip>
                     <Tooltip label="Desmarcar como Relevante">
-                         <ActionIcon variant="subtle" color="red" onClick={() => handleDesmarcar(record.ID_Lectura)} disabled={!record.relevancia}>
+                         <ActionIcon variant="subtle" color="red" onClick={() => onDesmarcar(record.ID_Lectura)} disabled={!record.relevancia}>
                             <IconStarOff size={16} />
                         </ActionIcon>
                     </Tooltip>
@@ -221,9 +137,7 @@ function LecturasRelevantesPanel({ casoId }: LecturasRelevantesPanelProps) {
         },
         { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
         { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
-        { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r) => r.lector?.ID_Lector || '-', sortable: true, width: 150 }, 
-        { accessor: 'lector.Sentido', title: 'Sentido', render: (r) => r.lector?.Sentido || '-', sortable: true, width: 100 },
-        { accessor: 'lector.Carretera', title: 'Carretera', render: (r) => r.lector?.Carretera || '-', sortable: true, width: 100 },
+        { accessor: 'ID_Lector', title: 'ID Lector', render: (r) => r.ID_Lector || '-', sortable: true, width: 150 }, 
         { accessor: 'Carril', title: 'Carril', render: (r) => r.Carril || '-', sortable: true, width: 70 },
         { 
             accessor: 'relevancia.Nota',
@@ -232,26 +146,50 @@ function LecturasRelevantesPanel({ casoId }: LecturasRelevantesPanelProps) {
             width: 200,
         },
     ];
-    }, [openEditModal, handleSaveVehiculoFromLectura, handleDesmarcar, lecturas, selectedRecordIds]);
+    }, [lecturas, selectedRecordIds, onEditNota, onGuardarVehiculo, onDesmarcar, handleCheckboxChange, handleSelectAll]);
 
     return (
         <Box style={{ position: 'relative' }}>
             <LoadingOverlay visible={loading} />
             <Stack>
-                <Title order={4}>Lecturas Marcadas como Relevantes ({lecturas.length})</Title>
-                {lecturas.length === 0 && !loading && (
+                <Group justify="space-between" align="center" mb="sm">
+                    <Title order={4}>Lecturas Marcadas como Relevantes ({totalRecords})</Title>
+                    <Group gap="xs"> 
+                        <Button
+                            color="red"
+                            variant="light"
+                            size="xs"
+                            leftSection={<IconTrash size={16} />}
+                            disabled={selectedRecordIds.length === 0 || loading}
+                            onClick={onDesmarcarSeleccionados}
+                        >
+                            Desmarcar Selección ({selectedRecordIds.length})
+                        </Button>
+                        <Button
+                           color="green"
+                           variant="light"
+                           size="xs"
+                           leftSection={<IconCar size={16} />}
+                           disabled={selectedRecordIds.length === 0 || loading}
+                           onClick={onGuardarVehiculosSeleccionados}
+                       >
+                           Guardar Vehículos ({selectedRecordIds.length})
+                       </Button>
+                    </Group>
+                </Group>
+                {totalRecords === 0 && !loading && (
                     <Text c="dimmed">No hay lecturas marcadas como relevantes para este caso.</Text>
                 )}
-                {lecturas.length > 0 && (
+                {totalRecords > 0 && (
                     <DataTable<Lectura>
-                        records={sortedRecords}
+                        records={sortedAndPaginatedRecords}
                         columns={columns}
-                        totalRecords={lecturas.length}
-                        recordsPerPage={PAGE_SIZE}
+                        totalRecords={totalRecords}
+                        recordsPerPage={pageSize}
                         page={page}
-                        onPageChange={setPage}
+                        onPageChange={onPageChange}
                         sortStatus={sortStatus}
-                        onSortStatusChange={setSortStatus}
+                        onSortStatusChange={onSortStatusChange}
                         idAccessor="ID_Lectura"
                         withTableBorder
                         borderRadius="sm"
@@ -259,31 +197,11 @@ function LecturasRelevantesPanel({ casoId }: LecturasRelevantesPanelProps) {
                         striped
                         highlightOnHover
                         minHeight={200}
+                        noRecordsText=""
+                        noRecordsIcon={<></>}
                     />
                 )}
             </Stack>
-
-            {/* Modal para Editar Nota */} 
-            <Modal 
-                opened={editingLectura !== null}
-                onClose={() => setEditingLectura(null)}
-                title={`Editar Nota - Lectura ${editingLectura?.ID_Lectura}`}
-                centered
-            >
-                <Stack>
-                     <Textarea
-                        label="Nota"
-                        value={notaEdit}
-                        onChange={(event) => setNotaEdit(event.currentTarget.value)}
-                        autosize
-                        minRows={3}
-                     />
-                    <Group justify="flex-end">
-                        <Button variant="default" onClick={() => setEditingLectura(null)}>Cancelar</Button>
-                        <Button onClick={handleGuardarNota} loading={loading}>Guardar Nota</Button>
-                    </Group>
-                </Stack>
-            </Modal>
         </Box>
     );
 }

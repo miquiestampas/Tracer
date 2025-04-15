@@ -20,6 +20,7 @@ import pathlib # Importar pathlib para rutas absolutas
 from dateutil import parser # Importar dateutil.parser
 import re # Importar re para expresiones regulares
 from sqlalchemy import select, distinct # Importar select y distinct
+from sqlalchemy.exc import IntegrityError # Importar IntegrityError
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -45,14 +46,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     logger.error(f"Error de validación para request: {request.method} {request.url}")
     # Convertir los errores a un formato logueable/serializable
     error_details = jsonable_encoder(exc.errors())
-    logger.error(f"Detalles del error: {error_details}")
+    logger.error(f"Detalles del error: {error_details}") 
     # Devolver la respuesta 422 estándar pero asegurando que el error se logueó
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": error_details},
     )
 
-# --- Configuración CORS ---
+# --- Configuración CORS --- 
 origins = [
     "*" # Permitir cualquier origen temporalmente
 ]
@@ -61,8 +62,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins, # Usar la lista comodín
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
 
 # --- Directorio para guardar archivos subidos (RUTA ABSOLUTA) ---
@@ -163,7 +164,7 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
         logger.warning(f"Intento de crear caso duplicado: {caso.Nombre_del_Caso} ({caso.Año})")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ya existe un caso con el mismo nombre y año.")
     try:
-        caso_data = caso.model_dump(exclude_unset=True)
+        caso_data = caso.model_dump(exclude_unset=True) 
         estado_str = models.EstadoCasoEnum.NUEVO.value # Default
         if 'Estado' in caso_data and caso_data['Estado'] is not None:
             estado_str = caso_data['Estado']
@@ -180,7 +181,7 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
             Estado=estado_str # Asignar el string validado
         )
         db.add(db_caso)
-        db.commit()
+        db.commit() 
         db.refresh(db_caso)
         logger.info(f"Caso creado exitosamente con ID: {db_caso.ID_Caso}")
         return db_caso
@@ -318,7 +319,7 @@ async def upload_excel(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"No se pudo guardar el archivo subido '{filename}'.")
     finally:
         excel_file.file.close()
-
+    
     # --- Leer Excel y Mapeo ---
     try:
         df = pd.read_excel(file_location)
@@ -337,7 +338,7 @@ async def upload_excel(
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aplicar mapeo de columnas: {e}.")
 
     # --- Validar Columnas Obligatorias ---
-    columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
+    columnas_obligatorias = ['Matricula', 'Fecha', 'Hora'] 
     if tipo_archivo == 'LPR':
         columnas_obligatorias.append('ID_Lector')
     elif tipo_archivo == 'GPS':
@@ -379,7 +380,7 @@ async def upload_excel(
                      fecha_hora_final = datetime.datetime.combine(valor_fecha_excel.date(), valor_hora_excel)
                 elif isinstance(valor_fecha_excel, datetime.date) and isinstance(valor_hora_excel, datetime.time):
                      fecha_hora_final = datetime.datetime.combine(valor_fecha_excel, valor_hora_excel)
-                else:
+                else: 
                     fecha_str = str(valor_fecha_excel).split()[0]
                     hora_str = str(valor_hora_excel).split()[-1]
                     try:
@@ -394,7 +395,7 @@ async def upload_excel(
             id_lector = None
             coord_x_final = get_optional_float(row.get('Coordenada_X'))
             coord_y_final = get_optional_float(row.get('Coordenada_Y'))
-            
+
             if tipo_archivo == 'LPR':
                 id_lector_str = str(row['ID_Lector']).strip() if pd.notna(row['ID_Lector']) else None
                 if not id_lector_str: raise ValueError("Falta ID_Lector para LPR")
@@ -433,7 +434,7 @@ async def upload_excel(
             lectura_data = {
                 "ID_Archivo": db_archivo.ID_Archivo, "Matricula": matricula,
                 "Fecha_y_Hora": fecha_hora_final, "Carril": carril, "Velocidad": velocidad,
-                "ID_Lector": id_lector, 
+                "ID_Lector": id_lector,
                 "Coordenada_X": coord_x_final, "Coordenada_Y": coord_y_final,
                 "Tipo_Fuente": tipo_archivo
             }
@@ -652,7 +653,7 @@ def update_lector(lector_id: str, lector_update: schemas.LectorUpdate, db: Sessi
     logger.debug(f"[Update Lector {lector_id}] Actualizando otros campos: {update_data}")
     for key, value in update_data.items():
         if key not in ['Coordenada_X', 'Coordenada_Y']:
-             setattr(db_lector, key, value)
+            setattr(db_lector, key, value)
 
     try:
         db.commit()
@@ -677,56 +678,154 @@ def delete_lector(lector_id: str, db: Session = Depends(get_db)):
     return None
 
 # === VEHICULOS ===
-@app.post("/vehiculos", response_model=schemas.Vehiculo, status_code=status.HTTP_201_CREATED)
+@app.post("/vehiculos", response_model=schemas.Vehiculo, status_code=status.HTTP_201_CREATED, tags=["Vehículos"])
 def create_vehiculo(vehiculo: schemas.VehiculoCreate, db: Session = Depends(get_db)):
-    db_vehiculo_existente = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == vehiculo.Matricula).first()
-    if db_vehiculo_existente:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Ya existe vehículo con matrícula '{vehiculo.Matricula}'")
-    # Usar model_dump() para Pydantic V2
-    vehiculo_data = vehiculo.model_dump()
-    db_vehiculo = models.Vehiculo(**vehiculo_data)
-    db.add(db_vehiculo)
-    db.commit()
-    db.refresh(db_vehiculo)
-    return db_vehiculo
+    """Crea un nuevo vehículo o devuelve el existente si la matrícula ya existe."""
+    db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == vehiculo.Matricula).first()
+    if db_vehiculo:
+        # Si ya existe, podrías devolver 409 Conflict o devolver el existente (como hacemos aquí)
+        # raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Vehículo con esta matrícula ya existe")
+        return db_vehiculo # Devolvemos el existente
+    
+    # Crear nuevo vehículo
+    db_vehiculo = models.Vehiculo(**vehiculo.model_dump(exclude_unset=True))
+    try:
+        # --- Indentar este bloque --- 
+        db.add(db_vehiculo)
+        db.commit()
+        db.refresh(db_vehiculo)
+        logger.info(f"Vehículo creado con matrícula: {db_vehiculo.Matricula}")
+        return db_vehiculo
+        # --- Fin bloque indentado ---
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"Error de integridad al crear vehículo {vehiculo.Matricula}: {e}")
+        # Esto podría pasar si hay una condición de carrera, aunque el check inicial debería prevenirlo
+        existing_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == vehiculo.Matricula).first()
+        if existing_vehiculo:
+             return existing_vehiculo # Devolver el que se creó concurrentemente
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al crear vehículo: {e}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error inesperado al crear vehículo {vehiculo.Matricula}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado al crear vehículo: {e}")
 
-@app.get("/vehiculos", response_model=List[schemas.Vehiculo])
-def read_vehiculos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    vehiculos = db.query(models.Vehiculo).offset(skip).limit(limit).all()
-    return vehiculos
+@app.put("/vehiculos/{vehiculo_id}", response_model=schemas.Vehiculo, tags=["Vehículos"])
+def update_vehiculo(vehiculo_id: int, vehiculo_update: schemas.VehiculoUpdate, db: Session = Depends(get_db)):
+    """Actualiza los detalles de un vehículo existente por su ID numérico."""
+    db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.ID_Vehiculo == vehiculo_id).first()
+    if not db_vehiculo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con ID {vehiculo_id} no encontrado")
 
-@app.get("/vehiculos/{matricula}", response_model=schemas.Vehiculo)
-def read_vehiculo(matricula: str, db: Session = Depends(get_db)):
-    matricula_decoded = unquote(matricula)
-    db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == matricula_decoded).first()
-    if db_vehiculo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehículo no encontrado")
-    return db_vehiculo
-
-@app.put("/vehiculos/{matricula}", response_model=schemas.Vehiculo)
-def update_vehiculo(matricula: str, vehiculo_update: schemas.VehiculoUpdate, db: Session = Depends(get_db)):
-    matricula_decoded = unquote(matricula)
-    db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == matricula_decoded).first()
-    if db_vehiculo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehículo no encontrado")
-    # Usar model_dump() para Pydantic V2
     update_data = vehiculo_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
-        if key == 'Matricula': continue # No permitir cambiar matrícula
         setattr(db_vehiculo, key, value)
-    db.commit()
-    db.refresh(db_vehiculo)
-    return db_vehiculo
 
-@app.delete("/vehiculos/{matricula}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_vehiculo(matricula: str, db: Session = Depends(get_db)):
-    matricula_decoded = unquote(matricula)
-    db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == matricula_decoded).first()
-    if db_vehiculo is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vehículo no encontrado")
-    db.delete(db_vehiculo)
-    db.commit()
-    return None
+    try:
+        # --- Indentar este bloque --- 
+        db.commit()
+        db.refresh(db_vehiculo)
+        logger.info(f"Vehículo ID {vehiculo_id} (Matrícula: {db_vehiculo.Matricula}) actualizado.")
+        return db_vehiculo
+        # --- Fin bloque indentado ---
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al actualizar vehículo ID {vehiculo_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al actualizar vehículo: {e}")
+
+@app.get("/casos/{caso_id}/vehiculos", response_model=List[schemas.Vehiculo], tags=["Vehículos"])
+def get_vehiculos_por_caso(caso_id: int, db: Session = Depends(get_db)):
+    """
+    Obtiene la lista de vehículos cuyas matrículas aparecen en las lecturas 
+    (LPR o GPS) asociadas a los archivos de un caso específico.
+    Incluye el conteo de lecturas LPR para cada vehículo DENTRO de este caso.
+    """
+    # Verificar que el caso existe
+    caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if not caso:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Caso con ID {caso_id} no encontrado")
+
+    # Subconsulta para obtener las matrículas únicas de las lecturas de este caso
+    matriculas_en_caso_query = db.query(models.Lectura.Matricula)\
+        .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+        .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+        .distinct()
+
+    # Obtener los vehículos cuya matrícula está en la subconsulta
+    vehiculos_db = db.query(models.Vehiculo)\
+        .filter(models.Vehiculo.Matricula.in_(matriculas_en_caso_query))\
+        .order_by(models.Vehiculo.Matricula)\
+        .all()
+
+    # --- NUEVO: Calcular conteo de lecturas LPR por vehículo DENTRO del caso --- 
+    vehiculos_con_conteo = []
+    for vehiculo in vehiculos_db:
+        # Contar lecturas LPR para esta matrícula DENTRO de este caso
+        count_lpr = db.query(func.count(models.Lectura.ID_Lectura))\
+                      .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                      .filter(
+                          models.ArchivoExcel.ID_Caso == caso_id, 
+                          models.Lectura.Matricula == vehiculo.Matricula,
+                          models.Lectura.Tipo_Fuente == 'LPR' # Solo contar LPR
+                      ).scalar() or 0
+        
+        # Convertir el objeto SQLAlchemy a un diccionario o usar el schema
+        vehiculo_schema = schemas.Vehiculo.model_validate(vehiculo, from_attributes=True)
+        vehiculo_schema.total_lecturas_lpr_caso = count_lpr # Asignar el conteo
+        vehiculos_con_conteo.append(vehiculo_schema)
+        logger.debug(f"Vehículo {vehiculo.Matricula}: Conteo LPR en caso {caso_id} = {count_lpr}")
+    # --- FIN NUEVO ---
+    
+    logger.info(f"Encontrados {len(vehiculos_con_conteo)} vehículos para el caso ID {caso_id} con conteo LPR.")
+    return vehiculos_con_conteo # Devolver la lista con el conteo añadido
+
+@app.get("/vehiculos/{vehiculo_id}/lecturas", response_model=List[schemas.Lectura], tags=["Vehículos"])
+def get_lecturas_por_vehiculo(
+    vehiculo_id: int, 
+    caso_id: Optional[int] = Query(None, description="ID del caso opcional para filtrar lecturas"), 
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene todas las lecturas (LPR y GPS) asociadas a un vehículo por su ID_Vehiculo.
+    Opcionalmente filtra por caso_id si se proporciona.
+    """
+    db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.ID_Vehiculo == vehiculo_id).first()
+    if not db_vehiculo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con ID {vehiculo_id} no encontrado")
+
+    query = db.query(models.Lectura).filter(models.Lectura.Matricula == db_vehiculo.Matricula)
+
+    if caso_id is not None:
+        # Si se proporciona caso_id, necesitamos unir con ArchivoExcel para filtrar
+        query = query.join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                     .filter(models.ArchivoExcel.ID_Caso == caso_id)
+
+    lecturas = query.order_by(models.Lectura.Fecha_y_Hora.asc()).all()
+    
+    logger.info(f"Encontradas {len(lecturas)} lecturas para el vehículo ID {vehiculo_id} (Matrícula: {db_vehiculo.Matricula})" + (f" en caso ID {caso_id}" if caso_id else ""))
+    # Devolvemos las lecturas con el lector asociado cargado (si existe)
+    return [schemas.Lectura.model_validate(lect, from_attributes=True) for lect in lecturas]
+
+@app.delete("/vehiculos/{vehiculo_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Vehículos"])
+def delete_vehiculo(vehiculo_id: int, db: Session = Depends(get_db)):
+    """Elimina un vehículo por su ID numérico."""
+    db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.ID_Vehiculo == vehiculo_id).first()
+    if not db_vehiculo:
+        logger.warning(f"[DELETE /vehiculos] Vehículo con ID {vehiculo_id} no encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con ID {vehiculo_id} no encontrado")
+
+    matricula_log = db_vehiculo.Matricula # Guardar matrícula para log antes de borrar
+    try:
+        # --- Indentar este bloque --- 
+        db.delete(db_vehiculo)
+        db.commit()
+        logger.info(f"[DELETE /vehiculos] Vehículo ID {vehiculo_id} (Matrícula: {matricula_log}) eliminado exitosamente.")
+        return None # Retornar None para 204 No Content
+        # --- Fin bloque indentado ---
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[DELETE /vehiculos] Error al eliminar vehículo ID {vehiculo_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al eliminar el vehículo: {e}")
 
 
 # === LECTURAS ===
@@ -743,7 +842,7 @@ def read_lecturas(
     caso_ids: Optional[List[int]] = Query(None), 
     carretera_ids: Optional[List[str]] = Query(None),
     sentido: Optional[List[str]] = Query(None),
-    matricula: Optional[str] = None, 
+    matricula: Optional[str] = None,
     tipo_fuente: Optional[str] = Query(None),
     solo_relevantes: Optional[bool] = False,
     db: Session = Depends(get_db)
@@ -921,14 +1020,14 @@ def actualizar_nota_relevante(id_relevante: int, nota_update: schemas.LecturaRel
 
 # === ENDPOINT DE PRUEBA ===
 @app.get("/ping")
-async def simple_ping():
+async def pong():
     logger.info("¡Recibida solicitud GET /ping!")
     return {"message": "pong"}
 
 # --- Para ejecutar con Uvicorn (si no usas un comando externo) ---
 # import uvicorn
 # if __name__ == "__main__":
-#    uvicorn.run(app, host="0.0.0.0", port=8000)
+#    uvicorn.run(app, host="0.0.0.0", port=8000) 
 
 # --- NUEVO ENDPOINT POST PARA INTERSECCIÓN (Usar schemas.LecturaIntersectionRequest) --- 
 @app.post("/lecturas/por_matriculas_y_filtros_combinados", response_model=List[schemas.Lectura])

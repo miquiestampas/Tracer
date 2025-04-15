@@ -94,13 +94,19 @@ class LecturaRelevante(Base):
 
 class Vehiculo(Base):
     __tablename__ = "Vehiculos"
-    Matricula = Column(Text, primary_key=True, index=True, nullable=False)
-    Marca = Column(Text)
-    Año = Column(Integer)
-    Propietario = Column(Text)
-    Alquiler = Column(Text, CheckConstraint("Alquiler IN ('Si', 'No')"))
-    Operaciones = Column(Text, nullable=True) # Cambiado a Text por si es largo
-    Fecha_Añadido = Column(Date, nullable=False, default=datetime.date.today)
+    
+    ID_Vehiculo = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    Matricula = Column(Text, unique=True, index=True, nullable=False)
+    Marca = Column(Text, nullable=True)
+    Modelo = Column(Text, nullable=True) # Nuevo
+    Color = Column(Text, nullable=True) # Nuevo
+    Propiedad = Column(Text, nullable=True) # Renombrado de Propietario
+    Alquiler = Column(Boolean, default=False, nullable=False) # Cambiado a Boolean
+    Observaciones = Column(Text, nullable=True) # Renombrado de Operaciones
+    Comprobado = Column(Boolean, default=False, nullable=False) # Nuevo
+    Sospechoso = Column(Boolean, default=False, nullable=False) # Nuevo
+    # Año = Column(Integer) # Eliminado
+    # Fecha_Añadido = Column(Date, nullable=False, default=datetime.date.today) # Eliminado
 
 # Nueva Tabla para Búsquedas Guardadas
 class SavedSearch(Base):

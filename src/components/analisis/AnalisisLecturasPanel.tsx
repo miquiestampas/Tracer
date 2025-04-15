@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper } from '@mantine/core';
-import { TimeInput } from '@mantine/dates';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme } from '@mantine/core';
+import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar } from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
-import { DataTable, DataTableSortStatus } from 'mantine-datatable';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar } from '@tabler/icons-react';
+import { notifications, showNotification } from '@mantine/notifications';
+import { DataTable, DataTableSortStatus, DataTableColumn } from 'mantine-datatable';
 import dayjs from 'dayjs';
 import _ from 'lodash';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import { format } from 'date-fns';
+import type { Lectura, Lector } from '../../types/data'; // Importar tipos necesarios
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -25,7 +27,8 @@ const customStyles = `
   }
 `;
 
-// --- Interfaces (Asegurarse que estén completas) ---
+// --- Eliminar Interfaces Locales Duplicadas ---
+/*
 interface Lector {
     ID_Lector: string;
     Nombre?: string | null;
@@ -52,6 +55,7 @@ interface Lectura {
     lector?: Lector | null;
     pasos?: number;
 }
+*/
 
 type SelectOption = { value: string; label: string };
 
@@ -74,6 +78,7 @@ function AnalisisLecturasPanel({
     addInteractedMatricula                             // <-- Recibir prop
 }: AnalisisLecturasPanelProps) {
     const iconStyle = { width: rem(16), height: rem(16) }; // Añadir iconStyle
+    const theme = useMantineTheme();
 
     // --- Estados (completos) ---
     const [fechaInicio, setFechaInicio] = useState<Date | null>(null);
@@ -100,6 +105,9 @@ function AnalisisLecturasPanel({
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 15;
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
+    const [allSelected, setAllSelected] = useState(false);
+    const [someSelected, setSomeSelected] = useState(false);
+    const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
 
     // --- Procesar datos (completo) ---
     const sortedAndPaginatedResults = useMemo(() => {
@@ -441,6 +449,75 @@ function AnalisisLecturasPanel({
         setLoading(false);
     };
 
+    const columns: DataTableColumn<Lectura>[] = useMemo(() => {
+        // Estado del checkbox "Seleccionar Todo" para la página actual
+        const recordIdsOnPageSet = new Set(sortedAndPaginatedResults.map(r => r.ID_Lectura));
+        const selectedIdsOnPage = selectedRecords.filter(sr => recordIdsOnPageSet.has(sr.ID_Lectura));
+        const allRecordsOnPageSelected = sortedAndPaginatedResults.length > 0 && selectedIdsOnPage.length === sortedAndPaginatedResults.length;
+        const indeterminate = selectedIdsOnPage.length > 0 && !allRecordsOnPageSelected;
+
+        return [
+            {
+                accessor: 'select',
+                title: (
+                    <Checkbox
+                        aria-label="Seleccionar todas las filas visibles"
+                        checked={allRecordsOnPageSelected}
+                        indeterminate={indeterminate}
+                        onChange={() => {
+                            setSelectedRecords(currentSelected => {
+                                const selectedIdsSet = new Set(currentSelected.map(sr => sr.ID_Lectura));
+                                const recordsToAdd = sortedAndPaginatedResults.filter(r => !selectedIdsSet.has(r.ID_Lectura));
+                                const recordIdsOnPage = sortedAndPaginatedResults.map(r => r.ID_Lectura);
+
+                                if (allRecordsOnPageSelected) {
+                                    // Deseleccionar solo los de esta página
+                                    return currentSelected.filter(r => !recordIdsOnPage.includes(r.ID_Lectura));
+                                } else {
+                                    // Seleccionar todos los de esta página (añadir los que falten)
+                                    return [...currentSelected, ...recordsToAdd];
+                                }
+                            });
+                        }}
+                        size="xs"
+                    />
+                ),
+                width: rem(40), // Ancho fijo
+                textAlign: 'center',
+                render: (record) => (
+                    <Checkbox
+                        aria-label={`Seleccionar fila ID ${record.ID_Lectura}`}
+                        checked={selectedRecords.some(sr => sr.ID_Lectura === record.ID_Lectura)}
+                        onChange={() => {
+                            setSelectedRecords(currentSelected =>
+                                currentSelected.some(sr => sr.ID_Lectura === record.ID_Lectura)
+                                    ? currentSelected.filter(sr => sr.ID_Lectura !== record.ID_Lectura)
+                                    : [...currentSelected, record]
+                            );
+                        }}
+                        size="xs"
+                        onClick={(e) => e.stopPropagation()} // Evita activar onRowClick
+                    />
+                ),
+            },
+            { accessor: 'relevancia', title: 'Rel', width: 40, textAlign: 'center', render: (record) => 
+                record.relevancia ? (
+                    <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
+                        <IconStar size={16} color="orange" />
+                    </Tooltip>
+                ) : null,
+            },
+            { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
+            { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
+            { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true, width: 150 },
+            { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true, width: 100 },
+            { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true, width: 100 },
+            { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true, width: 100 },
+            { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true, width: 70 },
+            { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 },
+        ];
+    }, [sortedAndPaginatedResults, selectedRecords]);
+
     // --- Renderizado (completo) ---
     return (
         <Box style={{ position: 'relative' }}>
@@ -622,28 +699,7 @@ function AnalisisLecturasPanel({
                            striped
                            highlightOnHover
                            records={sortedAndPaginatedResults}
-                           columns={[
-                               {
-                                 accessor: 'relevancia',
-                                 title: 'Rel',
-                                 width: 40,
-                                 textAlign: 'center',
-                                 render: (record) => 
-                                     record.relevancia ? (
-                                         <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
-                                             <IconStar size={16} color="orange" />
-                                         </Tooltip>
-                                     ) : null,
-                               },
-                               { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
-                               { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
-                               { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true, width: 150 },
-                               { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true, width: 100 },
-                               { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true, width: 100 },
-                               { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true, width: 100 },
-                               { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true, width: 70 },
-                               { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 },
-                           ]}
+                           columns={columns}
                            minHeight={results.length === 0 ? 150 : 0} 
                            totalRecords={results.length}
                            recordsPerPage={PAGE_SIZE}
@@ -651,10 +707,9 @@ function AnalisisLecturasPanel({
                            onPageChange={setPage}
                            sortStatus={sortStatus}
                            onSortStatusChange={setSortStatus}
-                           selectedRecords={selectedRecords}
-                           onSelectedRecordsChange={handleSelectionChange}
                            idAccessor="ID_Lectura"
-                           isRecordSelectable={(record) => !loading}
+                           noRecordsText=""
+                           noRecordsIcon={<></>}
                            rowClassName={({ Matricula }) => 
                                interactedMatriculas.has(Matricula) ? 'highlighted-row' : undefined
                            }
