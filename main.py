@@ -426,8 +426,8 @@ async def upload_excel(
                         coord_y_final = get_optional_float(row.get('Coordenada_Y'))
                         
                 else: # Si el lector SÍ existe
-                     if coord_x_final is None: coord_x_final = db_lector.Coordenada_X
-                     if coord_y_final is None: coord_y_final = db_lector.Coordenada_Y
+                    if coord_x_final is None: coord_x_final = db_lector.Coordenada_X
+                    if coord_y_final is None: coord_y_final = db_lector.Coordenada_Y
 
             carril = get_optional_str(row.get('Carril'))
             velocidad = get_optional_float(row.get('Velocidad'))
@@ -656,10 +656,12 @@ def update_lector(lector_id: str, lector_update: schemas.LectorUpdate, db: Sessi
             setattr(db_lector, key, value)
 
     try:
+        # --- Indent this block ---
         db.commit()
         db.refresh(db_lector)
         logger.info(f"[Update Lector {lector_id}] Lector actualizado correctamente.")
         return db_lector
+        # --- End indented block ---
     except Exception as e:
         db.rollback()
         logger.error(f"[Update Lector {lector_id}] Error al guardar BD: {e}")
@@ -690,13 +692,13 @@ def create_vehiculo(vehiculo: schemas.VehiculoCreate, db: Session = Depends(get_
     # Crear nuevo vehículo
     db_vehiculo = models.Vehiculo(**vehiculo.model_dump(exclude_unset=True))
     try:
-        # --- Indentar este bloque --- 
+        # --- Indent this block --- 
         db.add(db_vehiculo)
         db.commit()
         db.refresh(db_vehiculo)
         logger.info(f"Vehículo creado con matrícula: {db_vehiculo.Matricula}")
         return db_vehiculo
-        # --- Fin bloque indentado ---
+        # --- End indented block ---
     except IntegrityError as e:
         db.rollback()
         logger.error(f"Error de integridad al crear vehículo {vehiculo.Matricula}: {e}")
@@ -722,12 +724,10 @@ def update_vehiculo(vehiculo_id: int, vehiculo_update: schemas.VehiculoUpdate, d
         setattr(db_vehiculo, key, value)
 
     try:
-        # --- Indentar este bloque --- 
         db.commit()
         db.refresh(db_vehiculo)
         logger.info(f"Vehículo ID {vehiculo_id} (Matrícula: {db_vehiculo.Matricula}) actualizado.")
         return db_vehiculo
-        # --- Fin bloque indentado ---
     except Exception as e:
         db.rollback()
         logger.error(f"Error al actualizar vehículo ID {vehiculo_id}: {e}")
@@ -816,12 +816,12 @@ def delete_vehiculo(vehiculo_id: int, db: Session = Depends(get_db)):
 
     matricula_log = db_vehiculo.Matricula # Guardar matrícula para log antes de borrar
     try:
-        # --- Indentar este bloque --- 
+        # --- Indent this block --- 
         db.delete(db_vehiculo)
         db.commit()
         logger.info(f"[DELETE /vehiculos] Vehículo ID {vehiculo_id} (Matrícula: {matricula_log}) eliminado exitosamente.")
         return None # Retornar None para 204 No Content
-        # --- Fin bloque indentado ---
+        # --- End indented block ---
     except Exception as e:
         db.rollback()
         logger.error(f"[DELETE /vehiculos] Error al eliminar vehículo ID {vehiculo_id}: {e}", exc_info=True)

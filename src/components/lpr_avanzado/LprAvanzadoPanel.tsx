@@ -4,7 +4,7 @@ import { TimeInput } from '@mantine/dates';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconX, IconLayersIntersect, IconDeviceFloppy, IconCar, IconPlayerPlay, IconTrash, IconPencil, IconColorSwatch, IconFilterOff, IconUpload, IconCheck, IconBookmark, IconBookmarkOff } from '@tabler/icons-react';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconX, IconLayersIntersect, IconDeviceFloppy, IconCar, IconPlayerPlay, IconTrash, IconPencil, IconColorSwatch, IconFilterOff, IconUpload, IconCheck, IconBookmark, IconBookmarkOff, IconArrowsUpDown } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus, DataTableProps } from 'mantine-datatable';
 import dayjs from 'dayjs';
@@ -1131,12 +1131,12 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                                  label="Sentido"
                                  placeholder="Ambos"
                                  data={sentidoOptions}
-                                 value={currentFilters.selectedSentidos}
-                                 onChange={(v) => handleFilterChange('selectedSentidos', v)}
-                                 // Icono opcional
-                                 // leftSection={<IconCompass size={16} />} 
+                                 value={currentFilters.selectedSentidos || []}
+                                 onChange={(value) => handleFilterChange('selectedSentidos', value)}
+                                 leftSection={<IconArrowsUpDown size={16} />}
+                                 searchable={false}
                                  clearable
-                                 disabled={initialLoading}
+                                 style={{ flex: 1, minWidth: 100 }}
                              />
                              <TextInput label="Matrícula (parcial)" placeholder="Ej: %BC%" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
                              <Group grow>

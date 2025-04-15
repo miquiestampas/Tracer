@@ -129,11 +129,12 @@ export interface LectorUpdateData {
 export interface LectorCoordenadas {
   ID_Lector: string;
   Nombre?: string | null;
+  Carretera?: string | null;
+  Provincia?: string | null;
+  Organismo_Regulador?: string | null;
   Coordenada_Y: number; // Latitud
   Coordenada_X: number; // Longitud
-  Provincia?: string | null;
-  Carretera?: string | null;
-  Organismo_Regulador?: string | null;
+  Sentido?: string | null;
 }
 
 // === NUEVO: Interfaz para Sugerencias de Edición ===
