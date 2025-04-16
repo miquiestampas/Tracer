@@ -65,6 +65,9 @@ function getShapeGeoJSONGeometry(layer: L.Layer | null): any | null {
   return null;
 }
 
+// --- Importar useLocation --- 
+import { useLocation } from 'react-router-dom';
+
 function LectoresPage() {
   const [lectores, setLectores] = useState<Lector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +80,13 @@ function LectoresPage() {
 
   const [selectedLectorIds, setSelectedLectorIds] = useState<string[]>([]);
 
-  const [activeTab, setActiveTab] = useState<string | null>('tabla');
+  // --- Leer estado de la ubicación --- 
+  const location = useLocation();
+  const initialTabFromState = location.state?.initialTab;
+
+  // --- Inicializar activeTab basado en el estado o default a 'tabla' --- 
+  const [activeTab, setActiveTab] = useState<string | null>(initialTabFromState === 'mapa' ? 'mapa' : 'tabla');
+  
   const [mapLectores, setMapLectores] = useState<LectorCoordenadas[]>([]);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -137,11 +146,15 @@ function LectoresPage() {
     }
   }, []);
 
+  // Ajustar useEffect para cargar datos de mapa si la pestaña inicial es 'mapa'
   useEffect(() => {
     if (activeTab === 'mapa' && mapLectores.length === 0 && !mapLoading && mapError === null) {
       fetchMapData();
     }
-  }, [activeTab, fetchMapData, mapLoading, mapError]);
+    // No necesitamos dependencia de mapLectores.length, mapLoading, mapError aquí
+    // porque fetchMapData se encarga de no recargar innecesariamente si ya está cargando.
+    // La dependencia clave es activeTab y fetchMapData
+  }, [activeTab, fetchMapData]);
 
   console.log("[MapFilters] Datos base mapLectores:", mapLectores);
   

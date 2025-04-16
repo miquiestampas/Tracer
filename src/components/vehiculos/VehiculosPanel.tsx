@@ -31,6 +31,8 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     const [lecturasExpandidas, setLecturasExpandidas] = useState<Record<number, Lectura[]>>({});
     // Estado para controlar la carga de las lecturas de cada fila
     const [loadingLecturas, setLoadingLecturas] = useState<Record<number, boolean>>({});
+    // --- AÑADIR ESTADO PARA SELECCIÓN ---
+    const [selectedRecords, setSelectedRecords] = useState<Vehiculo[]>([]);
 
     // Cargar vehículos del caso
     const fetchVehiculos = useCallback(async () => {
@@ -292,29 +294,46 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                         </ActionIcon>
                     </Tooltip>
                     <Tooltip label="Eliminar Vehículo">
-                        <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteVehiculo(vehiculo)}>
+                        <ActionIcon 
+                            variant="subtle" 
+                            color="red" 
+                            onClick={() => handleDeleteVehiculo(vehiculo)}
+                            // Deshabilitar si hay selección para evitar confusión?
+                            disabled={selectedRecords.length > 0} 
+                        >
                             <IconTrash size={16} />
                         </ActionIcon>
                     </Tooltip>
                 </Group>
             ),
         },
-    ], [expandedRecordIds, lecturasExpandidas, handleEditVehiculo, handleDeleteVehiculo, handleToggleBoolean]); 
+    ], [expandedRecordIds, lecturasExpandidas, handleEditVehiculo, handleDeleteVehiculo, handleToggleBoolean, selectedRecords]); // Añadir selectedRecords a dependencias si handleDeleteVehiculo lo usa
 
     return (
         <Box style={{ position: 'relative' }}>
             <LoadingOverlay visible={loading} />
             <Group justify="space-between" align="center" mb="md">
                 <Title order={3}>Vehículos Identificados en el Caso</Title>
-                <Button 
-                    leftSection={<IconRefresh size={16} />}
-                    onClick={fetchVehiculos}
-                    variant="default"
-                    size="xs"
-                    disabled={loading}
-                >
-                    Actualizar Lista
-                </Button>
+                <Group>
+                    {selectedRecords.length > 0 && (
+                        <Button 
+                            color="red" 
+                            variant="outline"
+                            size="xs"
+                        >
+                            Eliminar Selección ({selectedRecords.length})
+                        </Button>
+                    )}
+                    <Button 
+                        leftSection={<IconRefresh size={16} />}
+                        onClick={fetchVehiculos}
+                        variant="default"
+                        size="xs"
+                        disabled={loading}
+                    >
+                        Actualizar Lista
+                    </Button>
+                </Group>
             </Group>
             {error && <Alert color="red" title="Error" mb="md">{error}</Alert>}
             <DataTable<Vehiculo>
@@ -327,9 +346,10 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                 striped
                 highlightOnHover
                 idAccessor="ID_Vehiculo"
-                noRecordsText=""
-                noRecordsIcon={<></>}
+                noRecordsText="No se encontraron vehículos para este caso."
                 fetching={loading}
+                selectedRecords={selectedRecords}
+                onSelectedRecordsChange={setSelectedRecords}
                 rowExpansion={{
                     expanded: { 
                         recordIds: expandedRecordIds,
@@ -361,7 +381,6 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                 }}
             />
 
-            {/* --- MODAL DE EDICIÓN --- */}
             <Modal
                  opened={isEditModalOpen}
                  onClose={handleCloseEditModal}
@@ -371,7 +390,6 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
             >
                 <LoadingOverlay visible={loadingEdit} />
                 <Stack>
-                    {/* Inputs conectados a los estados */}
                     <TextInput label="Marca" value={marcaEdit} onChange={(e) => setMarcaEdit(e.currentTarget.value)} />
                     <TextInput label="Modelo" value={modeloEdit} onChange={(e) => setModeloEdit(e.currentTarget.value)} />
                     <TextInput label="Color" value={colorEdit} onChange={(e) => setColorEdit(e.currentTarget.value)} />

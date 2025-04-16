@@ -110,6 +110,18 @@ function LecturasRelevantesPanel({
                 />
             ),
         },
+        // --- Columnas de Datos (Acciones se mueve al final) ---
+        { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 140 },
+        { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
+        { accessor: 'ID_Lector', title: 'ID Lector', render: (r) => r.ID_Lector || '-', sortable: true, width: 150 }, 
+        { accessor: 'Carril', title: 'Carril', render: (r) => r.Carril || '-', sortable: true, width: 70 },
+        { 
+            accessor: 'relevancia.Nota',
+            title: 'Nota', 
+            render: (r) => r.relevancia?.Nota || '-', 
+            width: 200,
+        },
+        // --- Columna de Acciones (Movida al final) ---
         {
             accessor: 'actions',
             title: 'Acciones',
@@ -134,16 +146,6 @@ function LecturasRelevantesPanel({
                     </Tooltip>
                 </Group>
             ),
-        },
-        { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
-        { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
-        { accessor: 'ID_Lector', title: 'ID Lector', render: (r) => r.ID_Lector || '-', sortable: true, width: 150 }, 
-        { accessor: 'Carril', title: 'Carril', render: (r) => r.Carril || '-', sortable: true, width: 70 },
-        { 
-            accessor: 'relevancia.Nota',
-            title: 'Nota', 
-            render: (r) => r.relevancia?.Nota || '-', 
-            width: 200,
         },
     ];
     }, [lecturas, selectedRecordIds, onEditNota, onGuardarVehiculo, onDesmarcar, handleCheckboxChange, handleSelectAll]);

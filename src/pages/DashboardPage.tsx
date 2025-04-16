@@ -1,7 +1,7 @@
 import React from 'react';
 import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box } from '@mantine/core'; // Import rem para tamaños de icono y Box
 import { IconFolder, IconUsers, IconMap2, IconSearch, IconActivity, IconFileImport, IconDatabase } from '@tabler/icons-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 // Datos de ejemplo para las tarjetas de acción
 const actionCardsData = [
@@ -17,7 +17,16 @@ const actionCardsData = [
     icon: IconUsers,
     color: 'teal',
     path: '/lectores',
-    description: 'Configura y gestiona lectores OCR con ubicaciones.'
+    description: 'Configura y gestiona lectores OCR con ubicaciones.',
+    initialTab: 'config'
+  },
+  {
+    title: 'Vista de Mapa Global',
+    icon: IconMap2,
+    color: 'orange',
+    path: '/lectores',
+    description: 'Visualiza todos los lectores OCR en el mapa.',
+    initialTab: 'mapa'
   },
   {
     title: 'Importar Datos',
@@ -27,40 +36,18 @@ const actionCardsData = [
     description: 'Importa archivos Excel (LPR/GPS) a los casos.'
   },
   {
-    title: 'Búsqueda y Análisis',
+    title: 'Búsqueda Multi-Caso',
     icon: IconSearch,
     color: 'grape',
     path: '/busqueda',
     description: 'Busca y analiza datos de vehículos en todos los casos.'
   },
-  {
-    title: 'Vista de Mapa Global',
-    icon: IconMap2,
-    color: 'orange',
-    path: '/mapa',
-    description: 'Visualiza todos los lectores OCR en el mapa.'
-  },
-  {
-    title: 'Detección de Patrones',
-    icon: IconActivity,
-    color: 'red',
-    path: '/patrones',
-    description: 'Analiza patrones para detectar comportamientos sospechosos.'
-  },
-  {
-      title: 'Gestión de Vehículos',
-      icon: IconDatabase, // O un icono de coche
-      color: 'lime',
-      path: '/vehiculos',
-      description: 'Gestiona la base de datos de vehículos de interés.'
-    },
 ];
 
 // Datos de ejemplo para los widgets de resumen
 const summaryData = [
     { title: 'Casos Activos', value: '15', color: 'blue' },
     { title: 'Lectores Registrados', value: '125', color: 'teal' },
-    { title: 'Vehículos de Interés', value: '42', color: 'lime' },
     { title: 'Lecturas Hoy', value: '1,280', color: 'grape' },
   ];
 
@@ -74,6 +61,7 @@ function DashboardPage() {
       p="xl"
       component={Link}
       to={feature.path}
+      state={feature.initialTab ? { initialTab: feature.initialTab } : undefined}
       style={{ textDecoration: 'none' }} // Evitar subrayado del link
       withBorder // Añadir un borde sutil
     >
@@ -98,14 +86,6 @@ function DashboardPage() {
     </Card>
   ));
 
-  // Mapea los datos a componentes Card de resumen
-  const summaryWidgets = summaryData.map((widget) => (
-    <Card key={widget.title} shadow="sm" p="lg" radius="md" withBorder>
-        <Text size="xl" fw={700} c={widget.color}>{widget.value}</Text>
-        <Text size="xs" c="dimmed" tt="uppercase">{widget.title}</Text>
-    </Card>
-  ));
-
   return (
     <Box>
       <Text size="xl" fw={500} mb="lg" c="tracerBlue.7">Panel Principal de Tracer</Text>
@@ -117,15 +97,6 @@ function DashboardPage() {
         mb="xl" // Margen inferior antes de los widgets
       >
         {actionCards}
-      </SimpleGrid>
-
-      {/* Sección de Resumen */}
-      <Text size="lg" fw={500} mb="md" c="tracerBlue.7">Resumen General</Text>
-      <SimpleGrid
-        cols={{ base: 2, sm: 4 }} // Más columnas para widgets más pequeños
-        spacing="lg"
-      >
-        {summaryWidgets}
       </SimpleGrid>
     </Box>
   );
