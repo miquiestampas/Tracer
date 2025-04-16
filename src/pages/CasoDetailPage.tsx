@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Box, Text, Loader, Alert, Tabs, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea } from '@mantine/core';
+import { Box, Text, Loader, Alert, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea, Title } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
-import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook } from '@tabler/icons-react';
+import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook, IconTable, IconTarget, IconMap } from '@tabler/icons-react';
 import { getCasoById } from '../services/casosApi';
 import { getArchivosPorCaso, deleteArchivo } from '../services/archivosApi';
 import { notifications } from '@mantine/notifications';
@@ -36,6 +36,39 @@ const initialFilterState: FilterState = {
 
 type DataSourceType = 'LPR' | 'GPS';
 
+// --- NUEVO: Definir las secciones/botones --- 
+const caseSections = [
+    { id: 'analisis-lpr', label: 'Análisis LPR', icon: IconAnalyze },
+    { id: 'busqueda-cruzada-lpr', label: 'Búsqueda Cruzada', icon: IconFlask },
+    { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconStar },
+    { id: 'vehiculos', label: 'Vehículos', icon: IconCar },
+    { id: 'mapa', label: 'Mapa', icon: IconMap },
+    { id: 'archivos', label: 'Archivos Importados', icon: IconFiles },
+];
+
+// --- Añadir tipo para lecturas de mapa --- 
+interface LectorConCoordenadas {
+    ID_Lector: string;
+    Nombre?: string | null;
+    Coordenada_X: number;
+    Coordenada_Y: number;
+    Carretera?: string | null;
+    Provincia?: string | null;
+}
+
+interface LecturaConCoordenadas {
+    ID_Lectura: number;
+    ID_Archivo: number;
+    Matricula: string;
+    Fecha_y_Hora: string;
+    Coordenada_X: number; 
+    Coordenada_Y: number;
+    Lector?: LectorConCoordenadas | null;
+    Tipo_Fuente: string;
+    Carril?: string | null | undefined;
+    Velocidad?: number | null;
+}
+
 function CasoDetailPage() {
   const { idCaso } = useParams<{ idCaso: string }>();
     const idCasoNum = idCaso ? parseInt(idCaso, 10) : null;
@@ -47,7 +80,7 @@ function CasoDetailPage() {
   const [errorArchivos, setErrorArchivos] = useState<string | null>(null);
   const [deletingArchivoId, setDeletingArchivoId] = useState<number | null>(null);
 
-    // Estado para pestaña principal
+    // El estado activeMainTab se mantiene, pero controla la sección activa
     const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
 
     // ---- NUEVO: Estado compartido para filas interactuadas ----
@@ -303,6 +336,40 @@ function CasoDetailPage() {
     }
   };
 
+    // --- Estados para Lecturas del Mapa --- 
+    const [mapLecturas, setMapLecturas] = useState<LecturaConCoordenadas[]>([]);
+    const [loadingMapLecturas, setLoadingMapLecturas] = useState(false);
+    const [errorMapLecturas, setErrorMapLecturas] = useState<string | null>(null);
+
+    // --- NUEVO: Función para cargar lecturas para el mapa --- 
+    const fetchMapLecturas = useCallback(async () => {
+        if (!idCasoNum) return;
+        console.log("[CasoMap] Fetching lecturas para mapa del caso:", idCasoNum);
+        setLoadingMapLecturas(true);
+        setErrorMapLecturas(null);
+        try {
+            // Asumimos un endpoint que devuelve las lecturas (LPR/GPS) con coordenadas
+            // para un caso específico. Podría necesitar ajustes según tu API.
+            const response = await apiClient.get<LecturaConCoordenadas[]>(`/casos/${idCasoNum}/lecturas_para_mapa`);
+            setMapLecturas(response.data || []);
+            console.log("[CasoMap] Lecturas cargadas:", response.data?.length);
+        } catch (err: any) {
+            console.error("Error fetching map lecturas:", err);
+            setErrorMapLecturas(err.response?.data?.detail || 'No se pudieron cargar los datos para el mapa.');
+            setMapLecturas([]);
+        } finally {
+            setLoadingMapLecturas(false);
+        }
+    }, [idCasoNum]);
+
+    // --- useEffect para cargar datos del mapa --- 
+    useEffect(() => {
+        // Cargar solo si la pestaña está activa Y no hay datos cargados
+        if (activeMainTab === 'mapa' && mapLecturas.length === 0 && !loadingMapLecturas) {
+            fetchMapLecturas();
+        }
+    }, [activeMainTab, mapLecturas.length, loadingMapLecturas, fetchMapLecturas]);
+
     // --- Renderizado --- 
     if (loadingCaso) return <Loader />; 
     if (errorCaso) return <Alert color="red" title="Error al cargar el caso">{errorCaso}</Alert>;
@@ -321,170 +388,184 @@ function CasoDetailPage() {
         {breadcrumbs}
             <Text size="xl" fw={700} mt="md" mb="lg">Detalles del Caso: {caso.Nombre_del_Caso} ({caso.Año})</Text>
 
-            <Tabs value={activeMainTab} onChange={setActiveMainTab} keepMounted>
-                <Tabs.List>
-                    <Tabs.Tab value="analisis-lpr" leftSection={<IconAnalyze size={14} />}>Análisis LPR</Tabs.Tab>
-                    <Tabs.Tab value="busqueda-cruzada-lpr" leftSection={<IconFlask size={14} />}>Búsqueda Cruzada LPR</Tabs.Tab>
-                    <Tabs.Tab value="lecturas-relevantes" leftSection={<IconBook size={14} />}>Lecturas Relevantes</Tabs.Tab>
-                    <Tabs.Tab value="vehiculos" leftSection={<IconCar size={14} />}>Vehículos</Tabs.Tab>
-                    <Tabs.Tab value="analisis-gps" leftSection={<IconMapPin size={14} />}>Análisis GPS</Tabs.Tab>
-                    <Tabs.Tab value="mapa" leftSection={<IconMapPin size={14} />}>Mapa General</Tabs.Tab>
-                    <Tabs.Tab value="archivos" leftSection={<IconFiles size={14} />}>Archivos ({archivos.length})</Tabs.Tab>
-                </Tabs.List>
+            {/* --- NUEVO: Grupo de Botones de Navegación --- */}
+            <Group mb="xl">
+                {caseSections.map((section) => (
+                    <Button
+                        key={section.id}
+                        variant={activeMainTab === section.id ? 'filled' : 'light'} // Resaltar activo
+                        onClick={() => setActiveMainTab(section.id)}
+                        leftSection={<section.icon size={16} />}
+                        color="gray" // Color base para todos
+                        styles={(theme) => ({
+                            root: {
+                                 // Asegurar contraste para el botón activo
+                                 backgroundColor: activeMainTab === section.id 
+                                     ? theme.colors[theme.primaryColor][6] // Color primario relleno
+                                     : undefined,
+                                 color: activeMainTab === section.id
+                                     ? theme.white // Texto blanco en activo
+                                     : undefined,
+                                 '&:hover': {
+                                     backgroundColor: activeMainTab !== section.id 
+                                         ? theme.colors.gray[1] // Hover sutil para no activos
+                                         : undefined,
+                                 },
+                            },
+                            label: {
+                                fontWeight: activeMainTab === section.id ? 600 : 400,
+                            }
+                        })}
+                    >
+                        {section.label}
+                    </Button>
+                ))}
+            </Group>
+            {/* --- FIN Grupo de Botones --- */}
 
-                <Tabs.Panel value="analisis-lpr" pt="lg">
-                    {idCasoNum ? (
-                        <AnalisisLecturasPanel 
-                            casoIdFijo={idCasoNum} 
-                            permitirSeleccionCaso={false}
-                            mostrarTitulo={false}
-                            tipoFuenteFijo='LPR'
-                            interactedMatriculas={interactedMatriculas}
-                            addInteractedMatricula={addInteractedMatricula}
-                        />
-                    ) : (
-                        <Alert color="orange">ID de caso no válido.</Alert>
-                    )}
-                </Tabs.Panel>
+            {/* --- Renderizado Condicional del Contenido --- */}
+            <Box mt="lg">
+                {activeMainTab === 'analisis-lpr' && (
+                    <AnalisisLecturasPanel 
+                        // casoId={idCasoNum!} // Prop temporalmente comentada para revisar 
+                        permitirSeleccionCaso={false}
+                        mostrarTitulo={false}
+                        tipoFuenteFijo='LPR'
+                        interactedMatriculas={interactedMatriculas}
+                        addInteractedMatricula={addInteractedMatricula}
+                        // Pasar idCasoNum si es necesario por otra prop (revisar definición)
+                        casoIdFijo={idCasoNum!} // Suponiendo que esta es la prop correcta
+                    />
+                )}
+                {activeMainTab === 'busqueda-cruzada-lpr' && (
+                    <LprAvanzadoPanel 
+                        casoId={idCasoNum!}
+                        interactedMatriculas={interactedMatriculas}
+                        addInteractedMatricula={addInteractedMatricula}
+                    />
+                )}
+                {activeMainTab === 'lecturas-relevantes' && (
+                    <LecturasRelevantesPanel
+                        lecturas={lecturasRelevantes}
+                        loading={relevantLoading}
+                        totalRecords={Array.isArray(lecturasRelevantes) ? lecturasRelevantes.length : 0}
+                        page={relevantPage}
+                        onPageChange={handleRelevantPageChange}
+                        pageSize={RELEVANT_PAGE_SIZE}
+                        sortStatus={relevantSortStatus}
+                        onSortStatusChange={handleRelevantSortChange}
+                        selectedRecordIds={selectedRelevantRecordIds}
+                        onSelectionChange={handleRelevantSelectionChange}
+                        onEditNota={handleRelevantEditNota}
+                        onDesmarcar={handleRelevantDesmarcar}
+                        onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
+                        onGuardarVehiculo={handleRelevantGuardarVehiculo}
+                        onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
+                    />
+                )}
+                {activeMainTab === 'vehiculos' && (
+                    <VehiculosPanel casoId={idCasoNum!} />
+                )}
+                {activeMainTab === 'analisis-gps' && (
+                    <AnalisisLecturasPanel
+                        casoIdFijo={idCasoNum!}
+                        permitirSeleccionCaso={false}
+                        mostrarTitulo={false}
+                        tipoFuenteFijo='GPS'
+                        interactedMatriculas={interactedMatriculas}
+                        addInteractedMatricula={addInteractedMatricula}
+                    />
+                )}
+                {activeMainTab === 'mapa' && (
+                    <Box style={{ position: 'relative', minHeight: '400px' }}>
+                        <LoadingOverlay visible={loadingMapLecturas} />
+                        {errorMapLecturas && (
+                            <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
+                        )}
+                        {!loadingMapLecturas && !errorMapLecturas && (
+                            <CasoMap lecturas={mapLecturas} />
+                        )}
+                    </Box>
+                )}
+                {activeMainTab === 'archivos' && (
+                    <Box>
+                        <Title order={4} mb="md">Archivos Importados</Title>
+                        {/* Botón Cargar Archivos (Moverlo dentro del Box o ajustar posición) */}
+                        <Group justify="flex-end" mb="md">
+                            <Button 
+                                component={Link} 
+                                to={`/importar?casoId=${idCasoNum}`}
+                                leftSection={<IconFileImport size={16} />} 
+                                variant="outline"
+                                disabled={!idCasoNum} // Deshabilitar si no hay ID
+                            >
+                                Cargar Nuevos Archivos para este Caso
+                            </Button>
+                        </Group>
 
-                <Tabs.Panel value="busqueda-cruzada-lpr" pt="lg">
-                    {idCasoNum ? (
-                        <LprAvanzadoPanel 
-                            casoId={idCasoNum}
-                            interactedMatriculas={interactedMatriculas}
-                            addInteractedMatricula={addInteractedMatricula}
-                        />
-                    ) : (
-                        <Alert color="orange">ID de caso no válido.</Alert>
-                    )}
-                </Tabs.Panel>
-
-                <Tabs.Panel value="lecturas-relevantes" pt="lg">
-                    {idCasoNum ? (
-                        <LecturasRelevantesPanel
-                            lecturas={lecturasRelevantes}
-                            loading={relevantLoading}
-                            totalRecords={Array.isArray(lecturasRelevantes) ? lecturasRelevantes.length : 0}
-                            page={relevantPage}
-                            onPageChange={handleRelevantPageChange}
-                            pageSize={RELEVANT_PAGE_SIZE}
-                            sortStatus={relevantSortStatus}
-                            onSortStatusChange={handleRelevantSortChange}
-                            selectedRecordIds={selectedRelevantRecordIds}
-                            onSelectionChange={handleRelevantSelectionChange}
-                            onEditNota={handleRelevantEditNota}
-                            onDesmarcar={handleRelevantDesmarcar}
-                            onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
-                            onGuardarVehiculo={handleRelevantGuardarVehiculo}
-                            onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
-                        />
-                    ) : (
-                        <Alert color="orange">ID de caso no válido.</Alert>
-                    )}
-                </Tabs.Panel>
-                
-                <Tabs.Panel value="vehiculos" pt="lg">
-                    {idCasoNum ? (
-                        <VehiculosPanel casoId={idCasoNum} />
-                    ) : (
-                        <Alert color="orange">ID de caso no válido.</Alert>
-                    )}
-                </Tabs.Panel>
-
-                <Tabs.Panel value="analisis-gps" pt="lg">
-                    {idCasoNum ? (
-                        <AnalisisLecturasPanel
-                            casoIdFijo={idCasoNum}
-                            permitirSeleccionCaso={false}
-                            mostrarTitulo={false}
-                            tipoFuenteFijo='GPS'
-                            interactedMatriculas={interactedMatriculas}
-                            addInteractedMatricula={addInteractedMatricula}
-                        />
-                    ) : (
-                        <Alert color="orange">ID de caso no válido.</Alert>
-                    )}
-                </Tabs.Panel>
-
-                <Tabs.Panel value="mapa" pt="lg">
-                    <Alert color="blue">Componente de mapa pendiente de revisión/integración.</Alert>
-                </Tabs.Panel>
-                
-                <Tabs.Panel value="archivos" pt="lg">
-                    <Group justify="flex-end" mb="md">
-                        <Button 
-                            component={Link} 
-                            to={`/importar?casoId=${idCasoNum}`}
-                            leftSection={<IconFileImport size={16} />}
-                        >
-                            Cargar Nuevos Archivos para este Caso
-                        </Button>
-          </Group>
-                    
-          {loadingArchivos && <Loader my="md" />}
-                    {errorArchivos && <Alert icon={<IconAlertCircle size="1rem" />} title="Error al cargar archivos" color="red" my="md">{errorArchivos}</Alert>}
-          {!loadingArchivos && !errorArchivos && (
-            <Table striped highlightOnHover withTableBorder mt="md">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>ID Archivo</Table.Th>
-                  <Table.Th>Nombre Archivo</Table.Th>
-                  <Table.Th>Tipo</Table.Th>
-                  <Table.Th>Fecha Importación</Table.Th>
-                  <Table.Th>Acciones</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                                {archivos.map((archivo) => (
-                                    <Table.Tr key={archivo.ID_Archivo}>
-                                      <Table.Td>{archivo.ID_Archivo}</Table.Td>
-                                      <Table.Td>{archivo.Nombre_del_Archivo}</Table.Td>
-                                      <Table.Td>{archivo.Tipo_de_Archivo}</Table.Td>
-                                      <Table.Td>{archivo.Fecha_de_Importacion ? new Date(archivo.Fecha_de_Importacion).toLocaleDateString() : '-'}</Table.Td>
-                                      <Table.Td>
-                                          <Group gap="xs">
-                                               {/* Iconos Acciones Archivo (Descargar, Eliminar) */}
-                                               <Tooltip label="Descargar Archivo Original">
-                                                    <ActionIcon variant="subtle" color="blue" component="a" href={`${apiClient.defaults.baseURL}/archivos/${archivo.ID_Archivo}/download`} target="_blank">
-                                                        <IconDownload size={16} />
-                                                    </ActionIcon>
-                                                </Tooltip>
-                                                <Tooltip label="Eliminar Archivo y Lecturas">
-                                                    <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteArchivo(archivo.ID_Archivo)} loading={deletingArchivoId === archivo.ID_Archivo} disabled={deletingArchivoId !== null}>
-                                                        <IconTrash size={16} />
-                                                    </ActionIcon>
-                                                </Tooltip>
-                                          </Group>
-                                      </Table.Td>
+                        {loadingArchivos && <Loader />}
+                        {errorArchivos && <Alert color="red">{errorArchivos}</Alert>}
+                        {!loadingArchivos && !errorArchivos && (
+                            <Table striped highlightOnHover withTableBorder verticalSpacing="sm">
+                                <Table.Thead>
+                                    <Table.Tr>
+                                        <Table.Th>ID Archivo</Table.Th>
+                                        <Table.Th>Nombre Archivo</Table.Th>
+                                        <Table.Th>Tipo</Table.Th>
+                                        <Table.Th>Fecha Importación</Table.Th>
+                                        <Table.Th>Acciones</Table.Th>
                                     </Table.Tr>
-                                ))}
-              </Table.Tbody>
-            </Table>
-          )}
-        </Tabs.Panel>
-      </Tabs>
+                                </Table.Thead>
+                                <Table.Tbody>
+                                    {archivos.map((archivo) => (
+                                        <Table.Tr key={archivo.ID_Archivo}>
+                                            <Table.Td>{archivo.ID_Archivo}</Table.Td>
+                                            <Table.Td>{archivo.Nombre_del_Archivo}</Table.Td>
+                                            <Table.Td>{archivo.Tipo_de_Archivo}</Table.Td>
+                                            <Table.Td>{archivo.Fecha_de_Importacion ? new Date(archivo.Fecha_de_Importacion).toLocaleDateString() : '-'}</Table.Td>
+                                            <Table.Td>
+                                                <Group gap="xs">
+                                                    <Tooltip label="Descargar Archivo Original">
+                                                        <ActionIcon variant="subtle" color="blue" component="a" href={`${apiClient.defaults.baseURL}/archivos/${archivo.ID_Archivo}/download`} target="_blank">
+                                                            <IconDownload size={16} />
+                                                        </ActionIcon>
+                                                    </Tooltip>
+                                                    <Tooltip label="Eliminar Archivo y Lecturas">
+                                                        <ActionIcon variant="subtle" color="red" onClick={() => handleDeleteArchivo(archivo.ID_Archivo)} loading={deletingArchivoId === archivo.ID_Archivo} disabled={deletingArchivoId !== null}>
+                                                            <IconTrash size={16} />
+                                                        </ActionIcon>
+                                                    </Tooltip>
+                                                </Group>
+                                            </Table.Td>
+                                        </Table.Tr>
+                                    ))}
+                                </Table.Tbody>
+                            </Table>
+                        )} 
+                    </Box> // Llave que faltaba o estaba mal puesta?
+                )} 
+            </Box>
 
-             {/* --- Modal para Editar Nota (Ahora vive aquí) --- */}
-             <Modal
-                 opened={editingRelevantNota !== null}
-                 onClose={handleRelevantCloseEditModal}
-                 title={`Editar Nota - Lectura ${editingRelevantNota?.ID_Lectura}`}
-                 centered
-             >
-                 <Stack>
-                     <Textarea
-                         label="Nota"
-                         value={notaInputValue}
-                         onChange={(event) => setNotaInputValue(event.currentTarget.value)}
-                         autosize minRows={3}
-                     />
-                     <Group justify="flex-end">
-                         <Button variant="default" onClick={handleRelevantCloseEditModal}>Cancelar</Button>
-                         {/* Podríamos usar un estado de loading específico para el guardado de nota */}
-                         <Button onClick={handleRelevantGuardarNota} loading={relevantLoading}>Guardar Nota</Button>
-                     </Group>
-                 </Stack>
-             </Modal>
+            {/* --- Modal para Editar Nota (Ahora vive aquí) --- */}
+            <Modal
+                opened={editingRelevantNota !== null}
+                onClose={handleRelevantCloseEditModal}
+                title={`Editar Nota - Lectura ${editingRelevantNota?.ID_Lectura}`}
+                centered
+            >
+                <Stack>
+                    <Textarea
+                        label="Nota"
+                        value={notaInputValue}
+                        onChange={(event) => setNotaInputValue(event.currentTarget.value)}
+                        autosize minRows={3}
+                    />
+                    <Group justify="flex-end">
+                        <Button variant="default" onClick={handleRelevantCloseEditModal}>Cancelar</Button>
+                        <Button onClick={handleRelevantGuardarNota} loading={relevantLoading}>Guardar Nota</Button>
+                    </Group>
+                </Stack>
+            </Modal>
 
         </Container>
   );

@@ -484,7 +484,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setLoading(false);
     };
 
-    // --- Definición de Columnas ---
+    // --- Columnas ---
     const columns: DataTableColumn<Lectura>[] = useMemo(() => {
         // Estado del checkbox "Seleccionar Todo" para la página actual
         const recordIdsOnPageSet = new Set(sortedAndPaginatedResults.map(r => r.ID_Lectura));
@@ -500,48 +500,55 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                         aria-label="Seleccionar todas las filas visibles"
                         checked={allRecordsOnPageSelected}
                         indeterminate={indeterminate}
-                        onChange={() => {
-                            setSelectedRecords(currentSelected => {
-                                const selectedIdsSet = new Set(currentSelected.map(sr => sr.ID_Lectura));
-                                const recordsToAdd = sortedAndPaginatedResults.filter(r => !selectedIdsSet.has(r.ID_Lectura));
-                                const recordIdsOnPage = sortedAndPaginatedResults.map(r => r.ID_Lectura);
-
-                                if (allRecordsOnPageSelected) {
-                                    // Deseleccionar solo los de esta página
-                                    return currentSelected.filter(r => !recordIdsOnPage.includes(r.ID_Lectura));
-                                } else {
-                                    // Seleccionar todos los de esta página (añadir los que falten)
-                                    return [...currentSelected, ...recordsToAdd];
-                                }
-                            });
-                        }}
-                        size="xs"
+                        onChange={(e) => {
+                             setSelectedRecords(currentSelected => {
+                                 const selectedIdsSet = new Set(currentSelected.map(sr => sr.ID_Lectura));
+                                 const recordsToAdd = sortedAndPaginatedResults.filter(r => !selectedIdsSet.has(r.ID_Lectura));
+                                 const recordIdsOnPage = sortedAndPaginatedResults.map(r => r.ID_Lectura);
+ 
+                                 if (allRecordsOnPageSelected) {
+                                     // Deseleccionar solo los de esta página
+                                     return currentSelected.filter(r => !recordIdsOnPage.includes(r.ID_Lectura));
+                                 } else {
+                                     // Seleccionar todos los de esta página (añadir los que falten)
+                                     return [...currentSelected, ...recordsToAdd];
+                                 }
+                             });
+                         }}
+                         size="xs"
                     />
                 ),
-                width: rem(40), // Ancho fijo
-                textAlign: 'center',
+                width: 40,
+                styles: {
+                    cell: { paddingLeft: 'var(--mantine-spacing-xs)', paddingRight: 'var(--mantine-spacing-xs)' },
+                },
                 render: (record) => (
                     <Checkbox
-                        aria-label={`Seleccionar fila ID ${record.ID_Lectura}`}
-                        checked={selectedRecords.some(sr => sr.ID_Lectura === record.ID_Lectura)}
-                        onChange={() => {
-                            setSelectedRecords(currentSelected =>
-                                currentSelected.some(sr => sr.ID_Lectura === record.ID_Lectura)
-                                    ? currentSelected.filter(sr => sr.ID_Lectura !== record.ID_Lectura)
-                                    : [...currentSelected, record]
-                            );
-                        }}
-                        size="xs"
-                        onClick={(e) => e.stopPropagation()} // Evita activar onRowClick
+                        aria-label={`Seleccionar fila ${record.ID_Lectura}`}
+                         checked={selectedRecords.some(sr => sr.ID_Lectura === record.ID_Lectura)}
+                         onChange={() => {
+                             setSelectedRecords(currentSelected =>
+                                 currentSelected.some(sr => sr.ID_Lectura === record.ID_Lectura)
+                                     ? currentSelected.filter(sr => sr.ID_Lectura !== record.ID_Lectura)
+                                     : [...currentSelected, record]
+                             );
+                         }}
+                         size="xs"
+                        onClick={(e) => e.stopPropagation()}
                     />
                 ),
             },
-            { accessor: 'relevancia', title: 'Rel', width: 40, textAlign: 'center', render: (record) => 
-                record.relevancia ? (
-                    <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
-                        <IconStar size={16} color="orange" />
-                    </Tooltip>
-                ) : null,
+            {
+                 accessor: 'relevancia', 
+                 title: 'Rel', 
+                 width: 30,
+                 textAlign: 'center', 
+                 render: (record) => 
+                     record.relevancia ? (
+                         <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
+                             <IconStar size={16} color="orange" />
+                         </Tooltip>
+                     ) : null,
             },
             { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
             { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },

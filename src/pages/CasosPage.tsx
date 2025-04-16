@@ -22,7 +22,7 @@ const CASE_STATUSES: EstadoCaso[] = [
 ];
 
 // --- Tipos para Ordenación ---
-type SortField = 'Fecha_de_Creacion' | 'Nombre_del_Caso';
+type SortField = 'Fecha_de_Creacion' | 'Nombre_del_Caso' | 'Año';
 type SortDirection = 'asc' | 'desc';
 
 // --- NUEVO: Función para obtener color según estado ---
@@ -30,8 +30,8 @@ function getStatusColor(estado: EstadoCaso): string {
     switch (estado) {
         case "Nuevo": return 'green';
         case "Esperando Archivos": return 'blue';
-        case "En Análisis": return 'yellow';
-        case "Pendiente Informe": return 'orange';
+        case "En Análisis": return 'orange';
+        case "Pendiente Informe": return 'red';
         case "Cerrado": return 'gray';
         default: return 'gray'; // Color por defecto
     }
@@ -272,14 +272,32 @@ function CasosPage() {
               style={{ flexGrow: 1, maxWidth: '400px' }} // Ajusta el ancho si es necesario
           />
           <Group>
-               {/* Iconos de ordenación */}
-               <Tooltip label={`Ordenar por ${sortField === 'Nombre_del_Caso' ? 'Fecha Creación' : 'Nombre'}`}>
-                  <ActionIcon variant="default" onClick={() => setSortField(prev => prev === 'Nombre_del_Caso' ? 'Fecha_de_Creacion' : 'Nombre_del_Caso')}>
-                       <IconArrowsUpDown size={16} />
-                   </ActionIcon>
-                </Tooltip>
+               {/* --- Reemplazar ActionIcon por Button con texto del campo actual --- */}
+               {(() => { // IIFE para lógica de texto y ciclo
+                   let currentFieldLabel = '';
+                   if (sortField === 'Fecha_de_Creacion') currentFieldLabel = 'Fecha Creación';
+                   else if (sortField === 'Nombre_del_Caso') currentFieldLabel = 'Nombre';
+                   else currentFieldLabel = 'Año';
+                   
+                   return (
+                        <Button 
+                            variant="default"
+                            size="xs" // Tamaño similar a los ActionIcon
+                            // Modificar onClick para ciclar entre 3 campos
+                            onClick={() => setSortField(prev => {
+                                if (prev === 'Fecha_de_Creacion') return 'Nombre_del_Caso';
+                                if (prev === 'Nombre_del_Caso') return 'Año';
+                                return 'Fecha_de_Creacion'; // Volver a Fecha desde Año
+                            })}
+                        >
+                             Ordenar por: {currentFieldLabel}
+                         </Button>
+                   );
+               })()}
+                {/* --- Fin Reemplazo --- */}
+                {/* Botón Ordenar Dirección (sin cambios) */}
                 <Tooltip label={`Orden ${sortDirection === 'asc' ? 'Descendente' : 'Ascendente'}`}>
-                    <ActionIcon variant="default" onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}>
+                    <ActionIcon variant="default" size="xs" onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}>
                         {sortDirection === 'asc' ? <IconSortAscending size={16} /> : <IconSortDescending size={16} />}
                     </ActionIcon>
                  </Tooltip>
