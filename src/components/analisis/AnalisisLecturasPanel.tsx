@@ -697,38 +697,41 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                      </Paper>
                  </Grid.Col>
                  <Grid.Col span={{ base: 12, md: 9 }}>
-                     <Box style={{ position: 'relative' }}>
+                     <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
                         <LoadingOverlay visible={loading && !initialLoading} zIndex={500} />
-                        <Group mb="sm">
-                             <Button 
-                                size="xs" 
-                                variant="outline" 
-                                leftSection={<IconBookmark size={16} />}
-                                onClick={handleMarcarRelevante} 
-                                disabled={selectedRecords.length === 0 || loading}
-                            >
-                                Marcar Relevante ({selectedRecords.length})
-                            </Button>
-                             <Button 
-                                size="xs" 
-                                variant="outline" 
-                                color="orange" 
-                                leftSection={<IconBookmarkOff size={16} />}
-                                onClick={handleDesmarcarRelevante} 
-                                disabled={selectedRecords.length === 0 || loading}
-                            >
-                                Desmarcar Relevante ({selectedRecords.length})
-                            </Button>
-                             <Button 
-                                size="xs" 
-                                variant="outline" 
-                                color="green" 
-                                leftSection={<IconCar size={16} />}
-                                onClick={handleGuardarVehiculos} 
-                                disabled={selectedRecords.length === 0 || loading}
-                            >
-                                Guardar Vehículos ({selectedRecords.length})
-                            </Button>
+                        <Group justify="space-between" mb="md">
+                            <Title order={4}>Resultados ({results.length})</Title>
+                            <Group>
+                                 <Button 
+                                    size="xs" 
+                                    variant="outline" 
+                                    leftSection={<IconBookmark size={16} />}
+                                    onClick={handleMarcarRelevante} 
+                                    disabled={selectedRecords.length === 0 || loading}
+                                >
+                                    Marcar Relevante ({selectedRecords.length})
+                                </Button>
+                                 <Button 
+                                    size="xs" 
+                                    variant="outline" 
+                                    color="orange" 
+                                    leftSection={<IconBookmarkOff size={16} />}
+                                    onClick={handleDesmarcarRelevante} 
+                                    disabled={selectedRecords.length === 0 || loading}
+                                >
+                                    Desmarcar Relevante ({selectedRecords.length})
+                                </Button>
+                                 <Button 
+                                    size="xs" 
+                                    variant="outline" 
+                                    color="green" 
+                                    leftSection={<IconCar size={16} />}
+                                    onClick={handleGuardarVehiculos} 
+                                    disabled={selectedRecords.length === 0 || loading}
+                                >
+                                    Guardar Vehículos ({selectedRecords.length})
+                                </Button>
+                            </Group>
                         </Group>
                         <DataTable<Lectura>
                            withTableBorder
@@ -738,7 +741,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                            highlightOnHover
                            records={sortedAndPaginatedResults}
                            columns={columns}
-                           minHeight={results.length === 0 ? 150 : 0} 
+                           minHeight={200} 
                            totalRecords={results.length}
                            recordsPerPage={PAGE_SIZE}
                            page={page}
@@ -754,7 +757,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                interactedMatriculas.has(Matricula) ? 'highlighted-row' : undefined
                            }
                         />
-                     </Box>
+                     </Paper>
                  </Grid.Col>
             </Grid>
         </Box>
