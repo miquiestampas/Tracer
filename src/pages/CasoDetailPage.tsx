@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Box, Text, Loader, Alert, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea, Title } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
-import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook, IconTable, IconTarget, IconMap } from '@tabler/icons-react';
+import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook, IconTable, IconTarget, IconMap, IconRoute } from '@tabler/icons-react';
 import { getCasoById } from '../services/casosApi';
 import { getArchivosPorCaso, deleteArchivo } from '../services/archivosApi';
 import { notifications } from '@mantine/notifications';
@@ -22,6 +22,7 @@ import AnalisisLecturasPanel from '../components/analisis/AnalisisLecturasPanel'
 import LprAvanzadoPanel from '../components/lpr_avanzado/LprAvanzadoPanel';
 import LecturasRelevantesPanel from '../components/caso/LecturasRelevantesPanel';
 import VehiculosPanel from '../components/vehiculos/VehiculosPanel';
+import LanzaderaPanel from '../components/lanzadera/LanzaderaPanel';
 
 // Definir estado inicial para filtros
 const initialFilterState: FilterState = {
@@ -40,8 +41,10 @@ type DataSourceType = 'LPR' | 'GPS';
 const caseSections = [
     { id: 'analisis-lpr', label: 'Análisis LPR', icon: IconAnalyze },
     { id: 'busqueda-cruzada-lpr', label: 'Búsqueda Cruzada', icon: IconFlask },
+    { id: 'lanzadera', label: 'Vehículo Lanzadera', icon: IconRoute },
     { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconStar },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar },
+    { id: 'analisis-gps', label: 'Análisis GPS', icon: IconMapPin },
     { id: 'mapa', label: 'Mapa', icon: IconMap },
     { id: 'archivos', label: 'Archivos Importados', icon: IconFiles },
 ];
@@ -443,6 +446,9 @@ function CasoDetailPage() {
                         interactedMatriculas={interactedMatriculas}
                         addInteractedMatricula={addInteractedMatricula}
                     />
+                )}
+                {activeMainTab === 'lanzadera' && (
+                    <LanzaderaPanel casoId={idCasoNum!} />
                 )}
                 {activeMainTab === 'lecturas-relevantes' && (
                     <LecturasRelevantesPanel

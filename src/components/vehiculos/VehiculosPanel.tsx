@@ -224,38 +224,24 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
 
     // ---- Definición de columnas DESPUÉS de los handlers ----
     const columns: DataTableColumn<Vehiculo>[] = useMemo(() => [
-        { accessor: 'Matricula', title: 'Matrícula', width: 100, sortable: true },
-        { accessor: 'Marca', title: 'Marca', width: 120, sortable: true },
-        { accessor: 'Modelo', title: 'Modelo', width: 120, sortable: true },
-        { accessor: 'Color', title: 'Color', width: 90, sortable: true },
-        { accessor: 'Propiedad', title: 'Propiedad', width: 150, sortable: true },
+        { accessor: 'Matricula', title: 'Matrícula', sortable: true },
+        { accessor: 'Marca', title: 'Marca', sortable: true },
+        { accessor: 'Modelo', title: 'Modelo', sortable: true },
+        { accessor: 'Color', title: 'Color', sortable: true },
+        { accessor: 'Propiedad', title: 'Propiedad', sortable: true },
         {
-            accessor: 'Alquiler', title: 'Alquiler', width: 90, sortable: true,
-            render: (v) => (
-                <Tooltip label={v.Alquiler ? 'Marcar como NO Alquiler' : 'Marcar como SI Alquiler'}>
-                    <ActionIcon 
-                        variant="subtle" 
-                        color={v.Alquiler ? 'orange' : 'gray'} 
-                        onClick={() => handleToggleBoolean(v, 'Alquiler')}
-                    >
-                        {v.Alquiler ? <IconCheck size={18}/> : <IconBan size={18}/>}
-                    </ActionIcon>
-                </Tooltip>
-            )
+            accessor: 'totalLecturasLprCaso', // Usar el nombre exacto del campo de la API
+            title: 'Lecturas LPR',
+            width: 110, // Ajustar ancho si es necesario
+            textAlignment: 'center',
+            // Usar el conteo de la API si existe, si no, mostrar conteo de expandidas o '...'
+            render: (vehiculo) => typeof vehiculo.total_lecturas_lpr_caso === 'number'
+                                   ? vehiculo.total_lecturas_lpr_caso
+                                   : (expandedRecordIds.includes(vehiculo.ID_Vehiculo) && lecturasExpandidas[vehiculo.ID_Vehiculo]
+                                       ? lecturasExpandidas[vehiculo.ID_Vehiculo].length
+                                       : '...'),
         },
-        {
-             accessor: 'totalLecturasLprCaso', // Usar el nombre exacto del campo de la API
-             title: 'Lecturas LPR',
-             width: 110, // Ajustar ancho si es necesario
-             textAlignment: 'center',
-             // Usar el conteo de la API si existe, si no, mostrar conteo de expandidas o '...'
-             render: (vehiculo) => typeof vehiculo.total_lecturas_lpr_caso === 'number'
-                                    ? vehiculo.total_lecturas_lpr_caso
-                                    : (expandedRecordIds.includes(vehiculo.ID_Vehiculo) && lecturasExpandidas[vehiculo.ID_Vehiculo]
-                                        ? lecturasExpandidas[vehiculo.ID_Vehiculo].length
-                                        : '...'),
-        },
-        { accessor: 'Observaciones', title: 'Observaciones', width: 200 },
+        { accessor: 'Observaciones', title: 'Observaciones' },
         {
             accessor: 'Comprobado', title: 'Comp.', width: 70, textAlignment: 'center', sortable: true,
             render: (v) => (

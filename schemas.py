@@ -296,3 +296,49 @@ class SavedSearch(SavedSearchBase):
 # Lector.model_rebuild()
 # Lectura.model_rebuild()
 # LecturaRelevante.model_rebuild() 
+
+# --- Schemas para Detección de Vehículo Lanzadera ---
+
+class LanzaderaDetectionPayload(BaseModel):
+    ventana_tiempo_segundos: int = Field(..., gt=0, description="Ventana de tiempo máxima en segundos para considerar coincidencia")
+    min_coincidencias: int = Field(..., gt=1, description="Número mínimo de co-ocurrencias de patrón (lectores/días distintos) para considerar un par como convoy")
+    # --- Campos Opcionales Añadidos ---
+    matricula_objetivo: Optional[str] = Field(None, description="Filtrar para incluir solo convoyes que involucren esta matrícula específica.")
+    fecha_inicio: Optional[str] = Field(None, description="Fecha de inicio para filtrar lecturas (YYYY-MM-DD)")
+    fecha_fin: Optional[str] = Field(None, description="Fecha de fin para filtrar lecturas (YYYY-MM-DD)")
+    hora_inicio: Optional[str] = Field(None, description="Hora de inicio para filtrar lecturas (HH:MM)")
+    hora_fin: Optional[str] = Field(None, description="Hora de fin para filtrar lecturas (HH:MM)")
+
+# === Schema para UN detalle de co-ocurrencia, incluyendo el par involucrado ===
+class CoincidenciaDetalleSchema(BaseModel):
+    lector_id: Optional[str] = None 
+    lat: Optional[float] = None 
+    lon: Optional[float] = None 
+    matriculas_par: List[str] = Field(..., min_length=2, max_length=2)
+    sentido: Optional[str] = None
+    orientacion: Optional[str] = None
+    timestamp_vehiculo_1: datetime.datetime
+    timestamp_vehiculo_2: datetime.datetime
+
+# === Schema de Respuesta PRINCIPAL para Detección de Convoy ===
+# Devuelve la lista de vehículos involucrados y la lista plana de detalles
+class ConvoyDetectionResponse(BaseModel):
+    vehiculos_en_convoy: List[str] = Field(default_factory=list, description="Lista única de matrículas pertenecientes a algún convoy significativo")
+    detalles_coocurrencias: List[CoincidenciaDetalleSchema] = Field(default_factory=list, description="Lista plana de todas las co-ocurrencias individuales pertenecientes a convoyes significativos")
+
+# --- Schemas ANTIGUOS (Relacionados con ResultadoLanzadera...) --- 
+# Los comentamos o eliminamos ya que no se usarán con el nuevo enfoque
+# class ResultadoLanzaderaSchema(BaseModel):
+#     matriculas_convoy: List[str] = Field(..., min_length=2, max_length=2, description="Las dos matrículas que viajan juntas")
+#     numero_coincidencias: int
+#     class Config:
+#         from_attributes = True 
+
+# class ResultadoLanzaderaDetalladoSchema(ResultadoLanzaderaSchema):
+#     detalles: List[CoincidenciaDetalleSchema] = Field(default_factory=list, description="Lista de co-ocurrencias específicas (lector, timestamp, coords)")
+
+# Nuevo schema que incluye detalles y coordenadas
+# class ResultadoLanzaderaDetalladoSchema(ResultadoLanzaderaSchema):
+#     detalles: List[CoincidenciaDetalleSchema] = Field(default_factory=list, description="Lista de co-ocurrencias específicas (lector, timestamp, coords)")
+#     # Podríamos añadir un dict mapeando lector_id a coords si los detalles no las incluyen
+#     # coordenadas_lectores: Dict[str, Tuple[float, float]] = Field(default_factory=dict) 

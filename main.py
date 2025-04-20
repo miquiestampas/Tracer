@@ -21,6 +21,8 @@ from dateutil import parser # Importar dateutil.parser
 import re # Importar re para expresiones regulares
 from sqlalchemy import select, distinct # Importar select y distinct
 from sqlalchemy.exc import IntegrityError # Importar IntegrityError
+from datetime import timedelta # Asegurar import timedelta
+from collections import defaultdict # Importar defaultdict
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -1285,3 +1287,185 @@ def delete_saved_search(search_id: int, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Error al eliminar búsqueda guardada ID {search_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al eliminar búsqueda.")
+
+# === Endpoint para Detección de Vehículo Lanzadera ===
+@app.post("/casos/{caso_id}/lanzaderas/detectar", 
+             response_model=schemas.ConvoyDetectionResponse, # <-- NUEVO RESPONSE MODEL
+             summary="Detectar Convoyes de Vehículos",
+             description="Detecta vehículos que viajan juntos consistentemente en un caso.")
+async def detectar_vehiculos_lanzadera(
+    caso_id: int,
+    payload: schemas.LanzaderaDetectionPayload,
+    db: Session = Depends(get_db)
+):
+    logger.info(f"Detectando convoyes para caso {caso_id} con payload: {payload}")
+
+    # 1. Obtener y Filtrar Lecturas LPR
+    try:
+        lecturas_lpr_query = db.query(models.Lectura)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .filter(models.ArchivoExcel.ID_Caso == caso_id, models.Lectura.Tipo_Fuente == 'LPR')
+        
+        # --- Aplicar Filtros de Fecha/Hora --- 
+        if payload.fecha_inicio:
+            try:
+                fecha_dt = datetime.datetime.strptime(payload.fecha_inicio, "%Y-%m-%d").date()
+                lecturas_lpr_query = lecturas_lpr_query.filter(models.Lectura.Fecha_y_Hora >= fecha_dt)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Formato fecha_inicio inválido. Usar YYYY-MM-DD.")
+        if payload.fecha_fin:
+            try:
+                # Añadir 1 día para incluir el día completo
+                fecha_dt = datetime.datetime.strptime(payload.fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
+                lecturas_lpr_query = lecturas_lpr_query.filter(models.Lectura.Fecha_y_Hora < fecha_dt)
+            except ValueError:
+                 raise HTTPException(status_code=400, detail="Formato fecha_fin inválido. Usar YYYY-MM-DD.")
+        if payload.hora_inicio:
+            try:
+                hora_time = datetime.datetime.strptime(payload.hora_inicio, "%H:%M").time()
+                lecturas_lpr_query = lecturas_lpr_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_time.hour * 100 + hora_time.minute)
+            except ValueError:
+                 raise HTTPException(status_code=400, detail="Formato hora_inicio inválido. Usar HH:MM.")
+        if payload.hora_fin:
+            try:
+                hora_time = datetime.datetime.strptime(payload.hora_fin, "%H:%M").time()
+                lecturas_lpr_query = lecturas_lpr_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_time.hour * 100 + hora_time.minute)
+            except ValueError:
+                 raise HTTPException(status_code=400, detail="Formato hora_fin inválido. Usar HH:MM.")
+        # --- Fin Filtros Fecha/Hora ---
+
+        # Ordenar SIEMPRE por tiempo para la lógica de ventana
+        todas_las_lecturas_lpr = lecturas_lpr_query.order_by(models.Lectura.Fecha_y_Hora).all()
+        
+        if not todas_las_lecturas_lpr:
+            logger.info(f"No se encontraron lecturas LPR para el caso {caso_id} con los filtros aplicados.")
+            return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
+        logger.info(f"Obtenidas {len(todas_las_lecturas_lpr)} lecturas LPR filtradas para procesar.")
+    except HTTPException as http_exc:
+        raise http_exc # Re-lanzar excepciones de formato
+    except Exception as e:
+        logger.error(f"Error obteniendo/filtrando lecturas LPR para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al obtener lecturas del caso")
+    
+    # --- Lógica de detección de convoyes --- 
+    coincidencias_pares_detalle_temporal = defaultdict(list) # {frozenset({p1, p2}): [(lector_id, timestamp_ref), ...]}
+
+    # --- Encontrar todas las co-ocurrencias temporales (sobre lecturas filtradas) --- 
+    num_total_lecturas = len(todas_las_lecturas_lpr)
+    if num_total_lecturas < 2: 
+        return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
+
+    logger.info(f"Procesando {num_total_lecturas} lecturas filtradas para encontrar co-ocurrencias temporales...")
+    ventana = timedelta(seconds=payload.ventana_tiempo_segundos)
+    
+    # ... (Bucle anidado para encontrar co-ocurrencias igual que antes, 
+    #      almacenando en coincidencias_pares_detalle_temporal) ...
+    for i in range(num_total_lecturas):
+        lectura_ref = todas_las_lecturas_lpr[i]
+        tiempo_inicio_ventana = lectura_ref.Fecha_y_Hora
+        tiempo_fin_ventana = tiempo_inicio_ventana + ventana
+        lector_id_ref = lectura_ref.ID_Lector
+        for j in range(i + 1, num_total_lecturas):
+            lectura_comp = todas_las_lecturas_lpr[j]
+            if lectura_comp.Fecha_y_Hora >= tiempo_fin_ventana: break
+            if lectura_comp.Matricula != lectura_ref.Matricula:
+                pair_key = frozenset({lectura_ref.Matricula, lectura_comp.Matricula})
+                # Guardar lector y AMBOS timestamps de la instancia
+                coincidencias_pares_detalle_temporal[pair_key].append((
+                    lector_id_ref, 
+                    lectura_ref.Fecha_y_Hora, 
+                    lectura_comp.Fecha_y_Hora # Guardar también el segundo timestamp
+                ))
+
+    # --- Filtrar pares por patrón significativo y recopilar datos --- 
+    pares_significativos = set() 
+    # Ahora guardará tuplas (pair_key, lector_id, timestamp_ref, timestamp_comp)
+    todos_los_detalles_significativos_raw = [] 
+    vehiculos_en_convoy_set = set()
+
+    logger.info("Filtrando pares por patrón significativo y matrícula objetivo (si aplica)...")
+    
+    for pair_key, ocurrencias in coincidencias_pares_detalle_temporal.items():
+        if payload.matricula_objetivo and payload.matricula_objetivo not in pair_key:
+            continue 
+        
+        if not ocurrencias: continue
+        
+        # Comprobar patrón significativo (lectores/días distintos)
+        # Usar timestamp_ref (el segundo elemento de la tupla) para calcular días distintos
+        lectores_distintos = set(occ[0] for occ in ocurrencias if occ[0])
+        dias_distintos = set(occ[1].date() for occ in ocurrencias)
+        num_lectores_distintos = len(lectores_distintos)
+        num_dias_distintos = len(dias_distintos)
+
+        if num_lectores_distintos >= payload.min_coincidencias or num_dias_distintos >= payload.min_coincidencias:
+            pares_significativos.add(pair_key)
+            vehiculos_en_convoy_set.update(pair_key)
+            # Guardar todos los detalles de este par significativo, incluyendo ambos timestamps
+            for lector_id, timestamp_ref, timestamp_comp in ocurrencias:
+                todos_los_detalles_significativos_raw.append((pair_key, lector_id, timestamp_ref, timestamp_comp))
+
+    # --- Si no hay pares significativos, devolver vacío (igual) --- 
+    if not pares_significativos:
+        logger.info("No se encontraron convoyes significativos tras el filtrado.")
+        return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
+
+    logger.info(f"Se encontraron {len(pares_significativos)} convoyes significativos involucrando a {len(vehiculos_en_convoy_set)} vehículos. Obteniendo coordenadas...")
+    
+    # --- Obtener Coordenadas (igual) --- 
+    # Recopilar lector_id únicos de TODOS los detalles significativos
+    # El lector_id es ahora el segundo elemento (índice 1)
+    lector_ids_necesarios = set(det[1] for det in todos_los_detalles_significativos_raw if det[1])
+    
+    lector_data_map = {}
+    if lector_ids_necesarios:
+        # Incluir Sentido y Orientacion en la consulta
+        lectores_data_db = db.query(
+            models.Lector.ID_Lector, 
+            models.Lector.Coordenada_Y, 
+            models.Lector.Coordenada_X,
+            models.Lector.Sentido,
+            models.Lector.Orientacion
+        ).filter(models.Lector.ID_Lector.in_(lector_ids_necesarios)).all()
+        
+        # Guardar todos los datos recuperados en el mapa
+        lector_data_map = { 
+            res.ID_Lector: { # Usar res.ID_Lector como clave
+                "lat": res.Coordenada_Y, 
+                "lon": res.Coordenada_X, 
+                "sentido": res.Sentido, 
+                "orientacion": res.Orientacion
+            } for res in lectores_data_db
+        }
+        logger.info(f"Se obtuvieron datos (coords, sentido, orientacion) para {len(lector_data_map)} de {len(lector_ids_necesarios)} lectores.")
+
+    # --- Construir la lista plana de detalles finales --- 
+    detalles_finales: List[schemas.CoincidenciaDetalleSchema] = []
+    # Iterar sobre la nueva estructura de detalles raw
+    for pair_key, lector_id, timestamp_ref, timestamp_comp in todos_los_detalles_significativos_raw:
+        data_lector = lector_data_map.get(lector_id)
+        detalles_finales.append(schemas.CoincidenciaDetalleSchema(
+            lector_id=lector_id,
+            lat=data_lector.get("lat") if data_lector else None,
+            lon=data_lector.get("lon") if data_lector else None,
+            sentido=data_lector.get("sentido") if data_lector else None,
+            orientacion=data_lector.get("orientacion") if data_lector else None,
+            matriculas_par=list(pair_key),
+            # Asignar los dos timestamps
+            timestamp_vehiculo_1=timestamp_ref,
+            timestamp_vehiculo_2=timestamp_comp
+        ))
+
+    # Ordenar detalles por el primer timestamp
+    detalles_finales.sort(key=lambda x: x.timestamp_vehiculo_1)
+
+    # --- Construir y devolver la respuesta final (igual) --- 
+    respuesta = schemas.ConvoyDetectionResponse(
+        vehiculos_en_convoy=sorted(list(vehiculos_en_convoy_set)),
+        detalles_coocurrencias=detalles_finales
+    )
+    
+    logger.info(f"Detección de convoyes completada. Devolviendo {len(respuesta.vehiculos_en_convoy)} vehículos y {len(respuesta.detalles_coocurrencias)} detalles.")
+    return respuesta
+
+# --- Fin Endpoint --- 
