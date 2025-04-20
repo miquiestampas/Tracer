@@ -224,7 +224,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
     const [resultsLoading, setResultsLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
     const [page, setPage] = useState(1);
-    const PAGE_SIZE = 10;
+    const PAGE_SIZE = 15;
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<ResultadoAgrupado>>({ columnAccessor: 'matricula', direction: 'asc' });
 
     // --- Estados para Búsquedas Guardadas ---
@@ -1171,16 +1171,6 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                             Ejecutar Filtro
                         </Button>
                         <Button 
-                            variant="outline" 
-                            leftSection={<IconDeviceFloppy size={16} />} 
-                            onClick={handleSaveSearch} 
-                            loading={loading} // ¿Quizás loading diferente para guardar?
-                            size="sm"
-                            fullWidth
-                        >
-                            Guardar Búsqueda
-                        </Button>
-                        <Button 
                             variant="subtle" 
                             color="gray" 
                             leftSection={<IconFilterOff size={16} />} 
@@ -1190,82 +1180,23 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                         >
                             Limpiar Filtros Actuales
                         </Button>
+                        <Button 
+                            variant="outline" 
+                            leftSection={<IconDeviceFloppy size={16} />} 
+                            onClick={handleSaveSearch} 
+                            loading={loading} // ¿Quizás loading diferente para guardar?
+                            size="sm"
+                            fullWidth
+                        >
+                            Guardar Búsqueda
+                        </Button>
                     </Stack>
                 </Paper>
             </Grid.Col>
 
             <Grid.Col span={{ base: 12, md: 8 }}>
                 <Stack gap="lg">
-                    <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
-                        <LoadingOverlay visible={resultsLoading || loading} />
-                        <Group justify="space-between" mb="md">
-                            <Title order={4}>Resultados ({displayedResults.length})</Title>
-                            <Group gap="xs">
-                                <Button size="xs" variant="outline" leftSection={<IconBookmark size={16} />} onClick={handleMarkRelevant} disabled={selectedRecords.length === 0 || resultsLoading}>
-                                    Marcar Relevante ({selectedRecords.length})
-                                </Button>
-                                <Button size="xs" variant="outline" color="orange" leftSection={<IconBookmarkOff size={16} />} onClick={handleUnmarkRelevant} disabled={selectedRecords.length === 0 || resultsLoading}>
-                                    Desmarcar Relevante ({selectedRecords.length})
-                                </Button>
-                                <Button size="xs" variant="outline" color="green" leftSection={<IconCar size={16} />} onClick={handleSaveSelectedVehicles} disabled={selectedRecords.length === 0 || resultsLoading}>
-                                    Guardar Vehículos ({selectedRecords.length})
-                                </Button>
-                            </Group>
-                        </Group>
-                        <DataTable
-                            className="results-datatable"
-                            records={sortedAndPaginatedResults}
-                            columns={columns}
-                            idAccessor="matricula"
-                            totalRecords={displayedResults.length}
-                            recordsPerPage={PAGE_SIZE}
-                            page={page}
-                            onPageChange={setPage}
-                            sortStatus={sortStatus}
-                            onSortStatusChange={handleSortStatusChange}
-                            withTableBorder borderRadius="sm" withColumnBorders striped highlightOnHover minHeight={200}
-                            selectedRecords={selectedRecords}
-                            onSelectedRecordsChange={handleSelectionChange}
-                            isRecordSelectable={(record) => !resultsLoading}
-                            rowClassName={({ matricula }) => 
-                                interactedMatriculas.has(matricula) ? 'highlighted-row' : undefined
-                            }
-                            rowExpansion={{
-                                allowMultiple: true,
-                                expanded: {
-                                    recordIds: expandedRecordIds,
-                                    onRecordIdsChange: handleExpansionChange,
-                                },
-                                content: ({ record }: { record: ResultadoAgrupado }) => {
-                                    return (
-                                        <Box p="sm" bg="gray.1" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
-                                            <Stack gap="xs">
-                                                {record.readings.length > 0 ? (
-                                                    record.readings.map((reading) => (
-                                                        <Paper key={reading.ID_Lectura} shadow="xs" p="xs" withBorder>
-                                                            <Group justify="space-between" gap="xs" wrap="nowrap">
-                                                                <Text size="xs" fw={500}>{dayjs(reading.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                                                                <Text size="xs">Sentido: {reading.lector?.Sentido || '-'}</Text>
-                                                                <Text size="xs">Carretera: {reading.lector?.Carretera || '-'}</Text>
-                                                                <Text size="xs">Carril: {reading.Carril || '-'}</Text>
-                                                                {/* Añadir más detalles si se desea, como ID Lector */}
-                                                                {/* <Text size="xs">Lector: {reading.ID_Lector || '-'}</Text> */}
-                                                            </Group>
-                                                        </Paper>
-                                                    ))
-                                                ) : (
-                                                    <Text size="xs" c="dimmed">No hay lecturas individuales disponibles para esta matrícula.</Text>
-                                                )}
-                                            </Stack>
-                                        </Box>
-                                    );
-                                },
-                            }}
-                            noRecordsText="No se encontraron resultados. Ejecuta un filtro o selecciona búsquedas guardadas."
-                            noRecordsIcon={<></>}
-                        />
-                    </Paper>
-
+                    {/* --- Búsquedas Guardadas (Ahora primero) --- */}
                     <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
                         <LoadingOverlay visible={savedSearchesLoading || loading} />
                         <Group justify="space-between" mb="md">
@@ -1296,12 +1227,89 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                             className="saved-searches-datatable"
                             records={savedSearches}
                             columns={savedSearchColumns}
-                            noRecordsText="No hay búsquedas guardadas para este caso."
+                            minHeight={savedSearches.length > 0 ? 150 : 0}
+                            noRecordsText=""
+                            noRecordsIcon={<></>}
                             selectedRecords={savedSearches.filter(s => selectedSearchIds.includes(s.id))}
                             onSelectedRecordsChange={(newSelectedRecords) => setSelectedSearchIds(newSelectedRecords.map(s => s.id))}
                             idAccessor="id"
                         />
                     </Paper>
+
+                    {/* --- Resultados (Ahora después) --- */}
+                    {displayedResults.length > 0 && (
+                        <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
+                            <LoadingOverlay visible={resultsLoading || loading} />
+                            <Group justify="space-between" mb="md">
+                                <Title order={4}>Resultados ({displayedResults.length})</Title>
+                                <Group gap="xs">
+                                    <Button size="xs" variant="outline" leftSection={<IconBookmark size={16} />} onClick={handleMarkRelevant} disabled={selectedRecords.length === 0 || resultsLoading}>
+                                        Marcar Relevante ({selectedRecords.length})
+                                    </Button>
+                                    <Button size="xs" variant="outline" color="orange" leftSection={<IconBookmarkOff size={16} />} onClick={handleUnmarkRelevant} disabled={selectedRecords.length === 0 || resultsLoading}>
+                                        Desmarcar Relevante ({selectedRecords.length})
+                                    </Button>
+                                    <Button size="xs" variant="outline" color="green" leftSection={<IconCar size={16} />} onClick={handleSaveSelectedVehicles} disabled={selectedRecords.length === 0 || resultsLoading}>
+                                        Guardar Vehículos ({selectedRecords.length})
+                                    </Button>
+                                </Group>
+                            </Group>
+                            <DataTable
+                                className="results-datatable"
+                                records={sortedAndPaginatedResults}
+                                columns={columns}
+                                idAccessor="matricula"
+                                totalRecords={displayedResults.length}
+                                recordsPerPage={PAGE_SIZE}
+                                page={page}
+                                onPageChange={setPage}
+                                sortStatus={sortStatus}
+                                onSortStatusChange={handleSortStatusChange}
+                                withTableBorder borderRadius="sm" withColumnBorders striped highlightOnHover
+                                minHeight={sortedAndPaginatedResults.length > 0 ? 150 : undefined}
+                                noRecordsText=""
+                                noRecordsIcon={<></>}
+                                selectedRecords={selectedRecords}
+                                onSelectedRecordsChange={handleSelectionChange}
+                                isRecordSelectable={(record) => !resultsLoading}
+                                rowClassName={({ matricula }) =>
+                                    interactedMatriculas.has(matricula) ? 'highlighted-row' : undefined
+                                }
+                                rowExpansion={{
+                                    allowMultiple: true,
+                                    expanded: {
+                                        recordIds: expandedRecordIds,
+                                        onRecordIdsChange: handleExpansionChange,
+                                    },
+                                    content: ({ record }: { record: ResultadoAgrupado }) => {
+                                        return (
+                                            <Box p="sm" bg="gray.1" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+                                                <Stack gap="xs">
+                                                    {record.readings.length > 0 ? (
+                                                        record.readings.map((reading) => (
+                                                            <Paper key={reading.ID_Lectura} shadow="xs" p="xs" withBorder>
+                                                                <Group justify="space-between" gap="xs" wrap="nowrap">
+                                                                    <Text size="xs" fw={500}>{dayjs(reading.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+                                                                    <Text size="xs">Sentido: {reading.lector?.Sentido || '-'}</Text>
+                                                                    <Text size="xs">Carretera: {reading.lector?.Carretera || '-'}</Text>
+                                                                    <Text size="xs">Carril: {reading.Carril || '-'}</Text>
+                                                                    {/* Añadir más detalles si se desea, como ID Lector */}
+                                                                    {/* <Text size="xs">Lector: {reading.ID_Lector || '-'}</Text> */}
+                                                                </Group>
+                                                            </Paper>
+                                                        ))
+                                                    ) : (
+                                                        <Text size="xs" c="dimmed">No hay lecturas individuales disponibles para esta matrícula.</Text>
+                                                    )}
+                                                </Stack>
+                                            </Box>
+                                        );
+                                    },
+                                }}
+                            />
+                        </Paper>
+                    )}
+
                 </Stack>
             </Grid.Col>
 

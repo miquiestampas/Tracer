@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, forwardRef, useImpera
 import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme } from '@mantine/core';
 import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport } from '@tabler/icons-react';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff } from '@tabler/icons-react';
 import { notifications, showNotification } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus, DataTableColumn } from 'mantine-datatable';
 import dayjs from 'dayjs';
@@ -233,6 +233,26 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             notifications.show({ title: 'Error en la búsqueda', message: `No se pudieron obtener los resultados. ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
             console.error("Error during search:", error);
         } finally { setLoading(false); }
+    };
+
+    // --- NUEVA: Función para Limpiar Filtros ---
+    const handleClearFilters = () => {
+        setFechaInicio(null);
+        setFechaFin(null);
+        setTimeFrom('');
+        setTimeTo('');
+        setSelectedLectores([]);
+        if (permitirSeleccionCaso) {
+            setSelectedCasos([]);
+        }
+        setSelectedCarreteras([]);
+        setSelectedSentidos([]);
+        setMatricula('');
+        setMinPasos('');
+        // Opcional: Limpiar resultados también?
+        // setResults([]);
+        // setPage(1);
+        notifications.show({ title: 'Filtros Limpiados', message: 'Se han restablecido los valores por defecto.', color: 'blue' });
     };
 
     // --- Handler de selección ---
@@ -487,12 +507,17 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     // --- Columnas ---
     const columns: DataTableColumn<Lectura>[] = useMemo(() => {
         // Estado del checkbox "Seleccionar Todo" para la página actual
+        // Ya no necesitamos la lógica del checkbox de selección global aquí
+        /* 
         const recordIdsOnPageSet = new Set(sortedAndPaginatedResults.map(r => r.ID_Lectura));
         const selectedIdsOnPage = selectedRecords.filter(sr => recordIdsOnPageSet.has(sr.ID_Lectura));
         const allRecordsOnPageSelected = sortedAndPaginatedResults.length > 0 && selectedIdsOnPage.length === sortedAndPaginatedResults.length;
         const indeterminate = selectedIdsOnPage.length > 0 && !allRecordsOnPageSelected;
+        */
 
         return [
+            // --- Columna de Checkbox eliminada ---
+            /*
             {
                 accessor: 'select',
                 title: (
@@ -538,28 +563,29 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                     />
                 ),
             },
+            */
             {
                  accessor: 'relevancia', 
-                 title: 'Rel', 
-                 width: 30,
+                 title: <IconBookmark size={16} />,
+                 width: 30, // Mantener ancho fijo pequeño
                  textAlign: 'center', 
                  render: (record) => 
                      record.relevancia ? (
                          <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
-                             <IconStar size={16} color="orange" />
+                             <IconBookmark size={16} color="orange" />
                          </Tooltip>
                      ) : null,
             },
-            { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true, width: 160 },
-            { accessor: 'Matricula', title: 'Matrícula', sortable: true, width: 100 },
-            { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true, width: 150 },
-            { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true, width: 100 },
-            { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true, width: 100 },
-            { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true, width: 100 },
-            { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true, width: 70 },
-            { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 },
+            { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true }, // width eliminado
+            { accessor: 'Matricula', title: 'Matrícula', sortable: true }, // width eliminado
+            { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true }, // width eliminado
+            { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true }, // width eliminado
+            { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true }, // width eliminado
+            { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true }, // width eliminado
+            { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true }, // width eliminado
+            { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 }, // width mantenido/ajustado pequeño
         ];
-    }, [sortedAndPaginatedResults, selectedRecords]);
+    }, [/* sortedAndPaginatedResults, */ selectedRecords]); // Quitar dependencia no usada
 
     // --- Renderizado ---
     return (
@@ -692,6 +718,18 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 mt="md"
                             >
                                 Ejecutar Filtro
+                            </Button>
+                            <Button 
+                                variant="subtle" 
+                                color="gray" 
+                                leftSection={<IconFilterOff size={16} />} 
+                                onClick={handleClearFilters}
+                                size="xs" 
+                                fullWidth
+                                mt="xs"
+                                disabled={loading || initialLoading}
+                            >
+                                Limpiar Filtros Actuales
                             </Button>
                          </Stack>
                      </Paper>
