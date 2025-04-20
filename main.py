@@ -783,43 +783,28 @@ def get_vehiculos_por_caso(caso_id: int, db: Session = Depends(get_db)):
 
 @app.get("/vehiculos/{vehiculo_id}/lecturas", response_model=List[schemas.Lectura], tags=["Vehículos"])
 def get_lecturas_por_vehiculo(
-    vehiculo_id: int,
-    caso_id: Optional[int] = Query(None, description="ID del caso opcional para filtrar lecturas"),
-    # --- NUEVO: Añadir parámetro tipo_fuente ---
-    tipo_fuente: Optional[str] = Query(None, description="Tipo de fuente opcional para filtrar (LPR o GPS)", pattern="^(LPR|GPS)$"),
+    vehiculo_id: int, 
+    caso_id: Optional[int] = Query(None, description="ID del caso opcional para filtrar lecturas"), 
     db: Session = Depends(get_db)
 ):
     """
-    Obtiene todas las lecturas asociadas a un vehículo por su ID_Vehiculo.
-    Opcionalmente filtra por caso_id y/o tipo_fuente (LPR o GPS).
+    Obtiene todas las lecturas (LPR y GPS) asociadas a un vehículo por su ID_Vehiculo.
+    Opcionalmente filtra por caso_id si se proporciona.
     """
     db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.ID_Vehiculo == vehiculo_id).first()
     if not db_vehiculo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con ID {vehiculo_id} no encontrado")
 
-    # Construye la consulta base filtrando por matrícula
     query = db.query(models.Lectura).filter(models.Lectura.Matricula == db_vehiculo.Matricula)
 
-    # --- Filtro opcional por caso_id ---
     if caso_id is not None:
+        # Si se proporciona caso_id, necesitamos unir con ArchivoExcel para filtrar
         query = query.join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
                      .filter(models.ArchivoExcel.ID_Caso == caso_id)
 
-    # --- NUEVO: Filtro opcional por tipo_fuente ---
-    if tipo_fuente is not None:
-        query = query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
-
-    # Ejecuta la consulta y ordena
     lecturas = query.order_by(models.Lectura.Fecha_y_Hora.asc()).all()
-
-    # --- Actualizar log para incluir tipo_fuente ---
-    log_msg = f"Encontradas {len(lecturas)} lecturas para el vehículo ID {vehiculo_id} (Matrícula: {db_vehiculo.Matricula})"
-    if caso_id:
-        log_msg += f" en caso ID {caso_id}"
-    if tipo_fuente:
-        log_msg += f" de tipo {tipo_fuente}"
-    logger.info(log_msg)
     
+    logger.info(f"Encontradas {len(lecturas)} lecturas para el vehículo ID {vehiculo_id} (Matrícula: {db_vehiculo.Matricula})" + (f" en caso ID {caso_id}" if caso_id else ""))
     # Devolvemos las lecturas con el lector asociado cargado (si existe)
     return [schemas.Lectura.model_validate(lect, from_attributes=True) for lect in lecturas]
 

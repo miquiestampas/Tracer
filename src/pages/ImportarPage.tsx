@@ -28,7 +28,7 @@ import { uploadArchivoExcel, getArchivosPorCaso, deleteArchivo } from '../servic
 import apiClient from '../services/api';
 import type { Caso, ArchivoExcel, UploadResponse } from '../types/data';
 import * as XLSX from 'xlsx'; // Importar librería xlsx
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
@@ -85,6 +85,7 @@ function ImportarPage() {
   const [deletingArchivoId, setDeletingArchivoId] = useState<number | null>(null);
 
   const navigate = useNavigate(); // Hook para navegación
+  const location = useLocation(); // <-- Hook para obtener estado de ruta
 
   // Cargar casos para el selector
   useEffect(() => {
@@ -107,6 +108,29 @@ function ImportarPage() {
     fetchCasosForSelect();
   }, []);
 
+  // --- NUEVO: Efecto para establecer el caso preseleccionado ---
+  useEffect(() => {
+    const preselectedId = location.state?.preselectedCasoId;
+    // Solo intentar preseleccionar si hay un ID, la lista de casos está cargada y no hay ya un caso seleccionado
+    if (preselectedId !== null && preselectedId !== undefined && casosList.length > 0 && !selectedCasoId) {
+        const preselectedIdStr = String(preselectedId);
+        // Verificar que el ID preseleccionado existe en la lista
+        const casoExists = casosList.some(caso => caso.value === preselectedIdStr);
+        if (casoExists) {
+            console.log(`[ImportarPage] Preseleccionando caso ID: ${preselectedIdStr}`);
+            setSelectedCasoId(preselectedIdStr);
+            // Opcional: Actualizar también el nombre si se usa en algún sitio
+            const casoName = casosList.find(caso => caso.value === preselectedIdStr)?.label;
+            if(casoName) setSelectedCasoName(casoName.split(' - ')[1]?.split(' (')[0] || 'Caso seleccionado'); // Extraer nombre
+        } else {
+            console.warn(`[ImportarPage] El ID de caso preseleccionado (${preselectedIdStr}) no se encontró en la lista.`);
+            // Limpiar el estado de la ruta para evitar reintentos?
+            // navigate('.', { replace: true, state: {} }); // Podría ser útil
+        }
+    }
+    // Depender de location.state y casosList. Se ejecutará si cambia el estado o carga la lista.
+  }, [location.state, casosList, selectedCasoId, navigate]); // Añadir selectedCasoId y navigate a dependencias
+
   // --- NUEVO: Función para cargar archivos ---
   const fetchArchivos = useCallback(async (casoId: string) => {
       setLoadingArchivos(true);
@@ -125,7 +149,7 @@ function ImportarPage() {
       }
   }, []); // useCallback para evitar re-creaciones innecesarias
 
-  // --- NUEVO: Efecto para cargar archivos cuando cambia el caso seleccionado ---
+  // --- Efecto para cargar archivos cuando cambia el caso seleccionado ---
   useEffect(() => {
     if (selectedCasoId) {
       fetchArchivos(selectedCasoId);
@@ -133,7 +157,7 @@ function ImportarPage() {
       setArchivosList([]); // Limpiar lista si no hay caso seleccionado
       setErrorArchivos(null); // Limpiar error
     }
-  }, [selectedCasoId, fetchArchivos]); // Depender de selectedCasoId y fetchArchivos
+  }, [selectedCasoId, fetchArchivos]);
 
   // --- MODIFICADO: Leer cabeceras y aplicar auto-mapeo ---
   const readExcelHeaders = useCallback(async (file: File) => {
