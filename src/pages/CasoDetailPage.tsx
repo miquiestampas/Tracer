@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Box, Text, Loader, Alert, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea, Title } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
-import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook, IconTable, IconTarget, IconMap, IconRoute } from '@tabler/icons-react';
+import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook, IconTable, IconTarget, IconMap, IconRoute, IconDeviceCctv, IconArrowsJoin, IconBookmark, IconHelpCircle, IconRefresh } from '@tabler/icons-react';
 import { getCasoById } from '../services/casosApi';
 import { getArchivosPorCaso, deleteArchivo } from '../services/archivosApi';
 import { notifications } from '@mantine/notifications';
@@ -51,10 +51,10 @@ type DataSourceType = 'LPR' | 'GPS';
 
 // --- NUEVO: Definir las secciones/botones (ACTUALIZADO) --- 
 const caseSections = [
-    { id: 'analisis-lpr', label: 'Análisis LPR', icon: IconAnalyze },
+    { id: 'analisis-lpr', label: 'Lecturas LPR', icon: IconDeviceCctv },
     { id: 'busqueda-cruzada-lpr', label: 'Búsqueda Cruzada', icon: IconFlask },
-    { id: 'lanzadera', label: 'Vehículo Lanzadera', icon: IconRoute },
-    { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconStar },
+    { id: 'lanzadera', label: 'Vehículo Lanzadera', icon: IconArrowsJoin },
+    { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconBookmark },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar },
     { id: 'mapa', label: 'Mapa', icon: IconMap },
     { id: 'archivos', label: 'Archivos Importados', icon: IconFiles },
@@ -70,6 +70,126 @@ interface LectorConCoordenadas {
     Provincia?: string | null;
     Organismo_Regulador?: string | null;
 }
+
+// --- Objeto con Textos de Ayuda ---
+const helpTexts: { [key: string]: React.ReactNode } = {
+  'analisis-lpr': (
+    <Box maw={400}> 
+      <Text fw={500} mb="sm">Ayuda: Lecturas LPR</Text>
+      <Stack gap="xs"> 
+        <Text size="xs">
+          Esta pestaña muestra las lecturas LPR del caso.
+        </Text>
+        <Text size="xs">
+          <strong>Filtros (izquierda):</strong>
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li>Busca por matrícula, fechas, horas, lector, carretera, etc.</li>
+            <li><strong>Búsqueda Parcial:</strong> Campos como 'Matrícula' permiten búsquedas parciales (p.ej., "1234" encontrará "1234ABC").</li>
+            <li><strong>Comodines:</strong> Puedes usar comodines como '%' para representar caracteres desconocidos (p.ej., "12%4AB" podría encontrar "1234ABC" o "1294ABC").</li>
+            <li>Aplica los filtros para actualizar la tabla.</li>
+          </ul>
+        </Text>
+        <Text size="xs">
+          <strong>Tabla de Resultados:</strong>
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li>Muestra lecturas que coinciden con filtros.</li>
+            <li>Ordena haciendo clic en cabeceras.</li>
+            <li>Acciones: Marcar/desmarcar relevante (<IconBookmark size="0.8rem" />), guardar vehículo para comprobaciones posteriores(<IconCar size="0.8rem" />).</li>
+          </ul>
+        </Text>
+      </Stack>
+    </Box>
+  ),
+  'busqueda-cruzada-lpr': (
+    <Box maw={400}>
+      <Text fw={500} mb="sm">Ayuda: Búsqueda Cruzada</Text>
+      <Stack gap="xs">
+        <Text size="xs">
+          <strong>Propósito:</strong> Identifica vehículos (matrículas) que aparecen en <strong>múltiples conjuntos de filtros diferentes</strong> dentro de este mismo caso. Es útil para encontrar vehículos vistos bajo distintas condiciones (p.ej., en dos zonas diferentes o en dos franjas horarias).
+        </Text>
+        <Text size="xs">
+          <strong>Uso Correcto:</strong>
+          <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><strong>Define y Guarda Búsquedas:</strong> Usa los filtros para definir un criterio (p.ej., Lector A entre 8:00-9:00). Haz clic en "Guardar Búsqueda" y dale un nombre descriptivo (p.ej., "Entrada Mañana"). Repite para otros criterios (p.ej., "Salida Tarde").</li>
+            <li><strong>Selecciona Búsquedas Guardadas:</strong> Marca las casillas de las búsquedas guardadas que quieres cruzar (mínimo 2).</li>
+            <li><strong>Realiza el Cruce:</strong> Haz clic en "Realizar Cruce".</li>
+            <li><strong>Resultados:</strong> Se mostrará la lista de matrículas que aparecen en <strong>todas</strong> las búsquedas seleccionadas.</li>
+            <li><strong>Ver Lecturas (Opcional):</strong> Puedes seleccionar las matrículas resultantes para ver sus lecturas detalladas.</li>
+          </ol>
+        </Text>
+      </Stack>
+    </Box>
+  ), 
+  'lanzadera': (
+    <Box maw={400}>
+      <Text fw={500} mb="sm">Ayuda: Vehículo Lanzadera</Text>
+      <Stack gap="xs">
+        <Text size="xs">
+          <strong>Propósito:</strong> Detecta pares de vehículos que viajan juntos de forma consistente (convoyes), basándose en lecturas LPR cercanas en el tiempo y en múltiples ubicaciones o días distintos. Esto puede indicar un vehículo "lanzadera" que guía a otro.
+        </Text>
+        <Text size="xs">
+          <strong>Uso Correcto:</strong>
+          <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><strong>Define Parámetros:</strong> Ajusta la "Ventana de Tiempo" (segundos máximos entre lecturas para considerarlas juntas) y las "Mínimas Coincidencias" (cuántas veces deben verse juntos en lectores o días distintos para ser significativo).</li>
+            <li><strong>Filtros Opcionales:</strong> Puedes filtrar por fecha/hora o centrarte en una "Matrícula Objetivo" específica.</li>
+            <li><strong>Detectar Convoy:</strong> Haz clic en "Detectar Convoy".</li>
+            <li><strong>Resultados:</strong>
+                <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+                    <li><strong>Lista de Vehículos:</strong> Muestra todas las matrículas involucradas en algún convoy detectado. Puedes seleccionar vehículos para filtrar la tabla de detalles y el mapa.</li>
+                    <li><strong>Tabla de Detalles:</strong> Muestra cada instancia donde un par de vehículos seleccionados fueron vistos juntos (lector, hora, etc.).</li>
+                    <li><strong>Mapa:</strong> Visualiza geográficamente las ubicaciones de las co-ocurrencias de los vehículos seleccionados.</li>
+                </ul>
+            </li>
+          </ol>
+        </Text>
+      </Stack>
+    </Box>
+  ),
+  'lecturas-relevantes': (
+    <Box maw={400}>
+      <Text fw={500} mb="sm">Ayuda: Lecturas Relevantes</Text>
+      <Stack gap="xs">
+        <Text size="xs">
+          <strong>Propósito:</strong> Aquí se recopilan todas las lecturas que has marcado manualmente como importantes (<IconBookmark size="0.8rem"/>) desde la pestaña "Lecturas LPR". Permite centrarse en los eventos clave de la investigación.
+        </Text>
+        <Text size="xs">
+          <strong>Funcionalidades:</strong>
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><strong>Visualización:</strong> Muestra la tabla de lecturas marcadas. Puedes ordenar y paginar como en otras tablas.</li>
+            <li><strong>Notas:</strong> Edita (<IconPencil size="0.8rem"/>) o añade notas específicas a cada lectura relevante para recordar por qué es importante.</li>
+            <li><strong>Desmarcar:</strong> Elimina (<IconStarOff size="0.8rem"/> o <IconTrash size="0.8rem"/>) la marca de relevancia si una lectura ya no es crucial. Puedes hacerlo individualmente o para una selección.</li>
+            <li><strong>Guardar Vehículo:</strong> Guarda rápidamente (<IconCar size="0.8rem"/>) la matrícula de una lectura relevante como un vehículo para seguimiento posterior.</li>
+            <li><strong>Selección Múltiple:</strong> Usa las casillas para seleccionar varias lecturas y desmarcarlas o guardar sus vehículos en bloque.</li>
+            <li><strong>Refrescar:</strong> Actualiza (<IconRefresh size="0.8rem"/>) la lista si has hecho cambios en otra pestaña.</li>
+          </ul>
+        </Text>
+      </Stack>
+    </Box>
+  ),
+  'vehiculos': (
+    <Box maw={400}>
+      <Text fw={500} mb="sm">Ayuda: Vehículos</Text>
+      <Stack gap="xs">
+        <Text size="xs">
+          <strong>Propósito:</strong> Gestiona la lista de vehículos (matrículas) asociados a este caso. Un vehículo se añade aquí automáticamente si aparece en las lecturas importadas o si lo guardas manualmente desde otras pestañas.
+        </Text>
+        <Text size="xs">
+          <strong>Funcionalidades:</strong>
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><strong>Listado:</strong> Muestra todos los vehículos vinculados al caso, con detalles como marca, modelo, color, etc. (si se han añadido).</li>
+            <li><strong>Lecturas LPR:</strong> Indica cuántas lecturas LPR tiene cada vehículo *dentro de este caso*.</li>
+            <li><strong>Editar Detalles:</strong> Modifica (<IconPencil size="0.8rem"/>) la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).</li>
+            <li><strong>Ver Lecturas:</strong> Accede (<IconEye size="0.8rem"/>) a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.</li>
+            <li><strong>Eliminar Vehículo:</strong> Borra (<IconTrash size="0.8rem"/>) un vehículo de la lista del caso (Nota: Esto *no* elimina sus lecturas asociadas, solo el registro del vehículo).</li>
+             <li><strong>Refrescar:</strong> Actualiza (<IconRefresh size="0.8rem"/>) la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).</li>
+          </ul>
+        </Text>
+      </Stack>
+    </Box>
+  ),
+  'mapa': 'Ayuda para Mapa...',
+  'archivos': 'Ayuda para Archivos Importados...',
+};
 
 function CasoDetailPage() {
   const { idCaso } = useParams<{ idCaso: string }>();
@@ -475,10 +595,31 @@ function CasoDetailPage() {
             </Group>
             {/* --- FIN Grupo de Botones --- */}
 
-            {/* --- Renderizado Condicional del Contenido --- */}
-            <Box mt="lg">
+            <Box mt="lg" style={{ position: 'relative' }}> {/* Añadir position relative al contenedor padre */} 
+                {/* --- Renderizado Condicional del Contenido --- */}
                 {/* --- Paneles siempre renderizados, pero ocultos/mostrados con CSS --- */}
-                <Box style={{ display: activeMainTab === 'analisis-lpr' ? 'block' : 'none' }}>
+                
+                {/* Pestaña Lecturas LPR */}
+                <Box style={{ display: activeMainTab === 'analisis-lpr' ? 'block' : 'none', position: 'relative' }}>
+                   {/* --- Icono de Ayuda para esta pestaña --- */}
+                   <Tooltip
+                        label={helpTexts['analisis-lpr']}
+                        multiline withArrow position="bottom-start" offset={8}
+                        styles={{ tooltip: { maxWidth: '400px' } }}
+                        zIndex={1001} 
+                    >
+                        <ActionIcon 
+                            variant="subtle" 
+                            color="blue" 
+                            size="lg" 
+                            aria-label="Ayuda Lecturas LPR"
+                            style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
+                        >
+                            <IconHelpCircle size="1.8rem" stroke={1.5} />
+                        </ActionIcon>
+                    </Tooltip>
+                    {/* --- Fin Icono Ayuda --- */}
+
                     <AnalisisLecturasPanel 
                         casoIdFijo={idCasoNum!}
                         permitirSeleccionCaso={false}
@@ -489,87 +630,168 @@ function CasoDetailPage() {
                     />
                 </Box>
 
-                <Box style={{ display: activeMainTab === 'busqueda-cruzada-lpr' ? 'block' : 'none' }}>
-                    <LprAvanzadoPanel 
+                {/* Pestaña Búsqueda Cruzada (Añadir icono ayuda aquí después) */} 
+                <Box style={{ display: activeMainTab === 'busqueda-cruzada-lpr' ? 'block' : 'none', position: 'relative' }}>
+                   {/* --- Icono de Ayuda para esta pestaña --- */}
+                   <Tooltip
+                        label={helpTexts['busqueda-cruzada-lpr']}
+                        multiline withArrow position="bottom-start" offset={8}
+                        styles={{ tooltip: { maxWidth: '400px' } }} 
+                        zIndex={1001} 
+                    >
+                        <ActionIcon 
+                            variant="subtle" 
+                            color="blue" 
+                            size="lg" 
+                            aria-label="Ayuda Búsqueda Cruzada"
+                            style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
+                        >
+                            <IconHelpCircle size="1.8rem" stroke={1.5} />
+                        </ActionIcon>
+                    </Tooltip>
+                    {/* --- Fin Icono Ayuda --- */}
+                    
+                   <LprAvanzadoPanel 
                         casoId={idCasoNum!}
                         interactedMatriculas={interactedMatriculas}
                         addInteractedMatricula={addInteractedMatricula}
                     />
                 </Box>
 
-                <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none' }}>
+                {/* Pestaña Lanzadera */}
+                <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none', position: 'relative' }}>
+                    {/* --- Icono de Ayuda para esta pestaña --- */}
+                    <Tooltip
+                        label={helpTexts['lanzadera']}
+                        multiline withArrow position="bottom-start" offset={8}
+                        styles={{ tooltip: { maxWidth: '400px' } }} 
+                        zIndex={1001} 
+                    >
+                        <ActionIcon 
+                            variant="subtle" 
+                            color="blue" 
+                            size="lg" 
+                            aria-label="Ayuda Vehículo Lanzadera"
+                            style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
+                        >
+                            <IconHelpCircle size="1.8rem" stroke={1.5} />
+                        </ActionIcon>
+                    </Tooltip>
+                    {/* --- Fin Icono Ayuda --- */}
+                    
                     <LanzaderaPanel casoId={idCasoNum!} />
                 </Box>
 
-                <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none' }}>
-                    <LecturasRelevantesPanel
-                        lecturas={lecturasRelevantes}
-                        loading={relevantLoading}
-                        totalRecords={Array.isArray(lecturasRelevantes) ? lecturasRelevantes.length : 0}
-                        page={relevantPage}
-                        onPageChange={handleRelevantPageChange}
-                        pageSize={RELEVANT_PAGE_SIZE}
-                        sortStatus={relevantSortStatus}
-                        onSortStatusChange={handleRelevantSortChange}
-                        selectedRecordIds={selectedRelevantRecordIds}
-                        onSelectionChange={handleRelevantSelectionChange}
-                        onEditNota={handleRelevantEditNota}
-                        onDesmarcar={handleRelevantDesmarcar}
-                        onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
-                        onGuardarVehiculo={handleRelevantGuardarVehiculo}
-                        onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
-                        onRefresh={fetchLecturasRelevantes}
-                    />
-                </Box>
+                {/* ... Resto de las pestañas (añadir icono ayuda en cada una) ... */}
+                 <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none', position: 'relative' }}>
+                     {/* --- Icono de Ayuda para esta pestaña --- */}
+                     <Tooltip
+                         label={helpTexts['lecturas-relevantes']}
+                         multiline withArrow position="bottom-start" offset={8}
+                         styles={{ tooltip: { maxWidth: '400px' } }} 
+                         zIndex={1001} 
+                     >
+                         <ActionIcon 
+                             variant="subtle" 
+                             color="blue" 
+                             size="lg" 
+                             aria-label="Ayuda Lecturas Relevantes"
+                             style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
+                         >
+                             <IconHelpCircle size="1.8rem" stroke={1.5} />
+                         </ActionIcon>
+                     </Tooltip>
+                     {/* --- Fin Icono Ayuda --- */} 
+                     
+                     <LecturasRelevantesPanel
+                         lecturas={lecturasRelevantes}
+                         loading={relevantLoading}
+                         totalRecords={Array.isArray(lecturasRelevantes) ? lecturasRelevantes.length : 0}
+                         page={relevantPage}
+                         onPageChange={handleRelevantPageChange}
+                         pageSize={RELEVANT_PAGE_SIZE}
+                         sortStatus={relevantSortStatus}
+                         onSortStatusChange={handleRelevantSortChange}
+                         selectedRecordIds={selectedRelevantRecordIds}
+                         onSelectionChange={handleRelevantSelectionChange}
+                         onEditNota={handleRelevantEditNota}
+                         onDesmarcar={handleRelevantDesmarcar}
+                         onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
+                         onGuardarVehiculo={handleRelevantGuardarVehiculo}
+                         onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
+                         onRefresh={fetchLecturasRelevantes}
+                     />
+                 </Box>
 
-                <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none' }}>
-                    <VehiculosPanel casoId={idCasoNum!} />
-                </Box>
+                 <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
+                     {/* --- Icono de Ayuda para esta pestaña --- */}
+                     <Tooltip
+                         label={helpTexts['vehiculos']}
+                         multiline withArrow position="bottom-start" offset={8}
+                         styles={{ tooltip: { maxWidth: '400px' } }} 
+                         zIndex={1001} 
+                     >
+                         <ActionIcon 
+                             variant="subtle" 
+                             color="blue" 
+                             size="lg" 
+                             aria-label="Ayuda Vehículos"
+                             style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
+                         >
+                             <IconHelpCircle size="1.8rem" stroke={1.5} />
+                         </ActionIcon>
+                     </Tooltip>
+                     {/* --- Fin Icono Ayuda --- */} 
+                     
+                     <VehiculosPanel casoId={idCasoNum!} />
+                 </Box>
 
-                <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none' }}>
-                    <Box style={{ position: 'relative', height: '500px' }}>
-                        <LoadingOverlay visible={loadingMapLecturas} />
-                        {errorMapLecturas && (
-                            <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
-                        )}
-                        {!loadingMapLecturas && !errorMapLecturas && (
-                            <CasoMap lectores={mapLecturas} />
-                        )}
-                    </Box>
-                </Box>
+                 <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>
+                     {/* TODO: Añadir icono ayuda aquí */} 
+                     <Box style={{ position: 'relative', height: '500px' }}>
+                         <LoadingOverlay visible={loadingMapLecturas} />
+                         {errorMapLecturas && (
+                             <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
+                         )}
+                         {!loadingMapLecturas && !errorMapLecturas && (
+                             <CasoMap lectores={mapLecturas} />
+                         )}
+                     </Box>
+                 </Box>
 
-                <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none' }}>
-                    <Group justify="space-between" mb="md">
-                      <Title order={4}>Archivos Importados</Title>
-                      <Button 
-                          leftSection={<IconFileImport size={16} />} 
-                          onClick={() => navigate('/importar', { state: { preselectedCasoId: idCasoNum } })}
-                          variant='light'
-                          size="sm"
-                      >
-                          Cargar Nuevos Archivos
-                      </Button>
-                    </Group>
-                    
-                    <LoadingOverlay visible={loadingArchivos} />
-                    {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
-                    
-                    <DataTable<ArchivoExcel>
-                        records={archivos}
-                        columns={archivosColumns}
-                        minHeight={150}
-                        withTableBorder
-                        borderRadius="sm"
-                        striped
-                        highlightOnHover
-                        idAccessor="ID_Archivo"
-                        noRecordsText="No hay archivos importados para este caso."
-                        fetching={loadingArchivos}
-                    />
-                </Box>
+                 <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none', position: 'relative' }}>
+                    {/* TODO: Añadir icono ayuda aquí */} 
+                     <Group justify="space-between" mb="md">
+                       <Title order={4}>Archivos Importados</Title>
+                       <Button 
+                           leftSection={<IconFileImport size={16} />} 
+                           onClick={() => navigate('/importar', { state: { preselectedCasoId: idCasoNum } })}
+                           variant='light'
+                           size="sm"
+                       >
+                           Cargar Nuevos Archivos
+                       </Button>
+                     </Group>
+                     
+                     <LoadingOverlay visible={loadingArchivos} />
+                     {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
+                     
+                     <DataTable<ArchivoExcel>
+                         records={archivos}
+                         columns={archivosColumns}
+                         minHeight={150}
+                         withTableBorder
+                         borderRadius="sm"
+                         striped
+                         highlightOnHover
+                         idAccessor="ID_Archivo"
+                         noRecordsText="No hay archivos importados para este caso."
+                         fetching={loadingArchivos}
+                     />
+                 </Box>
             </Box>
 
-            {/* --- Modales --- */}
+            {/* Modales */}
             <EditNotaModal
                 opened={!!editingRelevantNota}
                 onClose={handleRelevantCloseEditModal}
