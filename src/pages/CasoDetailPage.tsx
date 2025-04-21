@@ -35,16 +35,27 @@ const initialFilterState: FilterState = {
     soloRelevantes: false,
 };
 
+// --- Placeholder Types (Incluyendo LanzaderaParams antes de su uso) ---
+// TODO: Replace with actual types from panel components
+type AnalisisFilters = any;
+type AnalisisResults = Lectura[];
+type LprAvanzadoFilters = any;
+type LprAvanzadoResults = any; // Probablemente resultados agrupados por matrícula
+type LanzaderaParams = any; 
+type LanzaderaResults = any; // Probablemente los detalles de coocurrencias
+
+// --- Estado inicial para Lanzadera ---
+const initialLanzaderaParams: LanzaderaParams = { /* valores por defecto */ };
+
 type DataSourceType = 'LPR' | 'GPS';
 
-// --- NUEVO: Definir las secciones/botones --- 
+// --- NUEVO: Definir las secciones/botones (ACTUALIZADO) --- 
 const caseSections = [
     { id: 'analisis-lpr', label: 'Análisis LPR', icon: IconAnalyze },
     { id: 'busqueda-cruzada-lpr', label: 'Búsqueda Cruzada', icon: IconFlask },
     { id: 'lanzadera', label: 'Vehículo Lanzadera', icon: IconRoute },
     { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconStar },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar },
-    { id: 'analisis-gps', label: 'Análisis GPS', icon: IconMapPin },
     { id: 'mapa', label: 'Mapa', icon: IconMap },
     { id: 'archivos', label: 'Archivos Importados', icon: IconFiles },
 ];
@@ -57,19 +68,7 @@ interface LectorConCoordenadas {
     Coordenada_Y: number;
     Carretera?: string | null;
     Provincia?: string | null;
-}
-
-interface LecturaConCoordenadas {
-    ID_Lectura: number;
-    ID_Archivo: number;
-    Matricula: string;
-    Fecha_y_Hora: string;
-    Coordenada_X: number; 
-    Coordenada_Y: number;
-    Lector?: LectorConCoordenadas | null;
-    Tipo_Fuente: string;
-    Carril?: string | null | undefined;
-    Velocidad?: number | null;
+    Organismo_Regulador?: string | null;
 }
 
 function CasoDetailPage() {
@@ -341,7 +340,7 @@ function CasoDetailPage() {
   };
 
     // --- Estados para Lecturas del Mapa --- 
-    const [mapLecturas, setMapLecturas] = useState<LecturaConCoordenadas[]>([]);
+    const [mapLecturas, setMapLecturas] = useState<LectorConCoordenadas[]>([]);
     const [loadingMapLecturas, setLoadingMapLecturas] = useState(false);
     const [errorMapLecturas, setErrorMapLecturas] = useState<string | null>(null);
 
@@ -354,7 +353,7 @@ function CasoDetailPage() {
         try {
             // Asumimos un endpoint que devuelve las lecturas (LPR/GPS) con coordenadas
             // para un caso específico. Podría necesitar ajustes según tu API.
-            const response = await apiClient.get<LecturaConCoordenadas[]>(`/casos/${idCasoNum}/lecturas_para_mapa`);
+            const response = await apiClient.get<LectorConCoordenadas[]>(`/casos/${idCasoNum}/lecturas_para_mapa`);
             setMapLecturas(response.data || []);
             console.log("[CasoMap] Lecturas cargadas:", response.data?.length);
         } catch (err: any) {
@@ -372,7 +371,7 @@ function CasoDetailPage() {
         if (activeMainTab === 'mapa' && mapLecturas.length === 0 && !loadingMapLecturas) {
             fetchMapLecturas();
         }
-    }, [activeMainTab, mapLecturas.length, loadingMapLecturas, fetchMapLecturas]);
+    }, [activeMainTab, mapLecturas.length, fetchMapLecturas]);
 
     // --- Columnas Tabla Archivos ---
     const archivosColumns: DataTableColumn<ArchivoExcel>[] = [
@@ -527,25 +526,14 @@ function CasoDetailPage() {
                     <VehiculosPanel casoId={idCasoNum!} />
                 </Box>
 
-                <Box style={{ display: activeMainTab === 'analisis-gps' ? 'block' : 'none' }}>
-                    <AnalisisLecturasPanel
-                        casoIdFijo={idCasoNum!}
-                        permitirSeleccionCaso={false}
-                        mostrarTitulo={false}
-                        tipoFuenteFijo='GPS'
-                        interactedMatriculas={interactedMatriculas}
-                        addInteractedMatricula={addInteractedMatricula}
-                    />
-                </Box>
-
                 <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none' }}>
-                    <Box style={{ position: 'relative', minHeight: '400px' }}>
+                    <Box style={{ position: 'relative', height: '500px' }}>
                         <LoadingOverlay visible={loadingMapLecturas} />
                         {errorMapLecturas && (
                             <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
                         )}
                         {!loadingMapLecturas && !errorMapLecturas && (
-                            <CasoMap lecturas={mapLecturas} />
+                            <CasoMap lectores={mapLecturas} />
                         )}
                     </Box>
                 </Box>
