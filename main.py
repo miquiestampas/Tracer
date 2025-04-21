@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware # Importar middleware CORS
 from fastapi.exceptions import RequestValidationError # Importar excepción
 from fastapi.responses import JSONResponse, FileResponse # Importar para respuesta personalizada y FileResponse
 from fastapi.encoders import jsonable_encoder # Importar para codificar errores
-from sqlalchemy.orm import Session, joinedload, contains_eager # Añadir joinedload y contains_eager
-from sqlalchemy.sql import func, extract # Importar func para count y extract para la hora
+from sqlalchemy.orm import Session, joinedload, contains_eager, relationship # Añadir relationship si no está
+from sqlalchemy.sql import func, extract, select, label # Añadir select y label
 import models, schemas # Importar nuestros modelos y schemas
 from database import SessionLocal, engine, get_db # Importar configuración de BD y get_db
 import pandas as pd
@@ -469,13 +469,52 @@ async def upload_excel(
 
     return response_data
 
-@app.get("/casos/{caso_id}/archivos", response_model=List[schemas.ArchivoExcel])
+@app.get("/casos/{caso_id}/archivos", response_model=List[schemas.ArchivoExcel]) # Schema ya incluye Total_Registros
 def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db)):
+    logger.info(f"GET /casos/{caso_id}/archivos - Obteniendo archivos con conteo de registros.")
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
+        logger.warning(f"Caso ID {caso_id} no encontrado al buscar archivos.")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
-    archivos = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
-    return archivos
+
+    try:
+        # Subconsulta para contar lecturas por ID_Archivo
+        subquery = select(
+            models.Lectura.ID_Archivo,
+            func.count(models.Lectura.ID_Lectura).label("total_lecturas")
+        ).group_by(models.Lectura.ID_Archivo).subquery()
+
+        # Consulta principal uniendo ArchivoExcel con la subconsulta de conteo
+        # Usamos un left outer join por si un archivo no tiene lecturas (aunque no debería pasar)
+        archivos_con_conteo = db.query(
+            models.ArchivoExcel,
+            # Seleccionar la columna 'total_lecturas' de la subconsulta, usando 0 si es NULL
+            func.coalesce(subquery.c.total_lecturas, 0).label("num_registros") 
+        ).outerjoin(
+            subquery, models.ArchivoExcel.ID_Archivo == subquery.c.ID_Archivo
+        ).filter(
+            models.ArchivoExcel.ID_Caso == caso_id
+        ).order_by(models.ArchivoExcel.Fecha_de_Importacion.desc()).all()
+
+        # Formatear la respuesta para que coincida con el schema
+        respuesta = []
+        for archivo_db, num_registros in archivos_con_conteo:
+            archivo_schema = schemas.ArchivoExcel(
+                ID_Archivo=archivo_db.ID_Archivo,
+                ID_Caso=archivo_db.ID_Caso,
+                Nombre_del_Archivo=archivo_db.Nombre_del_Archivo,
+                Tipo_de_Archivo=archivo_db.Tipo_de_Archivo,
+                Fecha_de_Importacion=archivo_db.Fecha_de_Importacion,
+                Total_Registros=num_registros # Asignar el conteo calculado
+            )
+            respuesta.append(archivo_schema)
+            
+        logger.info(f"Encontrados {len(respuesta)} archivos para el caso {caso_id}.")
+        return respuesta
+
+    except Exception as e:
+        logger.error(f"Error al obtener archivos para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al obtener archivos: {e}")
 
 @app.get("/archivos/{id_archivo}/download")
 async def download_archivo(id_archivo: int, db: Session = Depends(get_db)):
