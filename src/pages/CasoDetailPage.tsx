@@ -519,6 +519,7 @@ function CasoDetailPage() {
                         onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
                         onGuardarVehiculo={handleRelevantGuardarVehiculo}
                         onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
+                        onRefresh={fetchLecturasRelevantes}
                     />
                 </Box>
 
