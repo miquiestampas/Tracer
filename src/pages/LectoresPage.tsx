@@ -474,6 +474,26 @@ function LectoresPage() {
     }
   };
 
+  // *** NUEVO: Lógica de Filtrado para la Tabla ***
+  const lectoresFiltradosTabla = useMemo(() => {
+    const textoBusquedaLower = filtroTextoLibre.toLowerCase().trim();
+    // Filtrar el array 'lectores' (los de la página actual de la tabla)
+    return lectores.filter(lector => {
+      const provinciaMatch = filtroProvincia.length === 0 || (lector.Provincia && filtroProvincia.includes(lector.Provincia));
+      const carreteraMatch = filtroCarretera.length === 0 || (lector.Carretera && filtroCarretera.includes(lector.Carretera));
+      const organismoMatch = filtroOrganismo.length === 0 || (lector.Organismo_Regulador && filtroOrganismo.includes(lector.Organismo_Regulador));
+      // Buscar en ID_Lector y Nombre para la tabla también
+      const textoMatch = textoBusquedaLower === '' || 
+                         (lector.ID_Lector && lector.ID_Lector.toLowerCase().includes(textoBusquedaLower)) ||
+                         (lector.Nombre && lector.Nombre.toLowerCase().includes(textoBusquedaLower));
+      const sentidoMatch = filtroSentido === null || (lector.Sentido && lector.Sentido === filtroSentido);
+      
+      // No aplicamos filtro espacial a la tabla
+      return provinciaMatch && carreteraMatch && organismoMatch && textoMatch && sentidoMatch;
+    });
+  }, [lectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido]);
+  // *** FIN: Lógica de Filtrado para la Tabla ***
+
   const rows = lectores.map((lector) => {
     const isSelected = selectedLectorIds.includes(lector.ID_Lector);
     return (
@@ -587,6 +607,49 @@ function LectoresPage() {
              {error && <Alert color="red" title="Error en Tabla">{error}</Alert>}
              {!error && (
                <>
+                 <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 5 }} mb="md">
+                   <MultiSelect
+                       label="Filtrar por Provincia"
+                       placeholder="Todas las provincias"
+                       data={provinciasUnicas}
+                       value={filtroProvincia}
+                       onChange={setFiltroProvincia}
+                       searchable clearable
+                   />
+                    <MultiSelect
+                       label="Filtrar por Carretera"
+                       placeholder="Todas las carreteras"
+                       data={carreterasUnicas}
+                       value={filtroCarretera}
+                       onChange={setFiltroCarretera}
+                       searchable clearable
+                   />
+                    <MultiSelect
+                       label="Filtrar por Organismo"
+                       placeholder="Todos los organismos"
+                       data={organismosUnicos}
+                       value={filtroOrganismo}
+                       onChange={setFiltroOrganismo}
+                       searchable clearable
+                   />
+                   <Autocomplete
+                       label="Buscar por ID / Nombre"
+                       placeholder="Escribe para buscar..."
+                       data={lectorSearchSuggestions}
+                       value={filtroTextoLibre}
+                       onChange={setFiltroTextoLibre}
+                       limit={10}
+                       clearable
+                   />
+                   <Select
+                       label="Filtrar por Sentido"
+                       placeholder="Ambos sentidos"
+                       data={SENTIDO_OPTIONS}
+                       value={filtroSentido}
+                       onChange={setFiltroSentido}
+                       clearable
+                   />
+                 </SimpleGrid>
                  <Table striped highlightOnHover withTableBorder mt="md" verticalSpacing="sm" >
                    <Table.Thead>
                      <Table.Tr>

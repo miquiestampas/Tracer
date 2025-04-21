@@ -596,7 +596,7 @@ function CasoDetailPage() {
             {/* --- FIN Grupo de Botones --- */}
 
             <Box mt="lg" style={{ position: 'relative' }}> {/* Añadir position relative al contenedor padre */} 
-                {/* --- Renderizado Condicional del Contenido --- */}
+            {/* --- Renderizado Condicional del Contenido --- */}
                 {/* --- Paneles siempre renderizados, pero ocultos/mostrados con CSS --- */}
                 
                 {/* Pestaña Lecturas LPR */}
@@ -651,7 +651,7 @@ function CasoDetailPage() {
                     </Tooltip>
                     {/* --- Fin Icono Ayuda --- */}
                     
-                   <LprAvanzadoPanel 
+                    <LprAvanzadoPanel 
                         casoId={idCasoNum!}
                         interactedMatriculas={interactedMatriculas}
                         addInteractedMatricula={addInteractedMatricula}
@@ -703,24 +703,24 @@ function CasoDetailPage() {
                      </Tooltip>
                      {/* --- Fin Icono Ayuda --- */} 
                      
-                     <LecturasRelevantesPanel
-                         lecturas={lecturasRelevantes}
-                         loading={relevantLoading}
-                         totalRecords={Array.isArray(lecturasRelevantes) ? lecturasRelevantes.length : 0}
-                         page={relevantPage}
-                         onPageChange={handleRelevantPageChange}
-                         pageSize={RELEVANT_PAGE_SIZE}
-                         sortStatus={relevantSortStatus}
-                         onSortStatusChange={handleRelevantSortChange}
-                         selectedRecordIds={selectedRelevantRecordIds}
-                         onSelectionChange={handleRelevantSelectionChange}
-                         onEditNota={handleRelevantEditNota}
-                         onDesmarcar={handleRelevantDesmarcar}
-                         onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
-                         onGuardarVehiculo={handleRelevantGuardarVehiculo}
-                         onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
+                    <LecturasRelevantesPanel
+                        lecturas={lecturasRelevantes}
+                        loading={relevantLoading}
+                        totalRecords={Array.isArray(lecturasRelevantes) ? lecturasRelevantes.length : 0}
+                        page={relevantPage}
+                        onPageChange={handleRelevantPageChange}
+                        pageSize={RELEVANT_PAGE_SIZE}
+                        sortStatus={relevantSortStatus}
+                        onSortStatusChange={handleRelevantSortChange}
+                        selectedRecordIds={selectedRelevantRecordIds}
+                        onSelectionChange={handleRelevantSelectionChange}
+                        onEditNota={handleRelevantEditNota}
+                        onDesmarcar={handleRelevantDesmarcar}
+                        onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
+                        onGuardarVehiculo={handleRelevantGuardarVehiculo}
+                        onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
                          onRefresh={fetchLecturasRelevantes}
-                     />
+                    />
                  </Box>
 
                  <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
@@ -743,7 +743,7 @@ function CasoDetailPage() {
                      </Tooltip>
                      {/* --- Fin Icono Ayuda --- */} 
                      
-                     <VehiculosPanel casoId={idCasoNum!} />
+                    <VehiculosPanel casoId={idCasoNum!} />
                  </Box>
 
                  <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>
@@ -752,27 +752,27 @@ function CasoDetailPage() {
                          <LoadingOverlay visible={loadingMapLecturas} />
                          {errorMapLecturas && (
                              <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
-                         )}
+                        )}
                          {!loadingMapLecturas && !errorMapLecturas && (
                              <CasoMap lectores={mapLecturas} />
-                         )}
-                     </Box>
+                        )}
+                    </Box>
                  </Box>
 
                  <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none', position: 'relative' }}>
                     {/* TODO: Añadir icono ayuda aquí */} 
                      <Group justify="space-between" mb="md">
                        <Title order={4}>Archivos Importados</Title>
-                       <Button 
-                           leftSection={<IconFileImport size={16} />} 
+                            <Button 
+                                leftSection={<IconFileImport size={16} />} 
                            onClick={() => navigate('/importar', { state: { preselectedCasoId: idCasoNum } })}
                            variant='light'
                            size="sm"
-                       >
+                            >
                            Cargar Nuevos Archivos
-                       </Button>
-                     </Group>
-                     
+                            </Button>
+                        </Group>
+
                      <LoadingOverlay visible={loadingArchivos} />
                      {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
                      

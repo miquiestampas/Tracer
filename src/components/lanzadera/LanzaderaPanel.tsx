@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Box, Title, Text, Group, TextInput, NumberInput, Button, LoadingOverlay, Alert, Paper, Stack, Grid, Collapse, ActionIcon, Chip } from '@mantine/core';
 import { DataTable, type DataTableColumn } from 'mantine-datatable';
-import { IconSearch, IconAlertCircle, IconLicense, IconClock, IconRepeat, IconChevronDown, IconChevronRight, IconMapPin, IconCar, IconCalendar, IconClockHour4, IconX } from '@tabler/icons-react';
+import { IconSearch, IconAlertCircle, IconLicense, IconClock, IconRepeat, IconChevronDown, IconChevronRight, IconMapPin, IconCar, IconCalendar, IconClockHour4, IconX, IconDeviceFloppy, IconBookmark } from '@tabler/icons-react';
 import apiClient from '../../services/api'; // Asumimos que tienes apiClient configurado
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs'; // Importar dayjs para formatear fechas
@@ -10,6 +10,8 @@ import L from 'leaflet'; // Importar L para manejar el icono
 import 'leaflet/dist/leaflet.css';
 import { DatePickerInput, TimeInput } from '@mantine/dates';
 import '@mantine/dates/styles.css'; // Importar estilos para dates
+import appEventEmitter from '../../utils/eventEmitter'; // Importar event emitter
+import type { Lectura } from '../../types/data'; // Añadir import de Lectura
 
 interface LanzaderaPanelProps {
     casoId: number;
@@ -69,6 +71,8 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
     const [expandedRecordIds, setExpandedRecordIds] = useState<Record<string, boolean>>({});
     const [debugInfo, setDebugInfo] = useState<string>('Inicializando...');
     const [vehiculosActivos, setVehiculosActivos] = useState<Set<string>>(new Set());
+    const [savingSeleccionados, setSavingSeleccionados] = useState(false);
+    const [markingRelevant, setMarkingRelevant] = useState(false);
 
     const handleDetectar = useCallback(async () => {
         if (ventanaTiempo === '' || minCoincidencias === '') {
@@ -251,6 +255,160 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
         });
     };
 
+    const handleGuardarSeleccionados = async () => {
+        const matriculasAGuardar = Array.from(vehiculosActivos);
+        if (matriculasAGuardar.length === 0) return;
+
+        setSavingSeleccionados(true);
+        const notificationId = notifications.show({
+            loading: true,
+            title: 'Guardando Vehículos',
+            message: `Guardando ${matriculasAGuardar.length} vehículo(s) seleccionado(s)...`,
+            autoClose: false,
+            withCloseButton: false,
+        });
+
+        const results = await Promise.allSettled(
+            matriculasAGuardar.map(matricula => apiClient.post('/vehiculos', { Matricula: matricula }))
+        );
+
+        let creados = 0;
+        let existentes = 0;
+        let errores = 0;
+
+        results.forEach((result, index) => {
+            const matricula = matriculasAGuardar[index];
+            if (result.status === 'fulfilled') {
+                // Asumimos que 201 es creado y 200 (o similar si la API devuelve existente) es 'ya existía'
+                // Esto puede necesitar ajuste según la implementación exacta de POST /vehiculos
+                if (result.value.status === 201) {
+                    creados++;
+                } else {
+                    // Podríamos ser más específicos si la API devuelve un código diferente para 'existente'
+                    existentes++; 
+                }
+            } else {
+                errores++;
+                console.error(`Error guardando vehículo ${matricula}:`, result.reason);
+            }
+        });
+
+        setSavingSeleccionados(false);
+        
+        let message = '';
+        let color: 'green' | 'blue' | 'orange' | 'red' = 'green';
+
+        if (creados > 0) message += `${creados} guardado(s). `;
+        if (existentes > 0) message += `${existentes} ya existente(s). `;
+        if (errores > 0) {
+             message += `${errores} con error.`;
+             color = creados > 0 || existentes > 0 ? 'orange' : 'red';
+        } else if (creados === 0 && existentes > 0) {
+            color = 'blue'; // Todos existían
+        }
+        
+        notifications.update({
+            id: notificationId,
+            title: 'Guardado Completado',
+            message: message.trim() || 'No se realizaron cambios.',
+            color: color,
+            loading: false,
+            withCloseButton: true,
+            autoClose: 5000,
+        });
+
+        // Emitir evento si hubo cambios (creados)
+        if (creados > 0) {
+            appEventEmitter.emit('listaVehiculosCambiada');
+        }
+    };
+
+    const handleMarcarRelevantes = async () => {
+        const matriculasAMarcar = Array.from(vehiculosActivos);
+        if (matriculasAMarcar.length === 0) return;
+
+        setMarkingRelevant(true);
+        const initialNotifId = notifications.show({
+            loading: true,
+            title: 'Marcando Lecturas Relevantes',
+            message: `Buscando lecturas para ${matriculasAMarcar.length} vehículo(s)...`,
+            autoClose: false,
+            withCloseButton: false,
+        });
+
+        let idsLecturas: number[] = [];
+        try {
+            // 1. Obtener IDs de todas las lecturas para las matrículas seleccionadas en este caso
+            const lecturasResponse = await apiClient.post<Lectura[]>('/lecturas/por_matriculas_y_filtros_combinados', {
+                matriculas: matriculasAMarcar,
+                caso_id: casoId,
+                tipo_fuente: 'LPR' // O podríamos buscar ambos LPR y GPS si fuera necesario
+            });
+            idsLecturas = lecturasResponse.data.map(l => l.ID_Lectura);
+            
+            if (idsLecturas.length === 0) {
+                 notifications.update({
+                    id: initialNotifId,
+                    title: 'Sin Lecturas',
+                    message: 'No se encontraron lecturas para los vehículos seleccionados en este caso.',
+                    color: 'orange',
+                    loading: false,
+                    withCloseButton: true,
+                    autoClose: 5000,
+                });
+                setMarkingRelevant(false);
+                return;
+            }
+
+            notifications.update({
+                id: initialNotifId,
+                title: 'Marcando Lecturas Relevantes',
+                message: `Marcando ${idsLecturas.length} lectura(s) como relevante(s)...`,
+                loading: true,
+            });
+
+            // 2. Llamar a la API para marcar cada lectura
+            const results = await Promise.allSettled(
+                idsLecturas.map(idLectura => apiClient.post(`/lecturas/${idLectura}/marcar_relevante`, { caso_id: casoId }))
+            );
+
+            let successes = 0;
+            let errors = 0;
+            results.forEach(result => {
+                if (result.status === 'fulfilled') {
+                    successes++;
+                } else {
+                    errors++;
+                    console.error("Error marcando lectura relevante:", result.reason);
+                }
+            });
+            
+            notifications.update({
+                id: initialNotifId,
+                title: 'Marcado Completado',
+                message: `${successes} lecturas marcadas como relevantes.` + (errors > 0 ? ` ${errors} fallaron.` : ''),
+                color: errors > 0 ? 'orange' : 'green',
+                loading: false,
+                withCloseButton: true,
+                autoClose: 5000,
+            });
+
+        } catch (error: any) {
+            console.error("Error en el proceso de marcar lecturas relevantes:", error);
+            notifications.update({
+                id: initialNotifId,
+                title: 'Error General',
+                message: error.response?.data?.detail || 'No se pudieron marcar las lecturas relevantes.',
+                color: 'red',
+                loading: false,
+                withCloseButton: true,
+                autoClose: 5000,
+            });
+        } finally {
+            setMarkingRelevant(false);
+        }
+    };
+
     return (
         <Stack gap="lg">
              {/* Sección de Controles Actualizada */}
@@ -357,7 +515,7 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
 
             {/* Sección de Resultados */}
             <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
-                 <LoadingOverlay visible={loading} />
+                 <LoadingOverlay visible={loading && !apiResponse} />
                  {apiResponse && <Title order={4} mb="md">Resultados de Detección ({apiResponse.vehiculos_en_convoy.length} Vehículos)</Title>}
                  {error && (
                      <Alert title="Error" color="red" icon={<IconAlertCircle />} mb="md">
@@ -365,39 +523,53 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
                      </Alert>
                  )}
                  {apiResponse && apiResponse.vehiculos_en_convoy.length > 0 && (
-                    <Box mb="md" pb="md" style={{ borderBottom: '1px solid var(--mantine-color-gray-3)' }}>
-                        <Text fw={500} mb={5}>Mostrar detalles/mapa para:</Text>
-                        <Group gap="sm">
-                            {apiResponse.vehiculos_en_convoy.map((matricula) => {
-                                const isChecked = vehiculosActivos.has(matricula);
-                                return (
-                                    <Chip 
-                                        key={matricula} 
-                                        checked={isChecked}
-                                        onChange={() => handleVehiculoActivoChange(matricula)}
-                                        variant="outline" 
-                                        size="sm"
-                                        // Aplicar estilos condicionales
-                                        styles={(theme) => ({
-                                            label: {
-                                                ...(isChecked && {
-                                                    backgroundColor: theme.colors.blue[6],
-                                                    color: theme.white,
-                                                    '&, &:hover': {
-                                                        backgroundColor: theme.colors.blue[7],
-                                                    },
-                                                }),
-                                            },
-                                        })}
-                                    >
-                                        {matricula}
-                                    </Chip>
-                                );
-                            })}
-                        </Group>
+                    <Box mb="md">
+                         <Text size="sm" fw={500} mb={5}>Selecciona vehículos para ver detalles y mapa:</Text>
+                         <Group justify="space-between" align="center" wrap="nowrap">
+                            <Box style={{ flexGrow: 1, overflow: 'hidden' }}>
+                                <Chip.Group multiple value={Array.from(vehiculosActivos)} onChange={(values) => setVehiculosActivos(new Set(values))}>
+                                    <Group gap={7} style={{ flexWrap: 'wrap' }}>
+                                        {apiResponse.vehiculos_en_convoy.map((matricula) => (
+                                            <Chip 
+                                                key={matricula} 
+                                                value={matricula}
+                                                variant="outline"
+                                                disabled={loading}
+                                            >
+                                                {matricula}
+                                            </Chip>
+                                        ))}
+                                    </Group>
+                                </Chip.Group>
+                            </Box>
+                            <Group gap="xs" style={{ flexShrink: 0 }}>
+                                <Button
+                                    variant="outline"
+                                    color="green"
+                                    size="xs"
+                                    leftSection={<IconCar size={16} />}
+                                    onClick={handleGuardarSeleccionados}
+                                    disabled={vehiculosActivos.size === 0 || savingSeleccionados || markingRelevant}
+                                    loading={savingSeleccionados}
+                                >
+                                    Guardar Vehículos ({vehiculosActivos.size})
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    color="yellow"
+                                    size="xs"
+                                    leftSection={<IconBookmark size={16} />}
+                                    onClick={handleMarcarRelevantes}
+                                    disabled={vehiculosActivos.size === 0 || savingSeleccionados || markingRelevant}
+                                    loading={markingRelevant}
+                                >
+                                    Marcar Relevantes ({vehiculosActivos.size})
+                                </Button>
+                            </Group>
+                         </Group>
                     </Box>
-                )}
-                {!loading && !apiResponse && !error && (
+                 )}
+                 {!loading && !apiResponse && !error && (
                      <Text c="dimmed" ta="center" mt="md">
                         Ejecuta la detección para ver resultados.
                     </Text>
