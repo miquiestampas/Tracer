@@ -1085,7 +1085,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         <Grid>
             <style>{customStyles}</style>
 
-            <Grid.Col span={{ base: 12, md: 4 }}>
+            <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
                 <Paper shadow="sm" p="md" withBorder style={{ height: '100%' }}>
                     <Stack gap="sm">
                         <Title order={4} mb="sm">Definir Filtros</Title>
@@ -1194,7 +1194,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                 </Paper>
             </Grid.Col>
 
-            <Grid.Col span={{ base: 12, md: 8 }}>
+            <Grid.Col span={{ base: 12, md: 9 }}>
                 <Stack gap="lg">
                     {/* --- Búsquedas Guardadas (Ahora primero) --- */}
                     <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>

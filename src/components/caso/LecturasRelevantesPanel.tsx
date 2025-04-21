@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Box, LoadingOverlay, Title, Stack, Text, Button, Group, Modal, Textarea, Tooltip, ActionIcon, Checkbox } from '@mantine/core';
+import { Box, LoadingOverlay, Title, Stack, Text, Button, Group, Modal, Textarea, Tooltip, ActionIcon, Checkbox, Paper } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { DataTable, type DataTableProps, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
-import { IconStarOff, IconPencil, IconTrash, IconCar, IconX } from '@tabler/icons-react';
+import { IconStarOff, IconPencil, IconTrash, IconCar, IconX, IconRefresh } from '@tabler/icons-react';
 import { openConfirmModal } from '@mantine/modals';
 import dayjs from 'dayjs';
 import _ from 'lodash';
@@ -30,6 +30,8 @@ interface LecturasRelevantesPanelProps {
     onDesmarcarSeleccionados: () => void;
     onGuardarVehiculo: (lectura: Lectura) => void;
     onGuardarVehiculosSeleccionados: () => void;
+    // --- NUEVO: Prop para recargar ---
+    onRefresh: () => void | Promise<void>;
 }
 
 function LecturasRelevantesPanel({
@@ -48,6 +50,8 @@ function LecturasRelevantesPanel({
     onDesmarcarSeleccionados,
     onGuardarVehiculo,
     onGuardarVehiculosSeleccionados,
+    // --- NUEVO: Destructuring ---
+    onRefresh
 }: LecturasRelevantesPanelProps) {
 
     // --- Lógica de Selección (adaptada a props y con useCallback) ---
@@ -154,55 +158,67 @@ function LecturasRelevantesPanel({
         <Box style={{ position: 'relative' }}>
             <LoadingOverlay visible={loading} />
             <Stack>
-                <Group justify="space-between" align="center" mb="sm">
-                    <Title order={4}>Lecturas Marcadas como Relevantes ({totalRecords})</Title>
-                    <Group gap="xs"> 
-                        <Button
-                            color="red"
-                            variant="light"
-                            size="xs"
-                            leftSection={<IconTrash size={16} />}
-                            disabled={selectedRecordIds.length === 0 || loading}
-                            onClick={onDesmarcarSeleccionados}
-                        >
-                            Desmarcar Selección ({selectedRecordIds.length})
-                        </Button>
-                        <Button
-                           color="green"
-                           variant="light"
-                           size="xs"
-                           leftSection={<IconCar size={16} />}
-                           disabled={selectedRecordIds.length === 0 || loading}
-                           onClick={onGuardarVehiculosSeleccionados}
-                       >
-                           Guardar Vehículos ({selectedRecordIds.length})
-                       </Button>
+                <Paper shadow="sm" p="md" withBorder>
+                    <Group justify="space-between" align="center" mb="sm">
+                        <Title order={4}>Lecturas Marcadas como Relevantes ({totalRecords})</Title>
+                        <Group gap="xs"> 
+                            <Button
+                                color="red"
+                                variant="light"
+                                size="xs"
+                                leftSection={<IconTrash size={16} />}
+                                disabled={selectedRecordIds.length === 0 || loading}
+                                onClick={onDesmarcarSeleccionados}
+                            >
+                                Desmarcar Selección ({selectedRecordIds.length})
+                            </Button>
+                            <Button
+                               color="green"
+                               variant="light"
+                               size="xs"
+                               leftSection={<IconCar size={16} />}
+                               disabled={selectedRecordIds.length === 0 || loading}
+                               onClick={onGuardarVehiculosSeleccionados}
+                           >
+                               Guardar Vehículos ({selectedRecordIds.length})
+                           </Button>
+                           {/* --- NUEVO: Botón Actualizar --- */}
+                            <Button 
+                                leftSection={<IconRefresh size={16} />}
+                                onClick={onRefresh} // Llamar a la función pasada por props
+                                variant="default"
+                                size="xs"
+                                disabled={loading} // Deshabilitar si está cargando
+                            >
+                                Actualizar Lista
+                            </Button>
+                        </Group>
                     </Group>
-                </Group>
-                {totalRecords === 0 && !loading && (
-                    <Text c="dimmed">No hay lecturas marcadas como relevantes para este caso.</Text>
-                )}
-                {totalRecords > 0 && (
-                    <DataTable<Lectura>
-                        records={sortedAndPaginatedRecords}
-                        columns={columns}
-                        totalRecords={totalRecords}
-                        recordsPerPage={pageSize}
-                        page={page}
-                        onPageChange={onPageChange}
-                        sortStatus={sortStatus}
-                        onSortStatusChange={onSortStatusChange}
-                        idAccessor="ID_Lectura"
-                        withTableBorder
-                        borderRadius="sm"
-                        withColumnBorders
-                        striped
-                        highlightOnHover
-                        minHeight={200}
-                        noRecordsText=""
-                        noRecordsIcon={<></>}
-                    />
-                )}
+                    {totalRecords === 0 && !loading && (
+                        <Text c="dimmed">No hay lecturas marcadas como relevantes para este caso.</Text>
+                    )}
+                    {totalRecords > 0 && (
+                        <DataTable<Lectura>
+                            records={sortedAndPaginatedRecords}
+                            columns={columns}
+                            totalRecords={totalRecords}
+                            recordsPerPage={pageSize}
+                            page={page}
+                            onPageChange={onPageChange}
+                            sortStatus={sortStatus}
+                            onSortStatusChange={onSortStatusChange}
+                            idAccessor="ID_Lectura"
+                            withTableBorder
+                            borderRadius="sm"
+                            withColumnBorders
+                            striped
+                            highlightOnHover
+                            minHeight={200}
+                            noRecordsText=""
+                            noRecordsIcon={<></>}
+                        />
+                    )}
+                </Paper>
             </Stack>
         </Box>
     );

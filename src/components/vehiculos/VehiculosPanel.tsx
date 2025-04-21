@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button } from '@mantine/core';
-import { DataTable, type DataTableColumn } from 'mantine-datatable';
+import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper } from '@mantine/core';
+import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconEye, IconPencil, IconTrash, IconCircleCheck, IconAlertTriangle, IconX, IconRefresh, IconCheck, IconBan } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import type { Vehiculo, Lectura } from '../../types/data'; // Asegúrate que Vehiculo y Lectura estén definidos
@@ -8,6 +8,7 @@ import apiClient from '../../services/api';
 import { notifications } from '@mantine/notifications';
 import { openConfirmModal } from '@mantine/modals';
 import appEventEmitter from '../../utils/eventEmitter'; // <-- Nueva importación
+import _ from 'lodash'; // Importar lodash para ordenar
 
 interface VehiculosPanelProps {
     casoId: number;
@@ -31,8 +32,14 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     const [lecturasExpandidas, setLecturasExpandidas] = useState<Record<number, Lectura[]>>({});
     // Estado para controlar la carga de las lecturas de cada fila
     const [loadingLecturas, setLoadingLecturas] = useState<Record<number, boolean>>({});
+    // --- NUEVO: Estado para saber si hay GPS para un vehículo expandido ---
+    const [gpsLecturasExist, setGpsLecturasExist] = useState<Record<number, boolean>>({});
     // --- AÑADIR ESTADO PARA SELECCIÓN ---
     const [selectedRecords, setSelectedRecords] = useState<Vehiculo[]>([]);
+    // --- NUEVO: Estados para Paginación y Ordenación ---
+    const [page, setPage] = useState(1);
+    const PAGE_SIZE = 15; // O el valor que prefieras
+    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Vehiculo>>({ columnAccessor: 'Matricula', direction: 'asc' });
 
     // Cargar vehículos del caso
     const fetchVehiculos = useCallback(async () => {
@@ -77,10 +84,13 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
         };
     }, [fetchVehiculos]);
 
-    // --- NUEVO: useEffect para cargar lecturas al cambiar la expansión --- 
+    // --- NUEVO: useEffect para cargar lecturas al cambiar la expansión (MODIFICADO para filtrar LPR/GPS) --- 
     useEffect(() => {
         // Identificar los nuevos IDs que se están expandiendo
-        const newIdsToFetch = expandedRecordIds.filter(id => !(id in lecturasExpandidas) && !loadingLecturas[id]);
+        const newIdsToFetch = expandedRecordIds.filter(id => 
+            !(id in lecturasExpandidas) && 
+            !loadingLecturas[id]
+        );
 
         if (newIdsToFetch.length > 0) {
             // Marcar como cargando
@@ -93,8 +103,18 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
             // Realizar las peticiones
             Promise.allSettled(newIdsToFetch.map(async (vehiculoId) => {
                 try {
+                    // Fetch ALL lectures for the vehicle in this case
                     const response = await apiClient.get<Lectura[]>(`/vehiculos/${vehiculoId}/lecturas?caso_id=${casoId}`);
-                    setLecturasExpandidas(prev => ({ ...prev, [vehiculoId]: response.data || [] }));
+                    const allLecturas = response.data || [];
+                    
+                    // Filter LPR and check for GPS
+                    const lprLecturas = allLecturas.filter(l => l.Tipo_Fuente === 'LPR');
+                    const hasGps = allLecturas.some(l => l.Tipo_Fuente === 'GPS');
+
+                    // Store only LPR lectures and the GPS flag
+                    setLecturasExpandidas(prev => ({ ...prev, [vehiculoId]: lprLecturas }));
+                    setGpsLecturasExist(prev => ({ ...prev, [vehiculoId]: hasGps }));
+
                 } catch (err: any) {
                     console.error(`Error fetching lecturas for vehiculo ${vehiculoId}:`, err);
                     notifications.show({
@@ -103,13 +123,15 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                         color: 'red',
                     });
                     setLecturasExpandidas(prev => ({ ...prev, [vehiculoId]: [] })); // Dejar vacío en caso de error
+                    setGpsLecturasExist(prev => ({ ...prev, [vehiculoId]: false })); // Marcar como sin GPS en error
                 } finally {
                     setLoadingLecturas(prev => ({ ...prev, [vehiculoId]: false }));
                 }
             }));
         }
     // Dependencias: Ejecutar cuando cambien los IDs expandidos o el ID del caso
-    }, [expandedRecordIds, lecturasExpandidas, loadingLecturas, casoId]); 
+    // Quitar lecturasExpandidas y loadingLecturas para evitar bucle si se actualizan dentro
+    }, [expandedRecordIds, casoId]); 
 
     // --- NUEVO: Handler para edición inline de booleanos ---
     const handleToggleBoolean = useCallback(async (vehiculo: Vehiculo, field: 'Alquiler' | 'Comprobado' | 'Sospechoso') => {
@@ -222,150 +244,239 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
          });
     }, [fetchVehiculos]); // fetchVehiculos como dependencia
 
-    // ---- Definición de columnas DESPUÉS de los handlers ----
-    const columns: DataTableColumn<Vehiculo>[] = useMemo(() => [
-        { accessor: 'Matricula', title: 'Matrícula', sortable: true },
-        { accessor: 'Marca', title: 'Marca', sortable: true },
-        { accessor: 'Modelo', title: 'Modelo', sortable: true },
-        { accessor: 'Color', title: 'Color', sortable: true },
-        { accessor: 'Propiedad', title: 'Propiedad', sortable: true },
-        {
-            accessor: 'totalLecturasLprCaso', // Usar el nombre exacto del campo de la API
-            title: 'Lecturas LPR',
-            width: 110, // Ajustar ancho si es necesario
-            textAlignment: 'center',
-            // Usar el conteo de la API si existe, si no, mostrar conteo de expandidas o '...'
-            render: (vehiculo) => typeof vehiculo.total_lecturas_lpr_caso === 'number'
-                                   ? vehiculo.total_lecturas_lpr_caso
-                                   : (expandedRecordIds.includes(vehiculo.ID_Vehiculo) && lecturasExpandidas[vehiculo.ID_Vehiculo]
-                                       ? lecturasExpandidas[vehiculo.ID_Vehiculo].length
-                                       : '...'),
-        },
-        { accessor: 'Observaciones', title: 'Observaciones' },
-        {
-            accessor: 'Comprobado', title: 'Comp.', width: 70, textAlignment: 'center', sortable: true,
-            render: (v) => (
-                 <Tooltip label={v.Comprobado ? 'Desmarcar Comprobado' : 'Marcar Comprobado'}>
-                    <ActionIcon 
-                        variant="subtle" 
-                        color={v.Comprobado ? 'teal' : 'gray'} 
-                        onClick={() => handleToggleBoolean(v, 'Comprobado')}
-                    >
-                        {v.Comprobado ? <IconCircleCheck size={18} /> : <IconX size={18}/>}
-                    </ActionIcon>
-                </Tooltip>
-            )
-        },
-        {
-            accessor: 'Sospechoso', title: 'Sosp.', width: 70, textAlignment: 'center', sortable: true,
-             render: (v) => (
-                 <Tooltip label={v.Sospechoso ? 'Desmarcar Sospechoso' : 'Marcar Sospechoso'}>
-                    <ActionIcon 
-                        variant="subtle" 
-                        color={v.Sospechoso ? 'red' : 'gray'} 
-                        onClick={() => handleToggleBoolean(v, 'Sospechoso')}
-                    >
-                         {v.Sospechoso ? <IconAlertTriangle size={18} /> : <IconX size={18}/>}
-                    </ActionIcon>
-                </Tooltip>
-            )
-        },
-        {
-            accessor: 'actions', title: 'Acciones', width: 100, textAlignment: 'center',
-            render: (vehiculo) => (
-                <Group gap="xs" justify="center" wrap="nowrap">
-                    <Tooltip label="Editar Vehículo">
-                        <ActionIcon variant="subtle" color="blue" onClick={() => handleEditVehiculo(vehiculo)}>
-                            <IconPencil size={16} />
-                        </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Eliminar Vehículo">
+    // --- NUEVO: Handler para cambio de ordenación ---
+    const handleSortStatusChange = (status: DataTableSortStatus<Vehiculo>) => {
+        setPage(1); // Volver a la primera página al cambiar orden
+        setSortStatus(status);
+    };
+
+    // --- NUEVO: Procesar vehículos para la tabla (ordenar y paginar) ---
+    const sortedAndPaginatedVehiculos = useMemo(() => {
+        let data = [...vehiculos]; // Copiar para no mutar
+        // Ordenar
+        const { columnAccessor, direction } = sortStatus;
+        if (columnAccessor) {
+            data = _.orderBy(data, [columnAccessor], [direction]);
+        }
+        // Paginar
+        const from = (page - 1) * PAGE_SIZE;
+        const to = from + PAGE_SIZE;
+        return data.slice(from, to);
+    }, [vehiculos, sortStatus, page, PAGE_SIZE]);
+
+    // ---- Definición de columnas DESPUÉS de los handlers (ACTUALIZADO) ----
+    const columns: DataTableColumn<Vehiculo>[] = useMemo(() => {
+        // Restaurar lógica de selección para cabecera
+        const allSelected = vehiculos.length > 0 && selectedRecords.length === vehiculos.length;
+        const someSelected = selectedRecords.length > 0 && selectedRecords.length < vehiculos.length;
+
+        return [
+            // --- RESTAURAR Columna de selección explícita ---
+            {
+                accessor: 'select',
+                title: (
+                    <Checkbox
+                        aria-label="Seleccionar todas las filas"
+                        checked={allSelected}
+                        indeterminate={someSelected}
+                        onChange={(e) => {
+                            setSelectedRecords(e.currentTarget.checked ? vehiculos : []);
+                        }}
+                    />
+                ),
+                width: '0%',
+                styles: {
+                    cell: {
+                        paddingLeft: 'var(--mantine-spacing-xs)',
+                        paddingRight: 'var(--mantine-spacing-xs)',
+                    }
+                },
+                render: (vehiculo) => (
+                    <Checkbox
+                        aria-label={`Seleccionar fila ${vehiculo.ID_Vehiculo}`}
+                        checked={selectedRecords.some(v => v.ID_Vehiculo === vehiculo.ID_Vehiculo)}
+                        onChange={(e) => {
+                            const isChecked = e.currentTarget.checked;
+                            setSelectedRecords(currentSelected =>
+                                isChecked
+                                    ? [...currentSelected, vehiculo]
+                                    : currentSelected.filter(v => v.ID_Vehiculo !== vehiculo.ID_Vehiculo)
+                            );
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                ),
+            },
+            // --- Columnas existentes (marcar como sortable) ---
+            { accessor: 'Matricula', title: 'Matrícula', sortable: true },
+            { accessor: 'Marca', title: 'Marca', sortable: true },
+            { accessor: 'Modelo', title: 'Modelo', sortable: true },
+            { accessor: 'Color', title: 'Color', sortable: true },
+            { accessor: 'Propiedad', title: 'Propiedad', sortable: true },
+            {
+                accessor: 'totalLecturasLprCaso', // Usar el nombre exacto del campo de la API
+                title: 'Lecturas LPR',
+                width: 110, // Ajustar ancho si es necesario
+                textAlignment: 'center',
+                sortable: true, // Hacer sortable
+                // Usar el conteo de la API si existe, si no, mostrar conteo de expandidas o '...'
+                render: (vehiculo) => typeof vehiculo.total_lecturas_lpr_caso === 'number'
+                                       ? vehiculo.total_lecturas_lpr_caso
+                                       : (expandedRecordIds.includes(vehiculo.ID_Vehiculo) && lecturasExpandidas[vehiculo.ID_Vehiculo]
+                                           ? lecturasExpandidas[vehiculo.ID_Vehiculo].length
+                                           : '...'),
+            },
+            { accessor: 'Observaciones', title: 'Observaciones' },
+            {
+                accessor: 'Comprobado', title: 'Comp.', width: 70, textAlignment: 'center', sortable: true,
+                render: (v) => (
+                     <Tooltip label={v.Comprobado ? 'Desmarcar Comprobado' : 'Marcar Comprobado'}>
                         <ActionIcon 
                             variant="subtle" 
-                            color="red" 
-                            onClick={() => handleDeleteVehiculo(vehiculo)}
-                            // Deshabilitar si hay selección para evitar confusión?
-                            disabled={selectedRecords.length > 0} 
+                            color={v.Comprobado ? 'teal' : 'gray'} 
+                            onClick={() => handleToggleBoolean(v, 'Comprobado')}
                         >
-                            <IconTrash size={16} />
+                            {v.Comprobado ? <IconCircleCheck size={18} /> : <IconX size={18}/>}
                         </ActionIcon>
                     </Tooltip>
-                </Group>
-            ),
-        },
-    ], [expandedRecordIds, lecturasExpandidas, handleEditVehiculo, handleDeleteVehiculo, handleToggleBoolean, selectedRecords]); // Añadir selectedRecords a dependencias si handleDeleteVehiculo lo usa
+                )
+            },
+            {
+                accessor: 'Sospechoso', title: 'Sosp.', width: 70, textAlignment: 'center', sortable: true,
+                 render: (v) => (
+                     <Tooltip label={v.Sospechoso ? 'Desmarcar Sospechoso' : 'Marcar Sospechoso'}>
+                        <ActionIcon 
+                            variant="subtle" 
+                            color={v.Sospechoso ? 'red' : 'gray'} 
+                            onClick={() => handleToggleBoolean(v, 'Sospechoso')}
+                        >
+                             {v.Sospechoso ? <IconAlertTriangle size={18} /> : <IconX size={18}/>}
+                        </ActionIcon>
+                    </Tooltip>
+                )
+            },
+            {
+                accessor: 'actions', title: 'Acciones', width: 100, textAlignment: 'center',
+                render: (vehiculo) => (
+                    <Group gap="xs" justify="center" wrap="nowrap">
+                        <Tooltip label="Editar Vehículo">
+                            <ActionIcon variant="subtle" color="blue" onClick={() => handleEditVehiculo(vehiculo)}>
+                                <IconPencil size={16} />
+                            </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Eliminar Vehículo">
+                            <ActionIcon 
+                                variant="subtle" 
+                                color="red" 
+                                onClick={() => handleDeleteVehiculo(vehiculo)}
+                                // Deshabilitar si hay selección para evitar confusión?
+                                disabled={selectedRecords.length > 0} 
+                            >
+                                <IconTrash size={16} />
+                            </ActionIcon>
+                        </Tooltip>
+                    </Group>
+                ),
+            },
+        ];
+    }, [vehiculos, selectedRecords, expandedRecordIds, lecturasExpandidas, handleEditVehiculo, handleDeleteVehiculo, handleToggleBoolean]);
 
     return (
         <Box style={{ position: 'relative' }}>
             <LoadingOverlay visible={loading} />
-            <Group justify="space-between" align="center" mb="md">
-                <Title order={3}>Vehículos Identificados en el Caso</Title>
-                <Group>
-                    {selectedRecords.length > 0 && (
+            <Paper shadow="sm" p="md" withBorder>
+                <Group justify="space-between" align="center" mb="md">
+                    <Title order={3}>Vehículos Identificados en el Caso</Title>
+                    <Group>
+                        {selectedRecords.length > 0 && (
+                            <Button 
+                                color="red" 
+                                variant="outline"
+                                size="xs"
+                            >
+                                Eliminar Selección ({selectedRecords.length})
+                            </Button>
+                        )}
                         <Button 
-                            color="red" 
-                            variant="outline"
+                            leftSection={<IconRefresh size={16} />}
+                            onClick={fetchVehiculos}
+                            variant="default"
                             size="xs"
+                            disabled={loading}
                         >
-                            Eliminar Selección ({selectedRecords.length})
+                            Actualizar Lista
                         </Button>
-                    )}
-                    <Button 
-                        leftSection={<IconRefresh size={16} />}
-                        onClick={fetchVehiculos}
-                        variant="default"
-                        size="xs"
-                        disabled={loading}
-                    >
-                        Actualizar Lista
-                    </Button>
+                    </Group>
                 </Group>
-            </Group>
-            {error && <Alert color="red" title="Error" mb="md">{error}</Alert>}
-            <DataTable<Vehiculo>
-                records={vehiculos}
-                columns={columns}
-                minHeight={200}
-                withTableBorder
-                borderRadius="sm"
-                withColumnBorders
-                striped
-                highlightOnHover
-                idAccessor="ID_Vehiculo"
-                noRecordsText="No se encontraron vehículos para este caso."
-                fetching={loading}
-                selectedRecords={selectedRecords}
-                onSelectedRecordsChange={setSelectedRecords}
-                rowExpansion={{
-                    expanded: { 
-                        recordIds: expandedRecordIds,
-                        onRecordIdsChange: setExpandedRecordIds
-                    },
-                    allowMultiple: true,
-                    content: ({ record }) => (
-                        <Box p="md" style={{ background: '#f9f9f9' }}>
-                             <LoadingOverlay visible={loadingLecturas[record.ID_Vehiculo] ?? false} />
-                            {lecturasExpandidas[record.ID_Vehiculo] && lecturasExpandidas[record.ID_Vehiculo].length > 0 ? (
-                                <>
-                                <Text fw={500} mb="xs">Lecturas ({lecturasExpandidas[record.ID_Vehiculo].length}) para Matrícula: {record.Matricula}</Text>
-                                <DataTable<Lectura>
-                                    records={lecturasExpandidas[record.ID_Vehiculo]}
-                                    columns={lecturaColumns}
-                                    minHeight={100}
-                                    noRecordsText=""
-                                    noRecordsIcon={<></>}
-                                    withTableBorder={false}
-                                />
-                                </>
-                            ) : (
-                                <Text c="dimmed">
-                                    {!(loadingLecturas[record.ID_Vehiculo]) ? '' : 'Cargando lecturas...'}
-                                </Text>
-                            )}
-                        </Box>
-                    ),
-                }}
-            />
+                {error && <Alert color="red" title="Error" mb="md">{error}</Alert>}
+                <DataTable<Vehiculo>
+                    // Usar datos ordenados y paginados
+                    records={sortedAndPaginatedVehiculos}
+                    columns={columns}
+                    minHeight={200}
+                    withTableBorder
+                    borderRadius="sm"
+                    withColumnBorders
+                    striped
+                    highlightOnHover
+                    idAccessor="ID_Vehiculo"
+                    noRecordsText=""
+                    noRecordsIcon={<></>}
+                    fetching={loading}
+                    // --- Props de Paginación y Ordenación ---
+                    totalRecords={vehiculos.length} // Total real, no el paginado
+                    recordsPerPage={PAGE_SIZE}
+                    page={page}
+                    onPageChange={setPage}
+                    sortStatus={sortStatus}
+                    onSortStatusChange={handleSortStatusChange}
+                    rowExpansion={{
+                        expanded: { 
+                            recordIds: expandedRecordIds,
+                            onRecordIdsChange: setExpandedRecordIds
+                        },
+                        allowMultiple: true,
+                        content: ({ record }) => (
+                            <Box p="md" style={{ background: '#f9f9f9' }}>
+                                 <LoadingOverlay visible={loadingLecturas[record.ID_Vehiculo] ?? false} />
+                                {/* Mostrar tabla solo si hay lecturas LPR */}
+                                {lecturasExpandidas[record.ID_Vehiculo] && lecturasExpandidas[record.ID_Vehiculo].length > 0 ? (
+                                    <>
+                                    <Text fw={500} mb="xs">Lecturas LPR ({lecturasExpandidas[record.ID_Vehiculo].length}) para Matrícula: {record.Matricula}</Text>
+                                    <DataTable<Lectura>
+                                        records={lecturasExpandidas[record.ID_Vehiculo]} // Solo LPR
+                                        columns={lecturaColumns}
+                                        minHeight={100}
+                                        noRecordsText=""
+                                        noRecordsIcon={<></>}
+                                        withTableBorder={false}
+                                    />
+                                    </>
+                                ) : (
+                                    // Mostrar texto si no hay LPR (y no está cargando)
+                                    !loadingLecturas[record.ID_Vehiculo] && 
+                                    <Text c="dimmed" size="sm">No hay lecturas LPR registradas para este vehículo en este caso.</Text>
+                                )}
+                                {/* Mostrar botón GPS si existen */}
+                                {(gpsLecturasExist[record.ID_Vehiculo] ?? false) && (
+                                    <Button 
+                                        mt="sm" 
+                                        size="xs" 
+                                        variant="outline"
+                                        // onClick={() => { /* TODO: Implementar navegación/modal */ }}
+                                    >
+                                        Lecturas GPS
+                                    </Button>
+                                )}
+                                {/* Mensaje de carga si aplica */}
+                                {(loadingLecturas[record.ID_Vehiculo] ?? false) && (
+                                     <Text c="dimmed" size="sm">Cargando lecturas...</Text>
+                                )}
+                            </Box>
+                        ),
+                    }}
+                />
+            </Paper>
 
             <Modal
                  opened={isEditModalOpen}
