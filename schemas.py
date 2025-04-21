@@ -147,6 +147,7 @@ class ArchivoExcel(ArchivoExcelBase):
     ID_Archivo: int
     ID_Caso: int
     Fecha_de_Importacion: datetime.date
+    Total_Registros: int = Field(0, description="Número total de lecturas en este archivo")
     # lecturas: List['Lectura'] = []
 
     class Config:

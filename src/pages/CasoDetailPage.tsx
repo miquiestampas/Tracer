@@ -497,7 +497,7 @@ function CasoDetailPage() {
     const archivosColumns: DataTableColumn<ArchivoExcel>[] = [
         { accessor: 'ID_Archivo', title: 'ID', width: 60, textAlign: 'right' },
         { accessor: 'Nombre_del_Archivo', title: 'Nombre Archivo', render: (a) => <Text truncate="end">{a.Nombre_del_Archivo}</Text> },
-        { accessor: 'Tipo_Fuente', title: 'Tipo', width: 80 },
+        { accessor: 'Tipo_de_Archivo', title: 'Tipo', width: 80 },
         { accessor: 'Fecha_de_Importacion', title: 'Importado', render: (a) => dayjs(a.Fecha_de_Importacion).format('DD/MM/YYYY HH:mm'), width: 150 },
         { accessor: 'Total_Registros', title: 'Registros', width: 100, textAlign: 'right' },
         {
