@@ -5,12 +5,14 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconEdit, IconTrash, IconCheck, IconMap, IconList, IconFileExport, IconUpload, IconSearch, IconX, IconListDetails, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
+import { IconEdit, IconTrash, IconCheck, IconMap, IconList, IconFileExport, IconUpload, IconSearch, IconX, IconListDetails, IconChevronDown, IconChevronUp, IconPlus } from '@tabler/icons-react';
 import { getLectores, updateLector, getLectoresParaMapa, deleteLector, importarLectores } from '../services/lectoresApi';
 import type { Lector, LectorUpdateData, LectorCoordenadas } from '../types/data';
 import EditLectorModal from '../components/modals/EditLectorModal';
 import ImportarLectoresModal from '../components/modals/ImportarLectoresModal';
 import AnalisisLecturasPanel, { AnalisisLecturasPanelHandle } from '../components/analisis/AnalisisLecturasPanel';
+import { DataTable, type DataTableSortStatus } from 'mantine-datatable';
+import _ from 'lodash';
 
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -73,6 +75,7 @@ function LectoresPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 50, totalCount: 0 });
+  const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lector>>({ columnAccessor: 'ID_Lector', direction: 'asc' });
 
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const [editingLector, setEditingLector] = useState<Lector | null>(null);
@@ -114,7 +117,12 @@ function LectoresPage() {
     try {
       const skip = (page - 1) * pageSize;
       const limit = pageSize;
-      const response = await getLectores({ skip, limit });
+      const response = await getLectores({ 
+        skip, 
+        limit,
+        sort: sortStatus.columnAccessor,
+        order: sortStatus.direction
+      });
       setLectores(response.lectores);
       setPagination(prev => ({ ...prev, totalCount: response.total_count }));
     } catch (err: any) {
@@ -124,13 +132,13 @@ function LectoresPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sortStatus]);
 
   useEffect(() => {
     if (activeTab === 'tabla') {
       fetchLectoresTabla(pagination.page, pagination.pageSize);
     }
-  }, [pagination.page, pagination.pageSize, fetchLectoresTabla, activeTab]);
+  }, [pagination.page, pagination.pageSize, fetchLectoresTabla, activeTab, sortStatus]);
 
   const fetchMapData = useCallback(async () => {
     setMapLoading(true);
@@ -478,7 +486,7 @@ function LectoresPage() {
   const lectoresFiltradosTabla = useMemo(() => {
     const textoBusquedaLower = filtroTextoLibre.toLowerCase().trim();
     // Filtrar el array 'lectores' (los de la página actual de la tabla)
-    return lectores.filter(lector => {
+    let filtered = lectores.filter(lector => {
       const provinciaMatch = filtroProvincia.length === 0 || (lector.Provincia && filtroProvincia.includes(lector.Provincia));
       const carreteraMatch = filtroCarretera.length === 0 || (lector.Carretera && filtroCarretera.includes(lector.Carretera));
       const organismoMatch = filtroOrganismo.length === 0 || (lector.Organismo_Regulador && filtroOrganismo.includes(lector.Organismo_Regulador));
@@ -491,7 +499,14 @@ function LectoresPage() {
       // No aplicamos filtro espacial a la tabla
       return provinciaMatch && carreteraMatch && organismoMatch && textoMatch && sentidoMatch;
     });
-  }, [lectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido]);
+
+    // Aplicar ordenación
+    if (sortStatus.columnAccessor) {
+      filtered = _.orderBy(filtered, [sortStatus.columnAccessor], [sortStatus.direction]);
+    }
+
+    return filtered;
+  }, [lectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido, sortStatus]);
   // *** FIN: Lógica de Filtrado para la Tabla ***
 
   const rows = lectores.map((lector) => {
@@ -561,6 +576,15 @@ function LectoresPage() {
       <Group justify="space-between" mb="xl">
         <Title order={2}>Gestión de Lectores</Title>
         <Group>
+          <Button 
+            leftSection={<IconPlus size={18} />}
+            onClick={openModal}
+            variant="outline"
+            color="green"
+            disabled={loading}
+          >
+            Añadir Lector
+          </Button>
           <Button 
             leftSection={<IconTrash size={18} />}
             onClick={handleDeleteSelected}
@@ -650,10 +674,16 @@ function LectoresPage() {
                        clearable
                    />
                  </SimpleGrid>
-                 <Table striped highlightOnHover withTableBorder mt="md" verticalSpacing="sm" >
-                   <Table.Thead>
-                     <Table.Tr>
-                       <Table.Th style={{ width: 40 }}>
+                 <DataTable
+                   withTableBorder
+                   striped
+                   highlightOnHover
+                   verticalSpacing="sm"
+                   records={lectoresFiltradosTabla}
+                   columns={[
+                     {
+                       accessor: 'select',
+                       title: (
                          <Checkbox
                            aria-label="Seleccionar todas las filas"
                            checked={allSelected}
@@ -661,24 +691,73 @@ function LectoresPage() {
                            onChange={handleSelectAll}
                            disabled={lectores.length === 0 || loading}
                          />
-                       </Table.Th>
-                       <Table.Th>ID Lector</Table.Th>
-                       <Table.Th>Nombre</Table.Th>
-                       <Table.Th>Carretera</Table.Th>
-                       <Table.Th>Provincia</Table.Th>
-                       <Table.Th>Localidad</Table.Th>
-                       <Table.Th>Latitud</Table.Th>
-                       <Table.Th>Longitud</Table.Th>
-                       <Table.Th>Organismo</Table.Th>
-                       <Table.Th>Acciones</Table.Th>
-                     </Table.Tr>
-                   </Table.Thead>
-                   <Table.Tbody>
-                     {rows.length > 0 ? rows : (
-                       <Table.Tr><Table.Td colSpan={10} align="center">No se encontraron lectores.</Table.Td></Table.Tr>
-                     )}
-                   </Table.Tbody>
-                 </Table>
+                       ),
+                       render: (lector) => (
+                         <Checkbox
+                           aria-label={`Seleccionar lector ${lector.ID_Lector}`}
+                           checked={selectedLectorIds.includes(lector.ID_Lector)}
+                           onChange={(event) => handleSelectRow(lector.ID_Lector, event.currentTarget.checked)}
+                           disabled={loading}
+                         />
+                       ),
+                       width: 40,
+                     },
+                     { accessor: 'ID_Lector', title: 'ID Lector', sortable: true },
+                     { accessor: 'Nombre', title: 'Nombre', sortable: true },
+                     { accessor: 'Carretera', title: 'Carretera', sortable: true },
+                     { accessor: 'Provincia', title: 'Provincia', sortable: true },
+                     { accessor: 'Localidad', title: 'Localidad', sortable: true },
+                     { 
+                       accessor: 'Coordenada_Y', 
+                       title: 'Latitud', 
+                       sortable: true,
+                       render: (lector) => lector.Coordenada_Y?.toFixed(6) || '-'
+                     },
+                     { 
+                       accessor: 'Coordenada_X', 
+                       title: 'Longitud', 
+                       sortable: true,
+                       render: (lector) => lector.Coordenada_X?.toFixed(6) || '-'
+                     },
+                     { accessor: 'Organismo_Regulador', title: 'Organismo', sortable: true },
+                     {
+                       accessor: 'actions',
+                       title: 'Acciones',
+                       render: (lector) => (
+                         <Group gap="xs">
+                           <Tooltip label="Editar Lector">
+                             <ActionIcon 
+                               variant="subtle" 
+                               color="blue" 
+                               onClick={() => handleOpenEditModal(lector)}
+                               disabled={deletingLectorId === lector.ID_Lector || loading}
+                             >
+                               <IconEdit size={16} />
+                             </ActionIcon>
+                           </Tooltip>
+                           <Tooltip label="Eliminar Lector">
+                             <ActionIcon 
+                               variant="subtle" 
+                               color="red" 
+                               onClick={() => handleDeleteLector(lector.ID_Lector, lector.Nombre)} 
+                               loading={deletingLectorId === lector.ID_Lector}
+                               disabled={deletingLectorId !== null || loading || selectedLectorIds.length > 0}
+                             >
+                               <IconTrash size={16} />
+                             </ActionIcon>
+                           </Tooltip>
+                         </Group>
+                       ),
+                     }
+                   ]}
+                   sortStatus={sortStatus}
+                   onSortStatusChange={setSortStatus}
+                   totalRecords={pagination.totalCount}
+                   recordsPerPage={pagination.pageSize}
+                   page={pagination.page}
+                   onPageChange={(p) => setPagination(prev => ({ ...prev, page: p }))}
+                   idAccessor="ID_Lector"
+                 />
                  {totalPages > 0 && (
                    <Group justify="space-between" mt="md">
                      <Select
@@ -786,7 +865,12 @@ function LectoresPage() {
                   )}
               </Group>
 
-              <Box style={{ height: '450px', width: '100%' }}>
+              <Box style={{ 
+                height: 'calc(100vh - 300px)', 
+                width: '100%',
+                minHeight: '450px',
+                position: 'relative'
+              }}>
                  {mapLectores.length > 0 ? (
                     <MapContainer 
                       center={[40.416775, -3.703790]} 
