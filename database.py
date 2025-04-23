@@ -1,8 +1,12 @@
 from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # Define la URL de la base de datos (archivo SQLite en la raíz)
 DATABASE_URL = "sqlite:///./tracer.db"
+
+# Crea la clase base para los modelos
+Base = declarative_base()
 
 engine = create_engine(
     DATABASE_URL,

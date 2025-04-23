@@ -23,6 +23,7 @@ import LprAvanzadoPanel from '../components/lpr_avanzado/LprAvanzadoPanel';
 import LecturasRelevantesPanel from '../components/caso/LecturasRelevantesPanel';
 import VehiculosPanel from '../components/vehiculos/VehiculosPanel';
 import LanzaderaPanel from '../components/lanzadera/LanzaderaPanel';
+import MapPanel from '../components/maps/MapPanel';
 
 // Definir estado inicial para filtros
 const initialFilterState: FilterState = {
@@ -754,7 +755,7 @@ function CasoDetailPage() {
                              <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
                         )}
                          {!loadingMapLecturas && !errorMapLecturas && (
-                             <CasoMap lectores={mapLecturas} />
+                             <MapPanel casoId={idCasoNum!} />
                         )}
                     </Box>
                  </Box>

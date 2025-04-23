@@ -23,6 +23,7 @@ from sqlalchemy import select, distinct # Importar select y distinct
 from sqlalchemy.exc import IntegrityError # Importar IntegrityError
 from datetime import timedelta # Asegurar import timedelta
 from collections import defaultdict # Importar defaultdict
+from contextlib import asynccontextmanager
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -31,15 +32,22 @@ logger = logging.getLogger(__name__)
 # Eliminar la llamada directa aquí
 # models.create_db_and_tables()
 
-app = FastAPI(title="Tracer API", description="API para la aplicación de análisis vehicular Tracer", version="0.1.0")
-
-# Definir un evento de inicio para crear tablas
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     logger.info("Ejecutando evento de inicio: Creando tablas si no existen...")
-    # Llamar aquí a la función para crear tablas
     models.create_db_and_tables()
     logger.info("Evento de inicio completado.")
+    yield
+    # Shutdown
+    logger.info("Cerrando aplicación...")
+
+app = FastAPI(
+    title="Tracer API", 
+    description="API para la aplicación de análisis vehicular Tracer", 
+    version="0.1.0",
+    lifespan=lifespan
+)
 
 # --- Manejador de Excepción para Errores de Validación (422) ---
 @app.exception_handler(RequestValidationError)
@@ -1563,3 +1571,157 @@ def get_lecturas_para_mapa(caso_id: int, db: Session = Depends(get_db)):
         db.rollback()
         logger.error(f"Error al obtener lectores para mapa del caso {caso_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al obtener datos del mapa: {e}")
+
+@app.get("/casos/{caso_id}/lectores", response_model=List[schemas.Lector])
+def get_lectores_por_caso(caso_id: int, db: Session = Depends(get_db)):
+    """
+    Obtiene todos los lectores que tienen lecturas asociadas a un caso específico.
+    """
+    logger.info(f"GET /casos/{caso_id}/lectores - Obteniendo lectores asociados al caso.")
+    
+    try:
+        # Obtener IDs de lectores únicos que tienen lecturas en este caso
+        lectores_ids = db.query(models.Lectura.ID_Lector)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+            .distinct()\
+            .all()
+        
+        # Extraer los IDs de la lista de tuplas
+        lector_ids = [id[0] for id in lectores_ids if id[0] is not None]
+        
+        if not lector_ids:
+            return []
+            
+        # Obtener los detalles completos de los lectores
+        lectores = db.query(models.Lector)\
+            .filter(models.Lector.ID_Lector.in_(lector_ids))\
+            .all()
+            
+        return lectores
+        
+    except Exception as e:
+        logger.error(f"Error al obtener lectores para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al obtener lectores: {str(e)}"
+        )
+
+@app.get("/casos/{caso_id}/lecturas", response_model=List[schemas.Lectura])
+def get_lecturas_por_caso(
+    caso_id: int,
+    matricula: Optional[str] = None,
+    fecha_inicio: Optional[str] = None,
+    fecha_fin: Optional[str] = None,
+    hora_inicio: Optional[str] = None,
+    hora_fin: Optional[str] = None,
+    lector_id: Optional[str] = None,
+    solo_relevantes: Optional[bool] = False,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene las lecturas de un caso específico con filtros opcionales.
+    """
+    logger.info(f"GET /casos/{caso_id}/lecturas - Obteniendo lecturas filtradas.")
+    
+    try:
+        # Construir la consulta base
+        query = db.query(models.Lectura)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .filter(models.ArchivoExcel.ID_Caso == caso_id)
+            
+        # Aplicar filtros
+        if matricula:
+            query = query.filter(models.Lectura.Matricula.ilike(f"%{matricula}%"))
+            
+        if fecha_inicio:
+            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            query = query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+            
+        if fecha_fin:
+            fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
+            query = query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
+            
+        if hora_inicio:
+            hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
+            query = query.filter(
+                extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
+                extract('minute', models.Lectura.Fecha_y_Hora) >= 
+                hora_inicio_time.hour * 100 + hora_inicio_time.minute
+            )
+            
+        if hora_fin:
+            hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
+            query = query.filter(
+                extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
+                extract('minute', models.Lectura.Fecha_y_Hora) <= 
+                hora_fin_time.hour * 100 + hora_fin_time.minute
+            )
+            
+        if lector_id:
+            query = query.filter(models.Lectura.ID_Lector == lector_id)
+            
+        if solo_relevantes:
+            query = query.join(models.LecturaRelevante)
+            
+        # Cargar los datos del lector relacionado
+        query = query.options(joinedload(models.Lectura.lector))
+        
+        # Ordenar por fecha/hora
+        query = query.order_by(models.Lectura.Fecha_y_Hora.desc())
+        
+        # Ejecutar la consulta
+        lecturas = query.all()
+        
+        return lecturas
+        
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error en el formato de los parámetros: {str(ve)}"
+        )
+    except Exception as e:
+        logger.error(f"Error al obtener lecturas para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al obtener lecturas: {str(e)}"
+        )
+
+@app.get("/casos/{caso_id}/matriculas/sugerencias", response_model=List[str])
+def get_sugerencias_matriculas(
+    caso_id: int,
+    query: str,
+    limit: int = 5,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene sugerencias de matrículas para un caso específico basado en un texto de búsqueda.
+    Optimizado para rendimiento usando una subconsulta para matrículas únicas.
+    """
+    logger.info(f"GET /casos/{caso_id}/matriculas/sugerencias - query: {query}, limit: {limit}")
+    
+    try:
+        # Subconsulta optimizada para obtener matrículas únicas del caso
+        matriculas = db.query(models.Lectura.Matricula)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .filter(
+                models.ArchivoExcel.ID_Caso == caso_id,
+                models.Lectura.Matricula.ilike(f"%{query}%")
+            )\
+            .distinct()\
+            .order_by(models.Lectura.Matricula)\
+            .limit(limit)\
+            .all()
+        
+        # Extraer las matrículas de la lista de tuplas
+        sugerencias = [m[0] for m in matriculas if m[0]]
+        
+        logger.info(f"Encontradas {len(sugerencias)} sugerencias para '{query}' en caso {caso_id}")
+        return sugerencias
+        
+    except Exception as e:
+        logger.error(f"Error al obtener sugerencias de matrículas para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al obtener sugerencias: {str(e)}"
+        )
