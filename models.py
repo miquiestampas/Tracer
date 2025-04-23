@@ -1,9 +1,9 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, Date, DateTime, Float, ForeignKey, CheckConstraint, Index, Enum as SQLAlchemyEnum, Boolean, JSON
-from sqlalchemy.orm import relationship, declarative_base, Session
+from sqlalchemy.orm import relationship, Session
 from sqlalchemy.sql import func
 import datetime
 import enum # Importar enum
-from database import engine # Importar engine desde database.py
+from database import engine, Base # Importar Base desde database.py
 
 # Definir el Enum para los estados del caso
 class EstadoCasoEnum(enum.Enum):
@@ -12,8 +12,6 @@ class EstadoCasoEnum(enum.Enum):
     EN_ANALISIS = "En Análisis"
     PENDIENTE_INFORME = "Pendiente Informe"
     CERRADO = "Cerrado"
-
-Base = declarative_base()
 
 class Caso(Base):
     __tablename__ = "Casos"
