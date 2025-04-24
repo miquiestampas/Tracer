@@ -7,7 +7,7 @@ import LecturaFilters from '../filters/LecturaFilters';
 import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
-import { getLectorSugerencias } from '../../services/lectoresApi';
+import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
 import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle } from '@tabler/icons-react';
 
 // Estilos CSS en línea para el contenedor del mapa
@@ -102,6 +102,12 @@ interface Capa {
   };
 }
 
+interface MapControls {
+  visualizationType: 'standard' | 'satellite' | 'toner';
+  showCaseReaders: boolean;
+  showAllReaders: boolean;
+}
+
 const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [lectores, setLectores] = useState<LectorCoordenadas[]>([]);
   const [lecturas, setLecturas] = useState<Lectura[]>([]);
@@ -127,6 +133,14 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     lectorId: '',
     soloRelevantes: false
   });
+
+  const [mapControls, setMapControls] = useState<MapControls>({
+    visualizationType: 'toner',
+    showCaseReaders: true,
+    showAllReaders: false
+  });
+
+  const [allSystemReaders, setAllSystemReaders] = useState<LectorCoordenadas[]>([]);
 
   // Fetch lector suggestions
   useEffect(() => {
@@ -567,6 +581,114 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     );
   };
 
+  // Add new function to handle map control changes
+  const handleMapControlChange = (updates: Partial<MapControls>) => {
+    setMapControls(prev => ({ ...prev, ...updates }));
+  };
+
+  // Add new function to get tile layer URL based on visualization type
+  const getTileLayerUrl = () => {
+    switch (mapControls.visualizationType) {
+      case 'satellite':
+        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      case 'toner':
+        return 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png';
+      default:
+        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    }
+  };
+
+  // Add new function to fetch all system readers
+  useEffect(() => {
+    const fetchAllSystemReaders = async () => {
+      try {
+        const data = await getLectoresParaMapa();
+        setAllSystemReaders(data.filter(l => l.Coordenada_X != null && l.Coordenada_Y != null));
+      } catch (error) {
+        console.error('Error al cargar todos los lectores del sistema:', error);
+      }
+    };
+
+    if (mapControls.showAllReaders) {
+      fetchAllSystemReaders();
+    }
+  }, [mapControls.showAllReaders]);
+
+  // Add new function to render reader layers
+  const renderReaderLayers = () => {
+    return (
+      <>
+        {/* Render all system readers first (bottom layer) */}
+        {mapControls.showAllReaders && allSystemReaders.map((lector) => (
+          <Marker
+            key={`system-reader-${lector.ID_Lector}`}
+            position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
+            icon={createMarkerIcon(1, 'lector', '#228be6')}
+            zIndexOffset={0}
+          >
+            <Popup>
+              <div className="lectura-popup">
+                <Text fw={700} size="sm">Lector del Sistema {lector.ID_Lector}</Text>
+                <Stack gap={4}>
+                  {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
+                  {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
+                  <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
+                </Stack>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {/* Render case readers last (top layer) */}
+        {mapControls.showCaseReaders && lectores.map((lector) => (
+          <Marker
+            key={`case-reader-${lector.ID_Lector}`}
+            position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
+            icon={L.divIcon({
+              className: 'custom-div-icon',
+              html: `
+                <div style="
+                  background-color: white;
+                  width: 16px;
+                  height: 16px;
+                  border-radius: 50%;
+                  border: 3px solid #40c057;
+                  box-shadow: 0 0 8px rgba(0,0,0,0.4);
+                  position: relative;
+                ">
+                  <div style="
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 6px;
+                    height: 6px;
+                    background-color: #40c057;
+                    border-radius: 50%;
+                  "></div>
+                </div>
+              `,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            })}
+            zIndexOffset={1000}
+          >
+            <Popup>
+              <div className="lectura-popup">
+                <Text fw={700} size="sm">Lector del Caso {lector.ID_Lector}</Text>
+                <Stack gap={4}>
+                  {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
+                  {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
+                  <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
+                </Stack>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+      </>
+    );
+  };
+
   return (
     <Grid gutter="md">
       {/* Panel de Filtros y Capas a la izquierda */}
@@ -711,6 +833,35 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               )}
             </Stack>
           </Paper>
+
+          {/* Panel de Controles del Mapa */}
+          <Paper p="md" withBorder>
+            <Title order={3} mb="md">Controles del Mapa</Title>
+            <Stack gap="md">
+              <Select
+                label="Tipo de Visualización"
+                value={mapControls.visualizationType}
+                onChange={(value) => handleMapControlChange({ visualizationType: value as MapControls['visualizationType'] })}
+                data={[
+                  { value: 'toner', label: 'Toner Lite' },
+                  { value: 'standard', label: 'Estándar' },
+                  { value: 'satellite', label: 'Satélite' }
+                ]}
+              />
+              <Stack gap="xs">
+                <Switch
+                  label="Mostrar lectores del caso"
+                  checked={mapControls.showCaseReaders}
+                  onChange={(event) => handleMapControlChange({ showCaseReaders: event.currentTarget.checked })}
+                />
+                <Switch
+                  label="Mostrar todos los lectores del sistema"
+                  checked={mapControls.showAllReaders}
+                  onChange={(event) => handleMapControlChange({ showAllReaders: event.currentTarget.checked })}
+                />
+              </Stack>
+            </Stack>
+          </Paper>
         </Stack>
       </Grid.Col>
 
@@ -723,7 +874,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             </Box>
           ) : (
             <MapContainer 
-              key={`${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}`}
+              key={`${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}-${mapControls.visualizationType}`}
               center={centroInicial} 
               zoom={zoomInicial} 
               scrollWheelZoom={true} 
@@ -747,8 +898,11 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               </style>
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                url={getTileLayerUrl()}
               />
+              
+              {/* Render reader layers */}
+              {renderReaderLayers()}
               
               {/* Renderizar resultados del filtro actual */}
               {renderResultadosFiltro()}
