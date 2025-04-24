@@ -23,6 +23,7 @@ interface LecturaFiltersProps {
   onLimpiar: () => void; // Función para ejecutar al hacer clic en Limpiar
   loading?: boolean; // Para deshabilitar el botón de filtrar mientras carga
   hideMatricula?: boolean; // Prop opcional para ocultar el campo de matrícula
+  lectorSuggestions?: string[]; // Nuevo prop para sugerencias de lectores
 }
 
 const LecturaFilters: React.FC<LecturaFiltersProps> = ({
@@ -31,7 +32,8 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
   onFiltrar,
   onLimpiar,
   loading = false,
-  hideMatricula = false
+  hideMatricula = false,
+  lectorSuggestions = [] // Valor por defecto array vacío
 }) => {
   const handleInputChange = (field: keyof FilterState) => (value: string | null) => {
     handleChange({ [field]: value || '' });
@@ -57,8 +59,10 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
           label="ID Lector"
           placeholder="Filtrar por ID lector..."
           value={filters.lectorId}
-          onChange={handleInputChange('lectorId')}
-          data={[]}
+          onChange={(value) => handleInputChange('lectorId')(value || '')}
+          data={lectorSuggestions}
+          limit={10}
+          clearable
         />
       </Group>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge } from '@mantine/core';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Autocomplete } from '@mantine/core';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -227,14 +227,23 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     );
   };
 
+  const lectorSuggestions = useMemo(() => {
+    const suggestions = new Set<string>();
+    lectores.forEach(lector => {
+      if (lector.ID_Lector) suggestions.add(lector.ID_Lector);
+      if (lector.Nombre) suggestions.add(lector.Nombre);
+    });
+    return Array.from(suggestions).sort();
+  }, [lectores]);
+
   return (
     <Stack gap="md">
       <Paper p="md" withBorder>
         <Title order={2} mb="md">Mapa de Lecturas</Title>
-        <Group grow mb="md">
-          <Select
+        <Group grow>
+          <Autocomplete
             label="Vehículo de Interés"
-            placeholder="Seleccionar vehículo..."
+            placeholder="Selecciona un vehículo..."
             value={selectedMatricula}
             onChange={(value) => {
               setSelectedMatricula(value);
@@ -252,6 +261,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           onLimpiar={handleLimpiar}
           loading={loading}
           hideMatricula={true}
+          lectorSuggestions={lectorSuggestions}
         />
       </Paper>
 
