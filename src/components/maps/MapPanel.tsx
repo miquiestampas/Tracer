@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Autocomplete } from '@mantine/core';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge } from '@mantine/core';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -7,6 +7,7 @@ import LecturaFilters from '../filters/LecturaFilters';
 import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
+import { getLectorSugerencias } from '../../services/lectoresApi';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -88,6 +89,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [loading, setLoading] = useState(false);
   const [vehiculosInteres, setVehiculosInteres] = useState<Vehiculo[]>([]);
   const [selectedMatricula, setSelectedMatricula] = useState<string | null>(null);
+  const [lectorSuggestions, setLectorSuggestions] = useState<string[]>([]);
 
   const [filters, setFilters] = useState({
     matricula: '',
@@ -98,6 +100,22 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     lectorId: '',
     soloRelevantes: false
   });
+
+  // Fetch lector suggestions
+  useEffect(() => {
+    const fetchLectorSuggestions = async () => {
+      try {
+        // Solo usar los IDs de los lectores existentes
+        const lectorIds = lectores.map(lector => lector.ID_Lector);
+        setLectorSuggestions(lectorIds.sort());
+      } catch (error) {
+        console.error('Error fetching lector suggestions:', error);
+        setLectorSuggestions([]);
+      }
+    };
+
+    fetchLectorSuggestions();
+  }, [lectores]); // Dependencia de lectores para actualizar cuando cambien
 
   // Cargar vehículos de interés
   useEffect(() => {
@@ -227,23 +245,14 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     );
   };
 
-  const lectorSuggestions = useMemo(() => {
-    const suggestions = new Set<string>();
-    lectores.forEach(lector => {
-      if (lector.ID_Lector) suggestions.add(lector.ID_Lector);
-      if (lector.Nombre) suggestions.add(lector.Nombre);
-    });
-    return Array.from(suggestions).sort();
-  }, [lectores]);
-
   return (
     <Stack gap="md">
       <Paper p="md" withBorder>
         <Title order={2} mb="md">Mapa de Lecturas</Title>
-        <Group grow>
-          <Autocomplete
+        <Group grow mb="md">
+          <Select
             label="Vehículo de Interés"
-            placeholder="Selecciona un vehículo..."
+            placeholder="Seleccionar vehículo..."
             value={selectedMatricula}
             onChange={(value) => {
               setSelectedMatricula(value);
