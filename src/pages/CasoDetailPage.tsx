@@ -84,10 +84,22 @@ const helpTexts: { [key: string]: React.ReactNode } = {
         <Text size="xs">
           <strong>Filtros (izquierda):</strong>
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li>Busca por matrícula, fechas, horas, lector, carretera, etc.</li>
-            <li><strong>Búsqueda Parcial:</strong> Campos como 'Matrícula' permiten búsquedas parciales (p.ej., "1234" encontrará "1234ABC").</li>
-            <li><strong>Comodines:</strong> Puedes usar comodines como '%' para representar caracteres desconocidos (p.ej., "12%4AB" podría encontrar "1234ABC" o "1294ABC").</li>
-            <li>Aplica los filtros para actualizar la tabla.</li>
+            <li>Se usa para matrícula, fechas, horas, lector, carretera, etc.</li>
+            <li><strong>Búsqueda por Matrícula:</strong> Usa comodines para búsquedas parciales:
+              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+                <li><code>?</code> coincide con UN carácter cualquiera</li>
+                <li><code>*</code> coincide con CERO O MÁS caracteres</li>
+              </ul>
+            </li>
+            <li><strong>Ejemplos:</strong>
+              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+                <li><code>??98M*</code> → Encuentra matrículas que tienen "98M" en las posiciones 3-5, con cualquier carácter en las posiciones 1-2 y cualquier cosa después</li>
+                <li><code>98*</code> → Encuentra matrículas que empiezan por "98"</li>
+                <li><code>?98*</code> → Encuentra matrículas con "98" en la posición 2-3</li>
+                <li><code>*98*</code> → Encuentra matrículas que contienen "98" en cualquier posición</li>
+                <li><code>98??AB</code> → Encuentra matrículas que empiezan por "98", seguidas de dos caracteres cualquiera, y terminan en "AB"</li>
+              </ul>
+            </li>
           </ul>
         </Text>
         <Text size="xs">
@@ -786,7 +798,7 @@ function CasoDetailPage() {
                          striped
                          highlightOnHover
                          idAccessor="ID_Archivo"
-                         noRecordsText="No hay archivos importados para este caso."
+                         noRecordsText=""
                          fetching={loadingArchivos}
                      />
                  </Box>

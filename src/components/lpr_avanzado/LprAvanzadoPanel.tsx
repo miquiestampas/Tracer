@@ -1136,7 +1136,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                              clearable
                              style={{ flex: 1, minWidth: 100 }}
                          />
-                         <TextInput label="Matrícula (parcial)" placeholder="Ej: %BC%" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
+                         <TextInput label="Matrícula (parcial)" placeholder="Ej: ?98?C*" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
                          <Group grow>
                              <NumberInput
                                 label="Mín. Pasos"
