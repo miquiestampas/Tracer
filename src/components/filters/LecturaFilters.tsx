@@ -59,10 +59,10 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
           label="ID Lector"
           placeholder="Filtrar por ID lector..."
           value={filters.lectorId}
-          onChange={(value) => handleInputChange('lectorId')(value || '')}
+          onChange={handleInputChange('lectorId')}
           data={lectorSuggestions}
           limit={10}
-          clearable
+          maxDropdownHeight={200}
         />
       </Group>
 

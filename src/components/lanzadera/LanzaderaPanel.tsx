@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Box, Title, Text, Group, TextInput, NumberInput, Button, LoadingOverlay, Alert, Paper, Stack, Grid, Collapse, ActionIcon, Chip } from '@mantine/core';
+import { Box, Title, Text, Group, TextInput, NumberInput, Button, LoadingOverlay, Alert, Paper, Stack, Grid, Collapse, ActionIcon, Chip, Badge } from '@mantine/core';
 import { DataTable, type DataTableColumn } from 'mantine-datatable';
-import { IconSearch, IconAlertCircle, IconLicense, IconClock, IconRepeat, IconChevronDown, IconChevronRight, IconMapPin, IconCar, IconCalendar, IconClockHour4, IconX, IconDeviceFloppy, IconBookmark } from '@tabler/icons-react';
+import { IconSearch, IconAlertCircle, IconLicense, IconClock, IconRepeat, IconChevronDown, IconChevronRight, IconMapPin, IconCar, IconCalendar, IconClockHour4, IconX, IconDeviceFloppy, IconBookmark, IconCheck } from '@tabler/icons-react';
 import apiClient from '../../services/api'; // Asumimos que tienes apiClient configurado
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs'; // Importar dayjs para formatear fechas
@@ -29,6 +29,9 @@ interface CoincidenciaDetalle {
     // Añadir timestamps individuales
     timestamp_vehiculo_1: string; // API devuelve ISO string
     timestamp_vehiculo_2: string; // API devuelve ISO string
+    lectura_verificada: boolean;
+    id_lectura_1?: number | null;
+    id_lectura_2?: number | null;
 }
 
 interface ConvoyDetectionResponse {
@@ -592,20 +595,48 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
                                 {
                                     accessor: 'timestamp_vehiculo_1',
                                     title: 'Fecha/Hora Veh. 1', 
-                                    render: (d) => dayjs(d.timestamp_vehiculo_1).format('DD/MM/YY HH:mm:ss'), 
+                                    render: (d) => (
+                                        <Group gap={4}>
+                                            <Text>{dayjs(d.timestamp_vehiculo_1).format('DD/MM/YY HH:mm:ss')}</Text>
+                                            {d.lectura_verificada && (
+                                                <IconCheck size={14} color="green" />
+                                            )}
+                                        </Group>
+                                    ),
                                     width: 190,
                                 },
                                 {
                                     accessor: 'timestamp_vehiculo_2',
                                     title: 'Fecha/Hora Veh. 2', 
-                                    render: (d) => dayjs(d.timestamp_vehiculo_2).format('DD/MM/YY HH:mm:ss'), 
+                                    render: (d) => (
+                                        <Group gap={4}>
+                                            <Text>{dayjs(d.timestamp_vehiculo_2).format('DD/MM/YY HH:mm:ss')}</Text>
+                                            {d.lectura_verificada && (
+                                                <IconCheck size={14} color="green" />
+                                            )}
+                                        </Group>
+                                    ),
                                     width: 190,
                                 },
                                 { accessor: 'lat', title: 'Latitud', render: (d) => d.lat?.toFixed(6) ?? '-' }, 
-                                { accessor: 'lon', title: 'Longitud', render: (d) => d.lon?.toFixed(6) ?? '-' }, 
+                                { accessor: 'lon', title: 'Longitud', render: (d) => d.lon?.toFixed(6) ?? '-' },
+                                {
+                                    accessor: 'lectura_verificada',
+                                    title: 'Verificado',
+                                    render: (d) => (
+                                        <Badge color={d.lectura_verificada ? 'green' : 'red'}>
+                                            {d.lectura_verificada ? 'Sí' : 'No'}
+                                        </Badge>
+                                    ),
+                                    width: 100,
+                                }
                             ]}
                             minHeight={150}
-                            withTableBorder borderRadius="sm" withColumnBorders striped highlightOnHover
+                            withTableBorder 
+                            borderRadius="sm" 
+                            withColumnBorders 
+                            striped 
+                            highlightOnHover
                             noRecordsText=""
                             noRecordsIcon={<></>}
                             idAccessor={(d) => `${d.matriculas_par.join('-')}-${d.lector_id}-${d.timestamp_vehiculo_1}-${d.timestamp_vehiculo_2}`}

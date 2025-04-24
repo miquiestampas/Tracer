@@ -1405,6 +1405,17 @@ async def detectar_vehiculos_lanzadera(
         if not todas_las_lecturas_lpr:
             logger.info(f"No se encontraron lecturas LPR para el caso {caso_id} con los filtros aplicados.")
             return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
+
+        # Filtrar por matrícula objetivo si se especifica
+        if payload.matricula_objetivo:
+            todas_las_lecturas_lpr = [
+                lectura for lectura in todas_las_lecturas_lpr 
+                if lectura.Matricula == payload.matricula_objetivo
+            ]
+            if not todas_las_lecturas_lpr:
+                logger.info(f"No se encontraron lecturas para la matrícula objetivo {payload.matricula_objetivo}")
+                return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
+
         logger.info(f"Obtenidas {len(todas_las_lecturas_lpr)} lecturas LPR filtradas para procesar.")
     except HTTPException as http_exc:
         raise http_exc # Re-lanzar excepciones de formato
@@ -1413,7 +1424,8 @@ async def detectar_vehiculos_lanzadera(
         raise HTTPException(status_code=500, detail="Error interno al obtener lecturas del caso")
     
     # --- Lógica de detección de convoyes --- 
-    coincidencias_pares_detalle_temporal = defaultdict(list) # {frozenset({p1, p2}): [(lector_id, timestamp_ref), ...]}
+    coincidencias_pares_detalle_temporal = defaultdict(list)
+    lecturas_verificadas = {}  # Diccionario para almacenar lecturas verificadas
 
     # --- Encontrar todas las co-ocurrencias temporales (sobre lecturas filtradas) --- 
     num_total_lecturas = len(todas_las_lecturas_lpr)
@@ -1423,68 +1435,151 @@ async def detectar_vehiculos_lanzadera(
     logger.info(f"Procesando {num_total_lecturas} lecturas filtradas para encontrar co-ocurrencias temporales...")
     ventana = timedelta(seconds=payload.ventana_tiempo_segundos)
     
-    # ... (Bucle anidado para encontrar co-ocurrencias igual que antes, 
-    #      almacenando en coincidencias_pares_detalle_temporal) ...
+    # Pre-procesar y verificar todas las lecturas
+    for lectura in todas_las_lecturas_lpr:
+        key = (lectura.Matricula, lectura.Fecha_y_Hora, lectura.ID_Lector)
+        lecturas_verificadas[key] = {
+            'id_lectura': lectura.ID_Lectura,
+            'lectura': lectura
+        }
+
+    # Bucle principal para encontrar co-ocurrencias
     for i in range(num_total_lecturas):
         lectura_ref = todas_las_lecturas_lpr[i]
         tiempo_inicio_ventana = lectura_ref.Fecha_y_Hora
         tiempo_fin_ventana = tiempo_inicio_ventana + ventana
         lector_id_ref = lectura_ref.ID_Lector
+        
+        # Si hay matrícula objetivo, solo procesar las lecturas que no sean de esa matrícula
+        # para encontrar los vehículos que viajan con ella
+        if payload.matricula_objetivo and lectura_ref.Matricula != payload.matricula_objetivo:
+            continue
+        
+        # Obtener el sentido del lector de referencia
+        lector_ref = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id_ref).first()
+        sentido_ref = lector_ref.Sentido if lector_ref else None
+        
+        # Verificar que la lectura de referencia existe y tiene sentido válido
+        key_ref = (lectura_ref.Matricula, lectura_ref.Fecha_y_Hora, lector_id_ref)
+        if key_ref not in lecturas_verificadas or not sentido_ref:
+            logger.warning(f"Lectura de referencia no verificada o sin sentido: {key_ref}")
+            continue
+
+        # Buscar lecturas dentro de la ventana de tiempo
+        lecturas_en_ventana = []
         for j in range(i + 1, num_total_lecturas):
             lectura_comp = todas_las_lecturas_lpr[j]
-            if lectura_comp.Fecha_y_Hora >= tiempo_fin_ventana: break
-            if lectura_comp.Matricula != lectura_ref.Matricula:
-                pair_key = frozenset({lectura_ref.Matricula, lectura_comp.Matricula})
-                # Guardar lector y AMBOS timestamps de la instancia
+            
+            if lectura_comp.Fecha_y_Hora >= tiempo_fin_ventana:
+                break
+                
+            # Obtener el sentido del lector de comparación
+            lector_comp = db.query(models.Lector).filter(models.Lector.ID_Lector == lectura_comp.ID_Lector).first()
+            sentido_comp = lector_comp.Sentido if lector_comp else None
+
+            # Verificar que la lectura de comparación existe y tiene sentido válido
+            key_comp = (lectura_comp.Matricula, lectura_comp.Fecha_y_Hora, lectura_comp.ID_Lector)
+            if key_comp not in lecturas_verificadas or not sentido_comp:
+                logger.warning(f"Lectura de comparación no verificada o sin sentido: {key_comp}")
+                continue
+
+            # Solo considerar lecturas de vehículos diferentes y en el mismo sentido
+            if (lectura_comp.Matricula != lectura_ref.Matricula and 
+                sentido_ref == sentido_comp):  # Mismo sentido de circulación
+                lecturas_en_ventana.append(lectura_comp)
+
+        # Procesar las lecturas encontradas en la ventana
+        for lectura_comp in lecturas_en_ventana:
+            key_comp = (lectura_comp.Matricula, lectura_comp.Fecha_y_Hora, lectura_comp.ID_Lector)
+            pair_key = frozenset({lectura_ref.Matricula, lectura_comp.Matricula})
+            
+            # Verificar que no sea un duplicado y que la diferencia de tiempo sea significativa
+            is_duplicate = False
+            tiempo_entre_lecturas = abs((lectura_comp.Fecha_y_Hora - lectura_ref.Fecha_y_Hora).total_seconds())
+            
+            # Si las lecturas están muy cercanas en tiempo (menos de 10 segundos), podrían ser erróneas
+            if tiempo_entre_lecturas < 10:
+                logger.warning(f"Lecturas demasiado cercanas en tiempo ({tiempo_entre_lecturas}s), posible error: {key_ref} - {key_comp}")
+                continue
+
+            for existing in coincidencias_pares_detalle_temporal[pair_key]:
+                if (existing[1] == lectura_ref.Fecha_y_Hora and 
+                    existing[2] == lectura_comp.Fecha_y_Hora):
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
                 coincidencias_pares_detalle_temporal[pair_key].append((
-                    lector_id_ref, 
-                    lectura_ref.Fecha_y_Hora, 
-                    lectura_comp.Fecha_y_Hora # Guardar también el segundo timestamp
+                    lector_id_ref,
+                    lectura_ref.Fecha_y_Hora,
+                    lectura_comp.Fecha_y_Hora,
+                    lecturas_verificadas[key_ref]['id_lectura'],
+                    lecturas_verificadas[key_comp]['id_lectura']
                 ))
 
     # --- Filtrar pares por patrón significativo y recopilar datos --- 
     pares_significativos = set() 
-    # Ahora guardará tuplas (pair_key, lector_id, timestamp_ref, timestamp_comp)
     todos_los_detalles_significativos_raw = [] 
     vehiculos_en_convoy_set = set()
 
-    logger.info("Filtrando pares por patrón significativo y matrícula objetivo (si aplica)...")
+    logger.info("Filtrando pares por patrón significativo...")
     
     for pair_key, ocurrencias in coincidencias_pares_detalle_temporal.items():
-        if payload.matricula_objetivo and payload.matricula_objetivo not in pair_key:
-            continue 
-        
-        if not ocurrencias: continue
+        if not ocurrencias: 
+            continue
         
         # Comprobar patrón significativo (lectores/días distintos)
-        # Usar timestamp_ref (el segundo elemento de la tupla) para calcular días distintos
         lectores_distintos = set(occ[0] for occ in ocurrencias if occ[0])
         dias_distintos = set(occ[1].date() for occ in ocurrencias)
         num_lectores_distintos = len(lectores_distintos)
         num_dias_distintos = len(dias_distintos)
 
-        if num_lectores_distintos >= payload.min_coincidencias or num_dias_distintos >= payload.min_coincidencias:
-            pares_significativos.add(pair_key)
-            vehiculos_en_convoy_set.update(pair_key)
-            # Guardar todos los detalles de este par significativo, incluyendo ambos timestamps
-            for lector_id, timestamp_ref, timestamp_comp in ocurrencias:
-                todos_los_detalles_significativos_raw.append((pair_key, lector_id, timestamp_ref, timestamp_comp))
+        # Aumentar el umbral mínimo para considerar un patrón significativo
+        if ((num_lectores_distintos >= payload.min_coincidencias and num_lectores_distintos >= 3) or 
+            (num_dias_distintos >= payload.min_coincidencias and num_dias_distintos >= 2)):
+            
+            # Verificar que las lecturas siguen un patrón lógico en la carretera
+            lecturas_ordenadas = sorted(ocurrencias, key=lambda x: x[1])  # Ordenar por timestamp
+            patron_valido = True
+            
+            for idx in range(len(lecturas_ordenadas) - 1):
+                lector_actual = db.query(models.Lector).filter(models.Lector.ID_Lector == lecturas_ordenadas[idx][0]).first()
+                lector_siguiente = db.query(models.Lector).filter(models.Lector.ID_Lector == lecturas_ordenadas[idx + 1][0]).first()
+                
+                if lector_actual and lector_siguiente and lector_actual.Carretera == lector_siguiente.Carretera:
+                    # Si están en la misma carretera, verificar que el orden temporal tiene sentido
+                    tiempo_entre_lecturas = (lecturas_ordenadas[idx + 1][1] - lecturas_ordenadas[idx][1]).total_seconds()
+                    if tiempo_entre_lecturas < 0:  # Lecturas en orden temporal incorrecto
+                        patron_valido = False
+                        break
 
-    # --- Si no hay pares significativos, devolver vacío (igual) --- 
+            if patron_valido:
+                pares_significativos.add(pair_key)
+                vehiculos_en_convoy_set.update(pair_key)
+                
+                # Guardar todos los detalles de este par significativo
+                for lector_id, timestamp_ref, timestamp_comp, id_lectura_1, id_lectura_2 in ocurrencias:
+                    todos_los_detalles_significativos_raw.append((
+                        pair_key, 
+                        lector_id, 
+                        timestamp_ref, 
+                        timestamp_comp,
+                        id_lectura_1,
+                        id_lectura_2
+                    ))
+
+    # --- Si no hay pares significativos, devolver vacío --- 
     if not pares_significativos:
         logger.info("No se encontraron convoyes significativos tras el filtrado.")
         return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
 
     logger.info(f"Se encontraron {len(pares_significativos)} convoyes significativos involucrando a {len(vehiculos_en_convoy_set)} vehículos. Obteniendo coordenadas...")
     
-    # --- Obtener Coordenadas (igual) --- 
-    # Recopilar lector_id únicos de TODOS los detalles significativos
-    # El lector_id es ahora el segundo elemento (índice 1)
+    # --- Obtener Coordenadas --- 
     lector_ids_necesarios = set(det[1] for det in todos_los_detalles_significativos_raw if det[1])
     
     lector_data_map = {}
     if lector_ids_necesarios:
-        # Incluir Sentido y Orientacion en la consulta
         lectores_data_db = db.query(
             models.Lector.ID_Lector, 
             models.Lector.Coordenada_Y, 
@@ -1493,21 +1588,20 @@ async def detectar_vehiculos_lanzadera(
             models.Lector.Orientacion
         ).filter(models.Lector.ID_Lector.in_(lector_ids_necesarios)).all()
         
-        # Guardar todos los datos recuperados en el mapa
         lector_data_map = { 
-            res.ID_Lector: { # Usar res.ID_Lector como clave
+            res.ID_Lector: {
                 "lat": res.Coordenada_Y, 
                 "lon": res.Coordenada_X, 
                 "sentido": res.Sentido, 
                 "orientacion": res.Orientacion
             } for res in lectores_data_db
         }
-        logger.info(f"Se obtuvieron datos (coords, sentido, orientacion) para {len(lector_data_map)} de {len(lector_ids_necesarios)} lectores.")
+        logger.info(f"Se obtuvieron datos para {len(lector_data_map)} de {len(lector_ids_necesarios)} lectores.")
 
     # --- Construir la lista plana de detalles finales --- 
     detalles_finales: List[schemas.CoincidenciaDetalleSchema] = []
-    # Iterar sobre la nueva estructura de detalles raw
-    for pair_key, lector_id, timestamp_ref, timestamp_comp in todos_los_detalles_significativos_raw:
+    
+    for pair_key, lector_id, timestamp_ref, timestamp_comp, id_lectura_1, id_lectura_2 in todos_los_detalles_significativos_raw:
         data_lector = lector_data_map.get(lector_id)
         detalles_finales.append(schemas.CoincidenciaDetalleSchema(
             lector_id=lector_id,
@@ -1516,15 +1610,17 @@ async def detectar_vehiculos_lanzadera(
             sentido=data_lector.get("sentido") if data_lector else None,
             orientacion=data_lector.get("orientacion") if data_lector else None,
             matriculas_par=list(pair_key),
-            # Asignar los dos timestamps
             timestamp_vehiculo_1=timestamp_ref,
-            timestamp_vehiculo_2=timestamp_comp
+            timestamp_vehiculo_2=timestamp_comp,
+            lectura_verificada=True,  # Todas las lecturas han sido verificadas
+            id_lectura_1=id_lectura_1,
+            id_lectura_2=id_lectura_2
         ))
 
     # Ordenar detalles por el primer timestamp
     detalles_finales.sort(key=lambda x: x.timestamp_vehiculo_1)
 
-    # --- Construir y devolver la respuesta final (igual) --- 
+    # --- Construir y devolver la respuesta final --- 
     respuesta = schemas.ConvoyDetectionResponse(
         vehiculos_en_convoy=sorted(list(vehiculos_en_convoy_set)),
         detalles_coocurrencias=detalles_finales

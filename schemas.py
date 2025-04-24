@@ -301,31 +301,48 @@ class SavedSearch(SavedSearchBase):
 # --- Schemas para Detección de Vehículo Lanzadera ---
 
 class LanzaderaDetectionPayload(BaseModel):
-    ventana_tiempo_segundos: int = Field(..., gt=0, description="Ventana de tiempo máxima en segundos para considerar coincidencia")
-    min_coincidencias: int = Field(..., gt=1, description="Número mínimo de co-ocurrencias de patrón (lectores/días distintos) para considerar un par como convoy")
-    # --- Campos Opcionales Añadidos ---
-    matricula_objetivo: Optional[str] = Field(None, description="Filtrar para incluir solo convoyes que involucren esta matrícula específica.")
-    fecha_inicio: Optional[str] = Field(None, description="Fecha de inicio para filtrar lecturas (YYYY-MM-DD)")
-    fecha_fin: Optional[str] = Field(None, description="Fecha de fin para filtrar lecturas (YYYY-MM-DD)")
-    hora_inicio: Optional[str] = Field(None, description="Hora de inicio para filtrar lecturas (HH:MM)")
-    hora_fin: Optional[str] = Field(None, description="Hora de fin para filtrar lecturas (HH:MM)")
+    """Payload para la detección de vehículos lanzadera."""
+    matricula_objetivo: Optional[str] = None
+    ventana_tiempo_segundos: int = 300  # 5 minutos por defecto
+    min_coincidencias: int = 2
+    fecha_inicio: Optional[str] = None
+    fecha_fin: Optional[str] = None
+    hora_inicio: Optional[str] = None
+    hora_fin: Optional[str] = None
 
-# === Schema para UN detalle de co-ocurrencia, incluyendo el par involucrado ===
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+
 class CoincidenciaDetalleSchema(BaseModel):
-    lector_id: Optional[str] = None 
-    lat: Optional[float] = None 
-    lon: Optional[float] = None 
-    matriculas_par: List[str] = Field(..., min_length=2, max_length=2)
+    """Esquema para los detalles de una coincidencia temporal."""
+    lector_id: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
     sentido: Optional[str] = None
     orientacion: Optional[str] = None
-    timestamp_vehiculo_1: datetime.datetime
-    timestamp_vehiculo_2: datetime.datetime
+    matriculas_par: List[str]
+    timestamp_vehiculo_1: datetime
+    timestamp_vehiculo_2: datetime
+    lectura_verificada: bool
+    id_lectura_1: int
+    id_lectura_2: int
 
-# === Schema de Respuesta PRINCIPAL para Detección de Convoy ===
-# Devuelve la lista de vehículos involucrados y la lista plana de detalles
+    class Config:
+        arbitrary_types_allowed = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+
 class ConvoyDetectionResponse(BaseModel):
-    vehiculos_en_convoy: List[str] = Field(default_factory=list, description="Lista única de matrículas pertenecientes a algún convoy significativo")
-    detalles_coocurrencias: List[CoincidenciaDetalleSchema] = Field(default_factory=list, description="Lista plana de todas las co-ocurrencias individuales pertenecientes a convoyes significativos")
+    """Respuesta de la detección de convoyes."""
+    vehiculos_en_convoy: List[str]
+    detalles_coocurrencias: List[CoincidenciaDetalleSchema]
+
+    class Config:
+        arbitrary_types_allowed = True
 
 # --- Schemas ANTIGUOS (Relacionados con ResultadoLanzadera...) --- 
 # Los comentamos o eliminamos ya que no se usarán con el nuevo enfoque

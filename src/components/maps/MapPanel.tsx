@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge } from '@mantine/core';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid } from '@mantine/core';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -246,133 +246,139 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   };
 
   return (
-    <Stack gap="md">
-      <Paper p="md" withBorder>
-        <Title order={2} mb="md">Mapa de Lecturas</Title>
-        <Group grow mb="md">
-          <Select
-            label="Vehículo de Interés"
-            placeholder="Seleccionar vehículo..."
-            value={selectedMatricula}
-            onChange={(value) => {
-              setSelectedMatricula(value);
-              handleFilterChange({ matricula: value || '' });
-            }}
-            data={vehiculosOptions}
-            searchable
-            clearable
-          />
-        </Group>
-        <LecturaFilters
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          onFiltrar={handleFiltrar}
-          onLimpiar={handleLimpiar}
-          loading={loading}
-          hideMatricula={true}
-          lectorSuggestions={lectorSuggestions}
-        />
-      </Paper>
-
-      <Paper p="md" withBorder style={{ height: '600px' }}>
-        {lectores.length === 0 ? (
-          <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Text c="dimmed">No hay lectores con coordenadas válidas para mostrar en el mapa.</Text>
-          </Box>
-        ) : (
-          <MapContainer 
-            key={`${lectores.length}-${lecturas.length}`}
-            center={centroInicial} 
-            zoom={zoomInicial} 
-            scrollWheelZoom={true} 
-            style={mapContainerStyle}
-          >
-            <style>
-              {`
-                .leaflet-div-icon {
-                  background: transparent !important;
-                  border: none !important;
-                }
-                .custom-div-icon {
-                  background: transparent !important;
-                  border: none !important;
-                }
-                .lectura-popup {
-                  max-height: 200px;
-                  overflow-y: auto;
-                }
-              `}
-            </style>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    <Grid gutter="md">
+      {/* Panel de Filtros a la izquierda */}
+      <Grid.Col span={{ base: 12, md: 4 }}>
+        <Paper p="md" withBorder>
+          <Title order={2} mb="md">Mapa de Lecturas</Title>
+          <Group grow mb="md">
+            <Select
+              label="Vehículo de Interés"
+              placeholder="Seleccionar vehículo..."
+              value={selectedMatricula}
+              onChange={(value) => {
+                setSelectedMatricula(value);
+                handleFilterChange({ matricula: value || '' });
+              }}
+              data={vehiculosOptions}
+              searchable
+              clearable
             />
-            {/* Renderizar lectores */}
-            {lectores.map((lector) => {
-              const lecturasEnLector = lecturasPorLector.get(lector.ID_Lector) || [];
-              return (
+          </Group>
+          <LecturaFilters
+            filters={filters}
+            onFilterChange={handleFilterChange}
+            onFiltrar={handleFiltrar}
+            onLimpiar={handleLimpiar}
+            loading={loading}
+            hideMatricula={true}
+            lectorSuggestions={lectorSuggestions}
+          />
+        </Paper>
+      </Grid.Col>
+
+      {/* Mapa a la derecha */}
+      <Grid.Col span={{ base: 12, md: 8 }}>
+        <Paper p="md" withBorder style={{ height: 'calc(100vh - 200px)' }}>
+          {lectores.length === 0 ? (
+            <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Text c="dimmed">No hay lectores con coordenadas válidas para mostrar en el mapa.</Text>
+            </Box>
+          ) : (
+            <MapContainer 
+              key={`${lectores.length}-${lecturas.length}`}
+              center={centroInicial} 
+              zoom={zoomInicial} 
+              scrollWheelZoom={true} 
+              style={mapContainerStyle}
+            >
+              <style>
+                {`
+                  .leaflet-div-icon {
+                    background: transparent !important;
+                    border: none !important;
+                  }
+                  .custom-div-icon {
+                    background: transparent !important;
+                    border: none !important;
+                  }
+                  .lectura-popup {
+                    max-height: 200px;
+                    overflow-y: auto;
+                  }
+                `}
+              </style>
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {/* Renderizar lectores */}
+              {lectores.map((lector) => {
+                const lecturasEnLector = lecturasPorLector.get(lector.ID_Lector) || [];
+                return (
+                  <Marker 
+                    key={lector.ID_Lector} 
+                    position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
+                    icon={createMarkerIcon(lecturasEnLector.length, 'lector')}
+                  >
+                    <Popup>
+                      <div className="lectura-popup">
+                        <b>Lector:</b> {lector.ID_Lector} <br />
+                        {lector.Nombre && <><b>Nombre:</b> {lector.Nombre}<br /></>}
+                        {lector.Carretera && <><b>Carretera:</b> {lector.Carretera}<br /></>}
+                        {lector.Provincia && <><b>Provincia:</b> {lector.Provincia}<br /></>}
+                        {lector.Organismo_Regulador && <><b>Organismo:</b> {lector.Organismo_Regulador}<br /></>}
+                        <b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}<br />
+                        {lecturasEnLector.length > 0 && (
+                          <>
+                            <br />
+                            <b>Pasos registrados ({lecturasEnLector.length}):</b><br />
+                            {ordenarLecturasPorFecha(lecturasEnLector).map((lectura, idx) => (
+                              <div key={lectura.ID_Lectura} style={{ marginTop: '8px', padding: '4px', backgroundColor: idx % 2 === 0 ? '#f5f5f5' : 'transparent' }}>
+                                <Badge 
+                                  color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
+                                  variant="light"
+                                  size="sm"
+                                >
+                                  {lectura.Tipo_Fuente}
+                                </Badge>
+                                <div style={{ marginTop: '2px' }}>
+                                  <small>
+                                    {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
+                                    {lectura.Velocidad && ` - ${lectura.Velocidad} km/h`}
+                                    {lectura.Carril && ` - Carril ${lectura.Carril}`}
+                                  </small>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </Popup>
+                  </Marker>
+                );
+              })}
+              {/* Renderizar lecturas individuales (GPS/LPR) que no están asociadas a lectores */}
+              {lecturas.filter(l => !l.ID_Lector).map((lectura) => (
                 <Marker 
-                  key={lector.ID_Lector} 
-                  position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
-                  icon={createMarkerIcon(lecturasEnLector.length, 'lector')}
+                  key={lectura.ID_Lectura} 
+                  position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
+                  icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr')}
                 >
                   <Popup>
-                    <div className="lectura-popup">
-                      <b>Lector:</b> {lector.ID_Lector} <br />
-                      {lector.Nombre && <><b>Nombre:</b> {lector.Nombre}<br /></>}
-                      {lector.Carretera && <><b>Carretera:</b> {lector.Carretera}<br /></>}
-                      {lector.Provincia && <><b>Provincia:</b> {lector.Provincia}<br /></>}
-                      {lector.Organismo_Regulador && <><b>Organismo:</b> {lector.Organismo_Regulador}<br /></>}
-                      <b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}<br />
-                      {lecturasEnLector.length > 0 && (
-                        <>
-                          <br />
-                          <b>Pasos registrados ({lecturasEnLector.length}):</b><br />
-                          {ordenarLecturasPorFecha(lecturasEnLector).map((lectura, idx) => (
-                            <div key={lectura.ID_Lectura} style={{ marginTop: '8px', padding: '4px', backgroundColor: idx % 2 === 0 ? '#f5f5f5' : 'transparent' }}>
-                              <Badge 
-                                color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
-                                variant="light"
-                                size="sm"
-                              >
-                                {lectura.Tipo_Fuente}
-                              </Badge>
-                              <div style={{ marginTop: '2px' }}>
-                                <small>
-                                  {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
-                                  {lectura.Velocidad && ` - ${lectura.Velocidad} km/h`}
-                                  {lectura.Carril && ` - Carril ${lectura.Carril}`}
-                                </small>
-                              </div>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </div>
+                    <b>Matrícula:</b> {lectura.Matricula} <br />
+                    <b>Fecha y Hora:</b> {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')} <br />
+                    {lectura.Carril && <><b>Carril:</b> {lectura.Carril}<br /></>}
+                    {lectura.Velocidad && <><b>Velocidad:</b> {lectura.Velocidad} km/h<br /></>}
+                    <b>Tipo:</b> {lectura.Tipo_Fuente}
                   </Popup>
                 </Marker>
-              );
-            })}
-            {/* Renderizar lecturas individuales (GPS/LPR) que no están asociadas a lectores */}
-            {lecturas.filter(l => !l.ID_Lector).map((lectura) => (
-              <Marker 
-                key={lectura.ID_Lectura} 
-                position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
-                icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr')}
-              >
-                <Popup>
-                  <b>Matrícula:</b> {lectura.Matricula} <br />
-                  <b>Fecha y Hora:</b> {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')} <br />
-                  {lectura.Carril && <><b>Carril:</b> {lectura.Carril}<br /></>}
-                  {lectura.Velocidad && <><b>Velocidad:</b> {lectura.Velocidad} km/h<br /></>}
-                  <b>Tipo:</b> {lectura.Tipo_Fuente}
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
-        )}
-      </Paper>
-    </Stack>
+              ))}
+            </MapContainer>
+          )}
+        </Paper>
+      </Grid.Col>
+    </Grid>
   );
 };
 
