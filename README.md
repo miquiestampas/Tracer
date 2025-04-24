@@ -1,4 +1,4 @@
-# Tracer LPR - Aplicación de Análisis Vehicular
+# Tracer LPR - Aplicación de Investigación sobre datos LPR y GPS de vehículos
 
 Aplicación web para la gestión y análisis de datos de lecturas de matrículas (LPR) y datos GPS asociados a casos de investigación.
 
