@@ -189,40 +189,39 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     };
 
     // ---- HANDLER PARA ELIMINAR ----
-    // **NECESITA endpoint DELETE /vehiculos/{id} en backend**
     const handleDeleteVehiculo = (vehiculo: Vehiculo) => {
         openConfirmModal({
-             title: `Eliminar Vehículo ${vehiculo.Matricula}`,
-             centered: true,
-             children: (
-                 <Text size="sm">
-                     ¿Estás seguro de que quieres eliminar este vehículo? Esta acción no se puede deshacer.
-                 </Text>
-             ),
-             labels: { confirm: 'Eliminar Vehículo', cancel: 'Cancelar' },
-             confirmProps: { color: 'red' },
-             onConfirm: async () => {
-                 setLoading(true); // Usar loading principal para la tabla
-                 try {
-                     // await apiClient.delete(`/vehiculos/${vehiculo.ID_Vehiculo}`); // DESCOMENTAR CUANDO EXISTA EL ENDPOINT
-                     notifications.show({
-                         title: 'Vehículo Eliminado (SIMULADO)', // CAMBIAR cuando se implemente backend
-                         message: `Vehículo ${vehiculo.Matricula} eliminado correctamente.`,
-                         color: 'orange', // CAMBIAR a green
-                     });
-                     fetchVehiculos(); // Recargar
-                 } catch (err: any) {
-                     console.error("Error deleting vehiculo:", err);
-                     notifications.show({
-                         title: 'Error al Eliminar',
-                         message: err.response?.data?.detail || 'No se pudo eliminar el vehículo.',
-                         color: 'red',
-                     });
-                 } finally {
-                      setLoading(false);
-                 }
-             },
-         });
+            title: `Eliminar Vehículo ${vehiculo.Matricula}`,
+            centered: true,
+            children: (
+                <Text size="sm">
+                    ¿Estás seguro de que quieres eliminar este vehículo? Esta acción no se puede deshacer.
+                </Text>
+            ),
+            labels: { confirm: 'Eliminar Vehículo', cancel: 'Cancelar' },
+            confirmProps: { color: 'red' },
+            onConfirm: async () => {
+                setLoading(true);
+                try {
+                    await apiClient.delete(`/vehiculos/${vehiculo.ID_Vehiculo}`);
+                    notifications.show({
+                        title: 'Vehículo Eliminado',
+                        message: `Vehículo ${vehiculo.Matricula} eliminado correctamente.`,
+                        color: 'green',
+                    });
+                    fetchVehiculos(); // Recargar la lista de vehículos
+                } catch (err: any) {
+                    console.error("Error deleting vehiculo:", err);
+                    notifications.show({
+                        title: 'Error al Eliminar',
+                        message: err.response?.data?.detail || 'No se pudo eliminar el vehículo.',
+                        color: 'red',
+                    });
+                } finally {
+                    setLoading(false);
+                }
+            },
+        });
     };
 
     // Definición de columnas para la tabla principal de Vehículos
