@@ -155,6 +155,22 @@ def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime
         logger.warning(f"No se pudo parsear la fecha/hora: '{dt_str}'. Error: {e}")
         return None
 
+def translate_plate_pattern(pattern: str) -> str:
+    """
+    Traduce un patrón de búsqueda de matrícula amigable a sintaxis SQL.
+    ? -> _ (un carácter cualquiera)
+    * -> % (cero o más caracteres cualquiera)
+    """
+    if not pattern:
+        return pattern
+    # Escapar caracteres especiales de SQL excepto ? y *
+    special_chars = ['%', '_']
+    escaped_pattern = pattern
+    for char in special_chars:
+        escaped_pattern = escaped_pattern.replace(char, f"\\{char}")
+    # Traducir los comodines
+    translated = escaped_pattern.replace('?', '_').replace('*', '%')
+    return translated
 
 # --- Endpoints API REST ---
 
@@ -925,9 +941,11 @@ def read_lecturas(
     if sentido:
         query = query.filter(models.Lector.Sentido.in_(sentido))
 
-    # Filtro por Matrícula (parcial, insensible a mayúsculas)
+    # Filtro por Matrícula (usando el nuevo sistema de patrones)
     if matricula:
-        query = query.filter(models.Lectura.Matricula.ilike(f"%{matricula}%"))
+        # Traducir ? a _ y * a % para SQL, escapando otros caracteres especiales
+        sql_pattern = matricula.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+        query = query.filter(models.Lectura.Matricula.ilike(sql_pattern))
 
     # Filtro por Tipo de Fuente
     if tipo_fuente:
