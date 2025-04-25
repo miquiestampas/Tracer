@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider } from '@mantine/core';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal } from '@mantine/core';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -8,12 +8,15 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize } from '@tabler/icons-react';
+import { useHotkeys } from '@mantine/hooks';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
   height: '100%',
-  width: '100%'
+  width: '100%',
+  position: 'relative' as const,
+  zIndex: 1
 };
 
 // Estilos CSS en línea para los iconos personalizados
@@ -106,6 +109,7 @@ interface MapControls {
   visualizationType: 'standard' | 'satellite' | 'toner';
   showCaseReaders: boolean;
   showAllReaders: boolean;
+  showCoincidencias: boolean;
 }
 
 const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
@@ -137,10 +141,19 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [mapControls, setMapControls] = useState<MapControls>({
     visualizationType: 'toner',
     showCaseReaders: true,
-    showAllReaders: false
+    showAllReaders: false,
+    showCoincidencias: true
   });
 
   const [allSystemReaders, setAllSystemReaders] = useState<LectorCoordenadas[]>([]);
+
+  // Añadir un estado para forzar el re-render del mapa
+  const [mapKey, setMapKey] = useState(0);
+
+  const [fullscreenMap, setFullscreenMap] = useState(false);
+
+  // Manejar la tecla Escape
+  useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
 
   // Fetch lector suggestions
   useEffect(() => {
@@ -210,7 +223,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       const lectoresFiltrados = lectoresData.filter(lector => 
         lecturasData.some(lectura => lectura.ID_Lector === lector.ID_Lector)
       );
-
+      
       setLectores(lectoresData);
       setLecturas(lecturasData);
       setResultadosFiltro({
@@ -385,6 +398,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               key={`${capa.id}-lector-${lector.ID_Lector}`}
               position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
               icon={createMarkerIcon(lecturasEnLector.length, 'lector', capa.color)}
+              zIndexOffset={300}
             >
               <Popup>
                 <div className="lectura-popup">
@@ -449,6 +463,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             key={`${capa.id}-lectura-${lectura.ID_Lectura}`}
             position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
             icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', capa.color)}
+            zIndexOffset={400}
           >
             <Popup>
               <div className="lectura-popup">
@@ -490,6 +505,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               key={`filtro-lector-${lector.ID_Lector}`}
               position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
               icon={createMarkerIcon(lecturasEnLector.length, 'lector', '#228be6')}
+              zIndexOffset={500}
             >
               <Popup>
                 <div className="lectura-popup">
@@ -554,6 +570,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             key={`filtro-lectura-${lectura.ID_Lectura}`}
             position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
             icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', '#228be6')}
+            zIndexOffset={600}
           >
             <Popup>
               <div className="lectura-popup">
@@ -624,7 +641,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             key={`system-reader-${lector.ID_Lector}`}
             position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
             icon={createMarkerIcon(1, 'lector', '#228be6')}
-            zIndexOffset={0}
+            zIndexOffset={100}
           >
             <Popup>
               <div className="lectura-popup">
@@ -639,7 +656,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           </Marker>
         ))}
 
-        {/* Render case readers last (top layer) */}
+        {/* Render case readers (middle layer) */}
         {mapControls.showCaseReaders && lectores.map((lector) => (
           <Marker
             key={`case-reader-${lector.ID_Lector}`}
@@ -671,7 +688,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               iconSize: [16, 16],
               iconAnchor: [8, 8]
             })}
-            zIndexOffset={1000}
+            zIndexOffset={200}
           >
             <Popup>
               <div className="lectura-popup">
@@ -688,6 +705,347 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       </>
     );
   };
+
+  // Función para detectar coincidencias entre capas
+  const detectarCoincidencias = useMemo(() => {
+    // Si las coincidencias están desactivadas, retornar array vacío
+    if (!mapControls.showCoincidencias) {
+      return [];
+    }
+
+    const coincidencias: { 
+      lat: number; 
+      lon: number; 
+      vehiculos: string[]; 
+      lectores: string[]; 
+      fechas: { vehiculo: string; fecha: string }[] 
+    }[] = [];
+    
+    // Si no hay capas activas ni resultados de filtro, retornar array vacío
+    if (capas.filter(c => c.activa).length === 0 && resultadosFiltro.lecturas.length === 0) {
+      return [];
+    }
+
+    // Crear un mapa para agrupar lecturas por coordenadas
+    const lecturasPorCoordenadas = new Map<string, { 
+      lat: number; 
+      lon: number; 
+      vehiculos: Set<string>; 
+      lectores: Set<string>;
+      fechas: Map<string, string>;
+    }>();
+
+    // Función auxiliar para procesar una lectura
+    const procesarLectura = (lectura: Lectura) => {
+      if (!lectura.Coordenada_X || !lectura.Coordenada_Y) return;
+      
+      const key = `${lectura.Coordenada_X.toFixed(6)}-${lectura.Coordenada_Y.toFixed(6)}`;
+      const existing = lecturasPorCoordenadas.get(key) || {
+        lat: lectura.Coordenada_Y,
+        lon: lectura.Coordenada_X,
+        vehiculos: new Set<string>(),
+        lectores: new Set<string>(),
+        fechas: new Map<string, string>()
+      };
+      
+      existing.vehiculos.add(lectura.Matricula);
+      if (lectura.ID_Lector) {
+        existing.lectores.add(lectura.ID_Lector);
+      }
+      existing.fechas.set(lectura.Matricula, lectura.Fecha_y_Hora);
+      
+      lecturasPorCoordenadas.set(key, existing);
+    };
+
+    // Procesar lecturas de capas activas
+    capas.forEach(capa => {
+      if (capa.activa) {
+        capa.lecturas.forEach(procesarLectura);
+      }
+    });
+
+    // Procesar lecturas del filtro actual
+    if (resultadosFiltro.lecturas.length > 0) {
+      resultadosFiltro.lecturas.forEach(procesarLectura);
+    }
+
+    // Identificar coincidencias (mismo punto con diferentes vehículos)
+    lecturasPorCoordenadas.forEach((value) => {
+      // Solo considerar como coincidencia si hay más de un vehículo
+      if (value.vehiculos.size > 1) {
+        coincidencias.push({
+          lat: value.lat,
+          lon: value.lon,
+          vehiculos: Array.from(value.vehiculos),
+          lectores: Array.from(value.lectores),
+          fechas: Array.from(value.fechas.entries()).map(([vehiculo, fecha]) => ({
+            vehiculo,
+            fecha: dayjs(fecha).format('DD/MM/YYYY HH:mm:ss')
+          }))
+        });
+      }
+    });
+    
+    return coincidencias;
+  }, [capas, resultadosFiltro.lecturas, mapControls.showCoincidencias]);
+
+  // Función para renderizar las coincidencias en el mapa
+  const renderCoincidencias = () => {
+    // Verificación explícita de que las coincidencias deben mostrarse
+    if (!mapControls.showCoincidencias) {
+      return null;
+    }
+
+    // Obtener coincidencias actuales
+    const coincidenciasActuales = detectarCoincidencias;
+    
+    // Si no hay coincidencias, no renderizar nada
+    if (coincidenciasActuales.length === 0) {
+      return null;
+    }
+
+    return coincidenciasActuales.map((coincidencia, index) => (
+      <Marker
+        key={`coincidencia-${index}`}
+        position={[coincidencia.lat, coincidencia.lon]}
+        icon={L.divIcon({
+          className: 'custom-div-icon',
+          html: `
+            <div style="
+              position: relative;
+              width: 48px;
+              height: 48px;
+            ">
+              <div style="
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                border: 3px solid red;
+                background-color: rgba(255, 0, 0, 0.2);
+                box-shadow: 0 0 12px rgba(255, 0, 0, 0.4);
+                animation: pulse 2s infinite;
+              "></div>
+              <div style="
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                background-color: red;
+              "></div>
+              <div style="
+                position: absolute;
+                top: -8px;
+                right: -8px;
+                background-color: red;
+                color: white;
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: bold;
+                font-size: 14px;
+                box-shadow: 0 0 8px rgba(255, 0, 0, 0.6);
+                animation: float 2s infinite;
+              ">!</div>
+            </div>
+            <style>
+              @keyframes pulse {
+                0% { transform: translate(-50%, -50%) scale(1); }
+                50% { transform: translate(-50%, -50%) scale(1.1); }
+                100% { transform: translate(-50%, -50%) scale(1); }
+              }
+              @keyframes float {
+                0% { transform: translate(0, 0); }
+                50% { transform: translate(0, -5px); }
+                100% { transform: translate(0, 0); }
+              }
+            </style>
+          `,
+          iconSize: [48, 48],
+          iconAnchor: [24, 24]
+        })}
+        zIndexOffset={700}
+      >
+        <Popup>
+          <div className="lectura-popup" style={{ maxWidth: '400px', minWidth: '350px' }}>
+            <Group gap="xs" mb="xs" align="center">
+              <div style={{
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                backgroundColor: 'red',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontWeight: 'bold'
+              }}>!</div>
+              <Text fw={700} size="md" c="red">Coincidencia Detectada</Text>
+            </Group>
+            
+            <Stack gap="xs">
+              <Paper p="xs" withBorder>
+                <Text fw={600} size="sm" mb={4}>Vehículos Involucrados</Text>
+                <Stack gap={4}>
+                  {coincidencia.fechas.map((item, idx) => (
+                    <Group key={idx} gap={8} wrap="nowrap" justify="space-between">
+                      <Badge color="red" variant="light" size="sm" style={{ minWidth: '80px' }}>
+                        {item.vehiculo}
+                      </Badge>
+                      <Text size="xs" c="dimmed" style={{ flex: 1, textAlign: 'right' }}>
+                        {item.fecha}
+                      </Text>
+                    </Group>
+                  ))}
+                </Stack>
+              </Paper>
+
+              <Paper p="xs" withBorder>
+                <Text fw={600} size="sm" mb={4}>Lectores Involucrados</Text>
+                <Group gap={4} wrap="wrap">
+                  {coincidencia.lectores.map((lector, idx) => (
+                    <Badge key={idx} color="blue" variant="light" size="sm">
+                      {lector}
+                    </Badge>
+                  ))}
+                </Group>
+              </Paper>
+
+              <Paper p="xs" withBorder>
+                <Text fw={600} size="sm" mb={4}>Ubicación</Text>
+                <Group gap={8} wrap="nowrap" justify="space-between">
+                  <Text size="sm" c="dimmed">
+                    Lat: {coincidencia.lat.toFixed(5)}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    Lon: {coincidencia.lon.toFixed(5)}
+                  </Text>
+                </Group>
+              </Paper>
+            </Stack>
+          </div>
+        </Popup>
+      </Marker>
+    ));
+  };
+
+  // Función para limpiar el mapa completamente
+  const handleLimpiarMapa = useCallback(() => {
+    // Desactivar las coincidencias primero
+    handleMapControlChange({ showCoincidencias: false });
+    
+    // Limpiar todos los estados
+    setCapas([]);
+    setResultadosFiltro({ lecturas: [], lectores: [] });
+    setLecturas([]);
+    setSelectedMatricula(null);
+    setNuevaCapa({ nombre: '', color: '#228be6' });
+    setMostrarFormularioCapa(false);
+    setEditandoCapa(null);
+    
+    // Resetear los filtros
+    setFilters({
+      matricula: '',
+      fechaInicio: '',
+      horaInicio: '',
+      fechaFin: '',
+      horaFin: '',
+      lectorId: '',
+      soloRelevantes: false
+    });
+
+    // Forzar la actualización del mapa
+    setMapKey(prev => prev + 1);
+  }, [handleMapControlChange]);
+
+  // Componente del mapa para reutilizar
+  const MapComponent = ({ isFullscreen = false }) => (
+    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+      <style>
+        {`
+          .leaflet-container {
+            z-index: ${isFullscreen ? 10000 : 1} !important;
+          }
+          .leaflet-div-icon {
+            background: transparent !important;
+            border: none !important;
+          }
+          .custom-div-icon {
+            background: transparent !important;
+            border: none !important;
+          }
+          .lectura-popup {
+            max-height: ${isFullscreen ? '400px' : '200px'};
+            overflow-y: auto;
+          }
+        `}
+      </style>
+      <MapContainer 
+        key={`map-${mapKey}-${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}-${mapControls.visualizationType}`}
+        center={centroInicial} 
+        zoom={zoomInicial} 
+        scrollWheelZoom={true} 
+        style={{ 
+          ...mapContainerStyle,
+          height: isFullscreen ? '100vh' : '100%',
+        }}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url={getTileLayerUrl()}
+        />
+        
+        {renderReaderLayers()}
+        {renderResultadosFiltro()}
+        {renderCoincidencias()}
+        {capas.map(renderCapaMarkers)}
+      </MapContainer>
+      <Tooltip label={isFullscreen ? "Cerrar pantalla completa (Esc)" : "Pantalla completa"}>
+        <ActionIcon
+          variant={isFullscreen ? "filled" : "light"}
+          color={isFullscreen ? "red" : "blue"}
+          size="xl"
+          style={{
+            position: 'absolute',
+            top: '1rem',
+            right: '1rem',
+            zIndex: 1000,
+            boxShadow: isFullscreen ? '0 0 10px rgba(0,0,0,0.2)' : 'none',
+          }}
+          onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
+        >
+          {isFullscreen ? <IconMinimize size={24} /> : <IconMaximize size={24} />}
+        </ActionIcon>
+      </Tooltip>
+    </div>
+  );
+
+  if (fullscreenMap) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'white',
+          zIndex: 9999,
+        }}
+      >
+        <MapComponent isFullscreen={true} />
+      </div>
+    );
+  }
 
   return (
     <Grid gutter="md">
@@ -859,6 +1217,28 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                   checked={mapControls.showAllReaders}
                   onChange={(event) => handleMapControlChange({ showAllReaders: event.currentTarget.checked })}
                 />
+                <Divider my="xs" />
+                <Switch
+                  label={
+                    <Group gap="xs">
+                      <Text size="sm">Mostrar coincidencias</Text>
+                      <Badge color="red" variant="light" size="sm">
+                        {detectarCoincidencias.length}
+                      </Badge>
+                    </Group>
+                  }
+                  checked={mapControls.showCoincidencias}
+                  onChange={(event) => handleMapControlChange({ showCoincidencias: event.currentTarget.checked })}
+                />
+                <Divider my="xs" />
+                <Button 
+                  variant="light" 
+                  color="red" 
+                  fullWidth
+                  onClick={handleLimpiarMapa}
+                >
+                  Limpiar Mapa
+                </Button>
               </Stack>
             </Stack>
           </Paper>
@@ -867,49 +1247,13 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
       {/* Mapa a la derecha */}
       <Grid.Col span={{ base: 12, md: 8 }}>
-        <Paper p="md" withBorder style={{ height: 'calc(100vh - 200px)' }}>
+        <Paper p="md" withBorder style={{ height: 'calc(100vh - 200px)', position: 'relative' }}>
           {lectores.length === 0 ? (
             <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Text c="dimmed">No hay lectores con coordenadas válidas para mostrar en el mapa.</Text>
             </Box>
           ) : (
-            <MapContainer 
-              key={`${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}-${mapControls.visualizationType}`}
-              center={centroInicial} 
-              zoom={zoomInicial} 
-              scrollWheelZoom={true} 
-              style={mapContainerStyle}
-            >
-              <style>
-                {`
-                  .leaflet-div-icon {
-                    background: transparent !important;
-                    border: none !important;
-                  }
-                  .custom-div-icon {
-                    background: transparent !important;
-                    border: none !important;
-                  }
-                  .lectura-popup {
-                    max-height: 200px;
-                    overflow-y: auto;
-                  }
-                `}
-              </style>
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url={getTileLayerUrl()}
-              />
-              
-              {/* Render reader layers */}
-              {renderReaderLayers()}
-              
-              {/* Renderizar resultados del filtro actual */}
-              {renderResultadosFiltro()}
-              
-              {/* Renderizar marcadores de cada capa */}
-              {capas.map(renderCapaMarkers)}
-            </MapContainer>
+            <MapComponent isFullscreen={false} />
           )}
         </Paper>
       </Grid.Col>
