@@ -191,37 +191,37 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     // ---- HANDLER PARA ELIMINAR ----
     const handleDeleteVehiculo = (vehiculo: Vehiculo) => {
         openConfirmModal({
-            title: `Eliminar Vehículo ${vehiculo.Matricula}`,
-            centered: true,
-            children: (
-                <Text size="sm">
-                    ¿Estás seguro de que quieres eliminar este vehículo? Esta acción no se puede deshacer.
-                </Text>
-            ),
-            labels: { confirm: 'Eliminar Vehículo', cancel: 'Cancelar' },
-            confirmProps: { color: 'red' },
-            onConfirm: async () => {
+             title: `Eliminar Vehículo ${vehiculo.Matricula}`,
+             centered: true,
+             children: (
+                 <Text size="sm">
+                     ¿Estás seguro de que quieres eliminar este vehículo? Esta acción no se puede deshacer.
+                 </Text>
+             ),
+             labels: { confirm: 'Eliminar Vehículo', cancel: 'Cancelar' },
+             confirmProps: { color: 'red' },
+             onConfirm: async () => {
                 setLoading(true);
-                try {
+                 try {
                     await apiClient.delete(`/vehiculos/${vehiculo.ID_Vehiculo}`);
-                    notifications.show({
+                     notifications.show({
                         title: 'Vehículo Eliminado',
-                        message: `Vehículo ${vehiculo.Matricula} eliminado correctamente.`,
+                         message: `Vehículo ${vehiculo.Matricula} eliminado correctamente.`,
                         color: 'green',
-                    });
+                     });
                     fetchVehiculos(); // Recargar la lista de vehículos
-                } catch (err: any) {
-                    console.error("Error deleting vehiculo:", err);
-                    notifications.show({
-                        title: 'Error al Eliminar',
-                        message: err.response?.data?.detail || 'No se pudo eliminar el vehículo.',
-                        color: 'red',
-                    });
-                } finally {
-                    setLoading(false);
-                }
-            },
-        });
+                 } catch (err: any) {
+                     console.error("Error deleting vehiculo:", err);
+                     notifications.show({
+                         title: 'Error al Eliminar',
+                         message: err.response?.data?.detail || 'No se pudo eliminar el vehículo.',
+                         color: 'red',
+                     });
+                 } finally {
+                      setLoading(false);
+                 }
+             },
+         });
     };
 
     // Definición de columnas para la tabla principal de Vehículos

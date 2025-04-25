@@ -1,6 +1,6 @@
 import React from 'react';
 import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box } from '@mantine/core'; // Import rem para tamaños de icono y Box
-import { IconFolder, IconUsers, IconMap2, IconSearch, IconActivity, IconFileImport, IconDatabase } from '@tabler/icons-react';
+import { IconFolder, IconDeviceCctv, IconMap2, IconSearch, IconActivity, IconFileImport, IconDatabase } from '@tabler/icons-react';
 import { Link, useLocation } from 'react-router-dom';
 
 // Datos de ejemplo para las tarjetas de acción
@@ -14,7 +14,7 @@ const actionCardsData = [
   },
   {
     title: 'Gestión de Lectores OCR',
-    icon: IconUsers,
+    icon: IconDeviceCctv,
     color: 'teal',
     path: '/lectores',
     description: 'Configura y gestiona lectores OCR con ubicaciones.',

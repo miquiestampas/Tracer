@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, SkipValidation
 from typing import Optional, List, Union, Tuple, Dict, Any
 import datetime
 import enum # Importar enum
@@ -20,7 +20,7 @@ class ArchivoExcelBase(BaseModel):
 
 class LecturaBase(BaseModel):
     Matricula: str = Field(..., example="1234ABC")
-    Fecha_y_Hora: datetime.datetime = Field(..., example="2023-10-27T10:30:00")
+    Fecha_y_Hora: SkipValidation[datetime.datetime] = Field(..., example="2023-10-27T10:30:00")
     Carril: Optional[str] = Field(None, example="1")
     Velocidad: Optional[float] = Field(None, example=85.5)
     ID_Lector: Optional[str] = Field(None, example="CAM001")
@@ -187,7 +187,7 @@ class LecturaRelevanteUpdate(LecturaRelevanteBase):
 class LecturaRelevante(LecturaRelevanteBase):
     ID_Relevante: int
     ID_Lectura: int
-    Fecha_Marcada: datetime.datetime
+    Fecha_Marcada: SkipValidation[datetime.datetime]
 
     class Config:
         from_attributes = True
@@ -324,8 +324,8 @@ class CoincidenciaDetalleSchema(BaseModel):
     sentido: Optional[str] = None
     orientacion: Optional[str] = None
     matriculas_par: List[str]
-    timestamp_vehiculo_1: datetime
-    timestamp_vehiculo_2: datetime
+    timestamp_vehiculo_1: SkipValidation[datetime.datetime]
+    timestamp_vehiculo_2: SkipValidation[datetime.datetime]
     lectura_verificada: bool
     id_lectura_1: int
     id_lectura_2: int
