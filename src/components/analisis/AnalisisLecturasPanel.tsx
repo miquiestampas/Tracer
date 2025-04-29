@@ -12,6 +12,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { format } from 'date-fns';
 import type { Lectura, Lector } from '../../types/data'; // Importar tipos necesarios
 import * as XLSX from 'xlsx'; // Importación para la exportación a Excel
+import { ProgressOverlay } from '../common/ProgressOverlay';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -27,6 +28,8 @@ const customStyles = `
       margin-bottom: var(--mantine-spacing-xs); /* Ajustar espacio si es necesario */
   }
 `;
+
+const API_BASE_URL = 'http://localhost:8000';
 
 // --- Eliminar Interfaces Locales Duplicadas ---
 /*
@@ -69,6 +72,8 @@ interface AnalisisLecturasPanelProps {
     interactedMatriculas: Set<string>;
     addInteractedMatricula: (matriculas: string[]) => void;
 }
+
+// Eliminar la interfaz VehiculoCoincidente ya que no se usará
 
 // --- Interfaz para métodos expuestos ---
 export interface AnalisisLecturasPanelHandle {
@@ -114,6 +119,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 15;
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
+    const [casosSeleccionados, setCasosSeleccionados] = useState<number[]>([]);
     
     // --- Procesar datos ---
     const sortedAndPaginatedResults = useMemo(() => {
@@ -132,7 +138,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             try {
                 if (casoIdFijo) {
                     console.log(`AnalisisLecturasPanel: Fetching filtros disponibles para caso ${casoIdFijo}...`);
-                    const response = await fetch(`http://localhost:8000/casos/${casoIdFijo}/filtros_disponibles`);
+                    const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/filtros_disponibles`);
                     if (!response.ok) throw new Error(`Filtros caso ${casoIdFijo}: ${response.statusText || response.status}`);
                     const data = await response.json();
                     if (data && data.lectores && data.carreteras) {
@@ -143,9 +149,9 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 } else {
                      console.log("AnalisisLecturasPanel: Fetching filtros globales...");
                      const fetches: (Promise<Response> | null)[] = [];
-                     fetches.push(fetch('http://localhost:8000/lectores?limit=2000')); // Límite alto para obtener todos
+                     fetches.push(fetch(`${API_BASE_URL}/lectores?limit=2000`)); // Límite alto para obtener todos
                      if (permitirSeleccionCaso) {
-                         fetches.push(fetch('http://localhost:8000/casos?limit=1000'));
+                         fetches.push(fetch(`${API_BASE_URL}/casos?limit=1000`));
                      } else { fetches.push(null); }
                      const responses = await Promise.all(fetches);
                      const lectoresResponse = responses[0];
@@ -206,17 +212,26 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         if (tipoFuenteFijo) {
             params.append('tipo_fuente', tipoFuenteFijo);
         }
+        params.append('limit', '100000');
         const queryString = params.toString();
-        const apiUrl = `http://localhost:8000/lecturas?${queryString}&limit=10000`;
-        console.log(`Llamando a API (${tipoFuenteFijo || 'Todos'}):`, apiUrl);
+        const searchUrl = `${API_BASE_URL}/lecturas?${queryString}`;
+        console.log(`Llamando a API (${tipoFuenteFijo || 'Todos'}):`, searchUrl);
         try {
-            const response = await fetch(apiUrl);
-            if (!response.ok) { 
-                let errorDetail = `HTTP error! status: ${response.statusText || response.status}`;
-                try { const errorData = await response.json(); errorDetail = errorData.detail || JSON.stringify(errorData); } catch (e) {} 
+            const apiResponse = await fetch(searchUrl);
+            if (!apiResponse.ok) { 
+                let errorDetail = `HTTP error! status: ${apiResponse.statusText || apiResponse.status}`;
+                try {
+                    const errorData = await apiResponse.json();
+                    errorDetail += ` - ${JSON.stringify(errorData)}`;
+                } catch (e) {
+                    // Si no se puede parsear como JSON, usar el texto plano
+                    const text = await apiResponse.text();
+                    errorDetail += ` - ${text}`;
+                }
                 throw new Error(errorDetail);
-             }
-            rawResults = await response.json();
+            }
+            const data = await apiResponse.json();
+            rawResults = data;
             let processedResults = rawResults;
             if (rawResults.length > 0) {
                 const plateCounts = rawResults.reduce((acc, lectura) => { acc[lectura.Matricula] = (acc[lectura.Matricula] || 0) + 1; return acc; }, {} as Record<string, number>);
@@ -269,7 +284,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setLoading(true);
         try {
             console.log("Exportando: Obteniendo todos los lectores...");
-            const response = await fetch(`http://localhost:8000/lectores?limit=10000`);
+            const response = await fetch(`${API_BASE_URL}/lectores?limit=10000`);
             if (!response.ok) throw new Error(`Error al obtener lectores: ${response.statusText}`);
             const data = await response.json();
             let lectoresParaExportar: Lector[] = [];
@@ -334,7 +349,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
         const results = await Promise.allSettled(
             idsToMark.map(id => 
-                fetch(`http://localhost:8000/lecturas/${id}/marcar_relevante`, {
+                fetch(`${API_BASE_URL}/lecturas/${id}/marcar_relevante`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -398,7 +413,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
         const results = await Promise.allSettled(
             idsToUnmark.map(id => 
-                fetch(`http://localhost:8000/lecturas/${id}/desmarcar_relevante`, { method: 'DELETE' })
+                fetch(`${API_BASE_URL}/lecturas/${id}/desmarcar_relevante`, { method: 'DELETE' })
                     .then(response => {
                         if (!response.ok) {
                              return response.json().catch(() => null).then(errorData => {
@@ -457,7 +472,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
         const results = await Promise.allSettled(
             matriculasUnicas.map(matricula => 
-                fetch(`http://localhost:8000/vehiculos`, {
+                fetch(`${API_BASE_URL}/vehiculos`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ Matricula: matricula }), // Enviar solo matrícula
@@ -592,7 +607,12 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         <Box style={{ position: 'relative' }}>
             <style>{customStyles}</style>
             <Grid>
-                 <LoadingOverlay visible={initialLoading} zIndex={1000} overlayProps={{ radius: "sm", blur: 2 }} />
+                 <ProgressOverlay 
+                    visible={initialLoading} 
+                    progress={initialLoading ? 100 : 0} 
+                    label="Cargando datos iniciales..."
+                    zIndex={1000}
+                 />
                  <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
                      <Paper shadow="sm" p="md" withBorder>
                          <Stack gap="sm">
@@ -736,7 +756,12 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                  </Grid.Col>
                  <Grid.Col span={{ base: 12, md: 9 }}>
                      <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
-                        <LoadingOverlay visible={loading && !initialLoading} zIndex={500} />
+                        <ProgressOverlay 
+                            visible={loading && !initialLoading} 
+                            progress={(loading && !initialLoading) ? 100 : 0} 
+                            label="Procesando resultados..."
+                            zIndex={500}
+                        />
                         <Group justify="space-between" mb="md">
                             <Title order={4}>Resultados ({results.length})</Title>
                             <Group>
