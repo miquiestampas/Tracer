@@ -70,6 +70,8 @@ function getShapeGeoJSONGeometry(layer: L.Layer | null): any | null {
 // --- Importar useLocation --- 
 import { useLocation } from 'react-router-dom';
 
+import BatchEditLectoresModal from '../components/modals/BatchEditLectoresModal';
+
 function LectoresPage() {
   const [lectores, setLectores] = useState<Lector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,34 +113,54 @@ function LectoresPage() {
   const [resultsListOpened, { toggle: toggleResultsList }] = useDisclosure(false);
   // *** Fin cambio estado ***
 
-  const fetchLectoresTabla = useCallback(async (page: number, pageSize: number) => {
+  const [batchEditModalOpened, { open: openBatchEditModal, close: closeBatchEditModal }] = useDisclosure(false);
+
+  // Función para cargar los lectores
+  const fetchLectores = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const skip = (page - 1) * pageSize;
-      const limit = pageSize;
-      const response = await getLectores({ 
-        skip, 
-        limit,
-        sort: sortStatus.columnAccessor,
-        order: sortStatus.direction
-      });
+      const params = {
+        skip: (pagination.page - 1) * pagination.pageSize,
+        limit: pagination.pageSize,
+        // Añadir filtros solo si tienen valor
+        ...(filtroTextoLibre && { texto_libre: filtroTextoLibre }),
+        ...(filtroProvincia.length > 0 && { provincia: filtroProvincia[0] }), // Por ahora solo usamos el primer valor
+        ...(filtroCarretera.length > 0 && { carretera: filtroCarretera[0] }),
+        ...(filtroOrganismo.length > 0 && { organismo: filtroOrganismo[0] }),
+        ...(filtroSentido && { sentido: filtroSentido })
+      };
+
+      const response = await getLectores(params);
       setLectores(response.lectores);
       setPagination(prev => ({ ...prev, totalCount: response.total_count }));
-    } catch (err: any) {
-      setError(err.message || 'Error al cargar los lectores para la tabla.');
-      setLectores([]);
-      setPagination(prev => ({ ...prev, totalCount: 0 }));
+    } catch (err) {
+      console.error('Error al cargar lectores:', err);
+      setError(err instanceof Error ? err.message : 'Error al cargar los lectores');
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudieron cargar los lectores. Por favor, intenta de nuevo.',
+        color: 'red'
+      });
     } finally {
       setLoading(false);
     }
-  }, [sortStatus]);
+  }, [pagination.page, pagination.pageSize, filtroTextoLibre, filtroProvincia, filtroCarretera, filtroOrganismo, filtroSentido]);
 
+  // Efecto para recargar cuando cambian los filtros
   useEffect(() => {
-    if (activeTab === 'tabla') {
-      fetchLectoresTabla(pagination.page, pagination.pageSize);
-    }
-  }, [pagination.page, pagination.pageSize, fetchLectoresTabla, activeTab, sortStatus]);
+    fetchLectores();
+  }, [fetchLectores]);
+
+  // Manejador para limpiar filtros
+  const handleClearFilters = useCallback(() => {
+    setFiltroProvincia([]);
+    setFiltroCarretera([]);
+    setFiltroOrganismo([]);
+    setFiltroSentido(null);
+    setFiltroTextoLibre('');
+    setPagination(prev => ({ ...prev, page: 1 }));
+  }, []);
 
   const fetchMapData = useCallback(async () => {
     setMapLoading(true);
@@ -167,40 +189,40 @@ function LectoresPage() {
   console.log("[MapFilters] Datos base mapLectores:", mapLectores);
   
   const provinciasUnicas = useMemo(() => {
-    const provincias = mapLectores
+    const provincias = [...lectores, ...mapLectores]
       .map(l => l.Provincia)
       .filter((p): p is string => p != null && p.trim() !== '');
     return Array.from(new Set(provincias)).sort();
-  }, [mapLectores]);
+  }, [lectores, mapLectores]);
 
   const carreterasUnicas = useMemo(() => {
     console.log("[MapFilters] Calculando carreterasUnicas...");
-    const carreterasMapped = mapLectores.map(l => l.Carretera);
+    const carreterasMapped = [...lectores, ...mapLectores].map(l => l.Carretera);
     const carreterasFiltered = carreterasMapped.filter((c): c is string => c != null && c.trim() !== '');
     const uniqueSet = new Set(carreterasFiltered);
     const result = Array.from(uniqueSet).sort().map(carretera => ({ value: carretera, label: carretera }));
     console.log("[MapFilters] Carreteras Únicas (resultado final - formato objeto):", result);
     return result;
-  }, [mapLectores]);
+  }, [lectores, mapLectores]);
 
   const organismosUnicos = useMemo(() => {
     console.log("[MapFilters] Calculando organismosUnicos...");
-    const organismosMapped = mapLectores.map(l => l.Organismo_Regulador);
+    const organismosMapped = [...lectores, ...mapLectores].map(l => l.Organismo_Regulador);
     const organismosFiltered = organismosMapped.filter((o): o is string => o != null && o.trim() !== '');
     const uniqueSet = new Set(organismosFiltered);
     const result = Array.from(uniqueSet).sort().map(organismo => ({ value: organismo, label: organismo }));
     console.log("[MapFilters] Organismos Únicos (resultado final - formato objeto):", result);
     return result;
-  }, [mapLectores]);
+  }, [lectores, mapLectores]);
 
   const lectorSearchSuggestions = useMemo(() => {
     const suggestions = new Set<string>();
-    mapLectores.forEach(lector => {
+    [...lectores, ...mapLectores].forEach(lector => {
       if (lector.ID_Lector) suggestions.add(lector.ID_Lector);
       if (lector.Nombre) suggestions.add(lector.Nombre);
     });
     return Array.from(suggestions).sort();
-  }, [mapLectores]);
+  }, [lectores, mapLectores]);
 
   // Lógica de Filtrado (usa la función helper)
   const lectoresFiltradosMapa = useMemo(() => {
@@ -381,28 +403,34 @@ function LectoresPage() {
         });
       }
       
-      console.log("Recargando datos después de importación...");
-      setTimeout(async () => {
-        try {
-          console.log("Ejecutando recarga de datos con delay...");
-          const response = await getLectores({ skip: 0, limit: pagination.pageSize * 2 }); 
-          setLectores(response.lectores);
-          setPagination(prev => ({ ...prev, totalCount: response.total_count, page: 1 }));
-          console.log(`Tabla recargada: ${response.lectores.length} lectores encontrados`);
-          
-          if (activeTab === 'mapa') {
-            await fetchMapData();
-            console.log("Mapa recargado tras importación");
-          }
-        } catch (reloadError) {
-          console.error("Error recargando datos tras importación:", reloadError);
-          notifications.show({
-            title: 'Error al recargar datos',
-            message: 'La importación se completó (parcialmente), pero hubo un error al refrescar la lista de lectores.',
-            color: 'yellow'
-          });
+      // Recargar datos inmediatamente
+      try {
+        // Recargar datos de la tabla
+        const response = await getLectores({ 
+          skip: 0, 
+          limit: pagination.pageSize * 2,
+          texto_libre: filtroTextoLibre,
+          provincia: filtroProvincia[0],
+          carretera: filtroCarretera[0],
+          organismo: filtroOrganismo[0],
+          sentido: filtroSentido === null ? undefined : filtroSentido
+        }); 
+        setLectores(response.lectores);
+        setPagination(prev => ({ ...prev, totalCount: response.total_count, page: 1 }));
+        
+        // Recargar datos del mapa si estamos en la pestaña del mapa
+        if (activeTab === 'mapa') {
+          const mapData = await getLectoresParaMapa();
+          setMapLectores(mapData);
         }
-      }, 500);
+      } catch (reloadError) {
+        console.error("Error recargando datos tras importación:", reloadError);
+        notifications.show({
+          title: 'Error al recargar datos',
+          message: 'La importación se completó (parcialmente), pero hubo un error al refrescar la lista de lectores.',
+          color: 'yellow'
+        });
+      }
       
       return { imported: result.imported, updated: result.updated }; 
       
@@ -571,6 +599,14 @@ function LectoresPage() {
     </Table.Tr>
   ));
 
+  const handleBatchEditSave = async () => {
+    // Recargar datos después de la edición por lotes
+    await fetchLectores();
+    if (activeTab === 'mapa') {
+      await fetchMapData();
+    }
+  };
+
   return (
     <Box p="md">
       <Group justify="space-between" mb="xl">
@@ -584,6 +620,15 @@ function LectoresPage() {
             disabled={loading}
           >
             Añadir Lector
+          </Button>
+          <Button 
+            leftSection={<IconEdit size={18} />}
+            onClick={openBatchEditModal}
+            variant="outline"
+            color="blue"
+            disabled={selectedLectorIds.length === 0 || loading}
+          >
+            Editar Selección ({selectedLectorIds.length})
           </Button>
           <Button 
             leftSection={<IconTrash size={18} />}
@@ -952,6 +997,13 @@ function LectoresPage() {
         opened={importModalOpened}
         onClose={closeImportModal}
         onImport={handleImportLectores}
+      />
+
+      <BatchEditLectoresModal
+        opened={batchEditModalOpened}
+        onClose={closeBatchEditModal}
+        selectedLectorIds={selectedLectorIds}
+        onSave={handleBatchEditSave}
       />
 
       <Box style={{ display: 'none' }}>
