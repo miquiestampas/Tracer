@@ -128,7 +128,10 @@ function LectoresPage() {
         ...(filtroProvincia.length > 0 && { provincia: filtroProvincia[0] }), // Por ahora solo usamos el primer valor
         ...(filtroCarretera.length > 0 && { carretera: filtroCarretera[0] }),
         ...(filtroOrganismo.length > 0 && { organismo: filtroOrganismo[0] }),
-        ...(filtroSentido && { sentido: filtroSentido })
+        ...(filtroSentido && { sentido: filtroSentido }),
+        // Añadir parámetros de ordenación
+        sort: sortStatus.columnAccessor,
+        order: sortStatus.direction
       };
 
       const response = await getLectores(params);
@@ -145,12 +148,18 @@ function LectoresPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, filtroTextoLibre, filtroProvincia, filtroCarretera, filtroOrganismo, filtroSentido]);
+  }, [pagination.page, pagination.pageSize, filtroTextoLibre, filtroProvincia, filtroCarretera, filtroOrganismo, filtroSentido, sortStatus]);
 
   // Efecto para recargar cuando cambian los filtros
   useEffect(() => {
     fetchLectores();
   }, [fetchLectores]);
+
+  // Efecto para recargar cuando cambia la ordenación
+  useEffect(() => {
+    setPagination(prev => ({ ...prev, page: 1 }));
+    fetchLectores();
+  }, [sortStatus, fetchLectores]);
 
   // Manejador para limpiar filtros
   const handleClearFilters = useCallback(() => {
@@ -528,13 +537,8 @@ function LectoresPage() {
       return provinciaMatch && carreteraMatch && organismoMatch && textoMatch && sentidoMatch;
     });
 
-    // Aplicar ordenación
-    if (sortStatus.columnAccessor) {
-      filtered = _.orderBy(filtered, [sortStatus.columnAccessor], [sortStatus.direction]);
-    }
-
     return filtered;
-  }, [lectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido, sortStatus]);
+  }, [lectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido]);
   // *** FIN: Lógica de Filtrado para la Tabla ***
 
   const rows = lectores.map((lector) => {
