@@ -48,7 +48,7 @@ export const getArchivosPorCaso = async (casoId: number): Promise<ArchivoExcel[]
 // Actualizar un caso (lo necesitaremos más adelante)
 export const updateCaso = async (id: number, casoData: Partial<CasoCreate>): Promise<Caso> => {
   try {
-    const response = await apiClient.put<Caso>(`/casos/${id}`, casoData);
+    const response = await apiClient.patch<Caso>(`/casos/${id}`, casoData);
     return response.data;
   } catch (error) {
     console.error(`Error al actualizar caso ${id}:`, error);

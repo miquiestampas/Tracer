@@ -22,6 +22,7 @@ import { notifications } from '@mantine/notifications';
 import { IconUpload, IconFileSpreadsheet, IconAlertCircle, IconInfoCircle } from '@tabler/icons-react';
 import * as XLSX from 'xlsx';
 import proj4 from 'proj4'; // Importar proj4js
+import { ProgressOverlay } from '../common/ProgressOverlay';
 
 // Interfaz para las propiedades del componente
 interface ImportarLectoresModalProps {
@@ -42,19 +43,26 @@ const REQUIRED_FIELDS = ['ID_Lector', 'Nombre'];
 
 // Campos disponibles para mapear
 const AVAILABLE_FIELDS = [
-  { value: 'ID_Lector', label: 'ID Lector (requerido)' },
-  { value: 'Nombre', label: 'Nombre (requerido)' },
-  { value: 'Carretera', label: 'Carretera' },
-  { value: 'Provincia', label: 'Provincia' },
-  { value: 'Localidad', label: 'Localidad' },
-  { value: 'Sentido', label: 'Sentido' },
-  { value: 'Orientacion', label: 'Orientación' },
-  { value: 'Latitud', label: 'Latitud (Decimal / Sexagesimal)' },
-  { value: 'Longitud', label: 'Longitud (Decimal / Sexagesimal)' },
-  { value: 'UTM_Easting', label: 'Coordenada UTM X (Easting)' },
-  { value: 'UTM_Northing', label: 'Coordenada UTM Y (Northing)' },
-  { value: 'Organismo_Regulador', label: 'Organismo' },
-  { value: 'Notas', label: 'Notas' }
+  // Campos requeridos
+  { value: 'ID_Lector', label: 'ID Lector (requerido)', group: 'Identificación' },
+  { value: 'Nombre', label: 'Nombre (requerido)', group: 'Identificación' },
+  
+  // Información de ubicación
+  { value: 'Carretera', label: 'Carretera', group: 'Ubicación' },
+  { value: 'Provincia', label: 'Provincia', group: 'Ubicación' },
+  { value: 'Localidad', label: 'Localidad', group: 'Ubicación' },
+  { value: 'Sentido', label: 'Sentido de circulación', group: 'Ubicación' },
+  { value: 'Orientacion', label: 'Orientación', group: 'Ubicación' },
+  
+  // Coordenadas
+  { value: 'Latitud', label: 'Latitud (Decimal / Sexagesimal)', group: 'Coordenadas' },
+  { value: 'Longitud', label: 'Longitud (Decimal / Sexagesimal)', group: 'Coordenadas' },
+  { value: 'UTM_Easting', label: 'Coordenada UTM X (Easting)', group: 'Coordenadas' },
+  { value: 'UTM_Northing', label: 'Coordenada UTM Y (Northing)', group: 'Coordenadas' },
+  
+  // Información adicional
+  { value: 'Organismo_Regulador', label: 'Organismo', group: 'Información Adicional' },
+  { value: 'Notas', label: 'Notas', group: 'Información Adicional' }
 ];
 
 // --- Definiciones de Sistemas de Coordenadas para Proj4 --- 
@@ -407,7 +415,11 @@ const ImportarLectoresModal: React.FC<ImportarLectoresModalProps> = ({
       size="xl"
       overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
     >
-      <LoadingOverlay visible={isLoading} overlayProps={{ blur: 2 }} />
+      <ProgressOverlay 
+        visible={isLoading} 
+        progress={isLoading ? 100 : 0} 
+        label="Procesando archivo..."
+      />
       
       {/* Paso 1: Subir archivo */}
       {processingStep === 'upload' && (
@@ -476,7 +488,11 @@ const ImportarLectoresModal: React.FC<ImportarLectoresModalProps> = ({
                 key={column}
                 label={`Columna "${column}"`}
                 placeholder="Seleccionar campo"
-                data={AVAILABLE_FIELDS}
+                data={AVAILABLE_FIELDS.map(field => ({
+                  value: field.value,
+                  label: field.label,
+                  group: field.group
+                }))}
                 value={columnMapping[column] || null}
                 onChange={(value) => {
                   if (value) {

@@ -3,28 +3,38 @@ import type { Lector, LectoresResponse, LectorUpdateData, LectorCoordenadas, Lec
 import axios from 'axios';
 
 /**
- * Parámetros para obtener la lista de lectores (incluye paginación).
+ * Parámetros para obtener la lista de lectores (incluye paginación y filtros).
  */
 interface GetLectoresParams {
   skip?: number;
   limit?: number;
-  // Podrían añadirse filtros de búsqueda aquí en el futuro (ej. por ID, nombre, etc.)
+  id_lector?: string;
+  nombre?: string;
+  carretera?: string;
+  provincia?: string;
+  organismo?: string;
+  sentido?: string;
+  texto_libre?: string;
 }
 
 /**
- * Obtiene una lista paginada de lectores desde la API.
- * @param params Objeto con parámetros de paginación (skip, limit).
+ * Obtiene una lista paginada y filtrada de lectores desde la API.
+ * @param params Objeto con parámetros de paginación y filtros
  * @returns Promise<LectoresResponse> - Objeto con conteo total y lista de lectores.
  */
 export const getLectores = async (params: GetLectoresParams = {}): Promise<LectoresResponse> => {
   try {
-    // Filtrar parámetros nulos o indefinidos antes de enviar
+    // Filtrar parámetros nulos, undefined o vacíos antes de enviar
     const cleanParams = Object.fromEntries(
-        Object.entries(params).filter(([_, v]) => v != null)
+      Object.entries(params).filter(([_, v]) => v != null && v !== '')
     );
+    
+    console.log('Obteniendo lectores con filtros:', cleanParams);
+    
     const response = await apiClient.get<LectoresResponse>('/lectores', {
       params: cleanParams
     });
+    
     return response.data;
   } catch (error) {
     console.error('Error al obtener los lectores:', error);

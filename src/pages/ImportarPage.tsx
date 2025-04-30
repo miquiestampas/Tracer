@@ -29,6 +29,7 @@ import apiClient from '../services/api';
 import type { Caso, ArchivoExcel, UploadResponse } from '../types/data';
 import * as XLSX from 'xlsx'; // Importar librería xlsx
 import { useNavigate, useLocation } from 'react-router-dom';
+import { ProgressOverlay } from '../components/common/ProgressOverlay';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
@@ -37,8 +38,8 @@ const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
 };
 // Campos opcionales
 const OPTIONAL_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
-    LPR: ['Carril', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
-    GPS: ['Velocidad']
+    LPR: ['Carril', 'Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
+    GPS: ['Sentido', 'Velocidad']
 };
 
 // --- NUEVO: Diccionario de Términos para Auto-Mapeo ---
@@ -520,7 +521,11 @@ function ImportarPage() {
   return (
     <Box p="md">
       <Title order={2} mb="xl">Importar Datos desde Excel</Title>
-      <LoadingOverlay visible={isUploading || isReadingHeaders} overlayProps={{ radius: "sm", blur: 2 }} />
+      <ProgressOverlay 
+        visible={isUploading || isReadingHeaders} 
+        progress={(isUploading || isReadingHeaders) ? 100 : 0} 
+        label={isUploading ? "Subiendo archivo..." : "Leyendo encabezados..."}
+      />
 
       {/* Formulario de importación principal */}
       <Stack gap="lg">

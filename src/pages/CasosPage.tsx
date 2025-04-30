@@ -391,7 +391,7 @@ function CasosPage() {
         title={editingCasoId ? "Editar Caso" : "Crear Nuevo Caso"}
         centered
       >
-         <form onSubmit={form.onSubmit(editingCasoId ? (values) => handleUpdateCaso(editingCasoId, values) : handleCreateCaso)}>
+         <form onSubmit={form.onSubmit(handleFormSubmit)}>
            <Stack>
              <TextInput
                required

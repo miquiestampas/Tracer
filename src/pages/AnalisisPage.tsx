@@ -52,6 +52,8 @@ function AnalisisPage() {
                     <AnalisisLecturasPanel 
                         permitirSeleccionCaso={true} // Permitir seleccionar casos
                         mostrarTitulo={true} // Mostrar títulos internos
+                        interactedMatriculas={new Set()}
+                        addInteractedMatricula={() => {}}
                         // No pasar casoIdFijo
                     />
                 </Tabs.Panel>
