@@ -26,45 +26,53 @@ const markerIconStyle = {
 };
 
 // Crear iconos personalizados para los marcadores
-const lectorIcon = L.divIcon({
-  className: 'custom-div-icon',
-  html: `<div style="background-color: #4a4a4a; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
-  iconSize: [12, 12],
-  iconAnchor: [6, 6]
-});
+// const lectorIcon = L.divIcon({ ... });
+// const lecturaGPSIcon = L.divIcon({ ... });
+// const lecturaLPRIcon = L.divIcon({ ... });
 
-const lecturaGPSIcon = L.divIcon({
-  className: 'custom-div-icon',
-  html: `<div style="background-color: #ff0000; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
-  iconSize: [8, 8],
-  iconAnchor: [4, 4]
-});
-
-const lecturaLPRIcon = L.divIcon({
-  className: 'custom-div-icon',
-  html: `<div style="background-color: #0000ff; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
-  iconSize: [8, 8],
-  iconAnchor: [4, 4]
-});
-
-// Función para crear un icono de marcador con color personalizado
-const createMarkerIcon = (count: number, tipo: 'lector' | 'gps' | 'lpr', color?: string) => {
+const createMarkerIcon = (count: number, tipo: 'lector' | 'gps' | 'lpr', color: string) => {
   const size = tipo === 'lector' ? 12 : 8;
-  const defaultColors = {
-    lector: '#4a4a4a',
-    gps: '#ff0000',
-    lpr: '#0000ff'
-  };
-  const markerColor = color || defaultColors[tipo];
+  const uniqueClassName = `marker-${color.replace('#', '')}`;
   
-  // Si hay múltiples lecturas, crear un marcador con contador
+  // Crear o actualizar el estilo dinámico
+  const styleId = 'dynamic-marker-styles';
+  let styleSheet = document.getElementById(styleId) as HTMLStyleElement;
+  if (!styleSheet) {
+    styleSheet = document.createElement('style');
+    styleSheet.id = styleId;
+    document.head.appendChild(styleSheet);
+  }
+
+  // Añadir reglas CSS para esta clase específica si no existen
+  if (!styleSheet.textContent?.includes(uniqueClassName)) {
+    const newRules = `
+      .${uniqueClassName} {
+        background-color: ${color} !important;
+        border-radius: 50%;
+        box-shadow: 0 0 4px rgba(0,0,0,0.4);
+      }
+      .${uniqueClassName}-count {
+        background-color: ${color} !important;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: bold;
+        box-shadow: 0 0 4px rgba(0,0,0,0.4);
+      }
+    `;
+    styleSheet.textContent += newRules;
+  }
+
   if (count > 1) {
     return L.divIcon({
       className: 'custom-div-icon',
       html: `
-        <div style="position: relative;">
-          <div style="background-color: ${markerColor}; width: ${size}px; height: ${size}px; border-radius: 50%; ${tipo === 'lector' ? 'border: 2px solid white;' : ''} box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>
-          <div style="position: absolute; top: -8px; right: -8px; background-color: #ff4d4f; color: white; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; box-shadow: 0 0 4px rgba(0,0,0,0.4);">
+        <div class="marker-container">
+          <div class="${uniqueClassName}" style="width: ${size}px; height: ${size}px; ${tipo === 'lector' ? 'border: 2px solid white;' : ''}"></div>
+          <div class="${uniqueClassName}-count" style="position: absolute; top: -8px; right: -8px; width: 16px; height: 16px;">
             ${count}
           </div>
         </div>
@@ -73,11 +81,12 @@ const createMarkerIcon = (count: number, tipo: 'lector' | 'gps' | 'lpr', color?:
       iconAnchor: [(size + 16)/2, (size + 16)/2]
     });
   }
-  
-  // Si es una sola lectura, usar el icono normal
+
   return L.divIcon({
     className: 'custom-div-icon',
-    html: `<div style="background-color: ${markerColor}; width: ${size}px; height: ${size}px; border-radius: 50%; ${tipo === 'lector' ? 'border: 2px solid white;' : ''} box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+    html: `
+      <div class="${uniqueClassName}" style="width: ${size}px; height: ${size}px; ${tipo === 'lector' ? 'border: 2px solid white;' : ''}"></div>
+    `,
     iconSize: [size, size],
     iconAnchor: [size/2, size/2]
   });
@@ -113,6 +122,25 @@ interface MapControls {
 }
 
 const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
+  // Añadir estilos base al componente
+  useEffect(() => {
+    const styleId = 'map-base-styles';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        .custom-div-icon {
+          background: transparent !important;
+          border: none !important;
+        }
+        .marker-container {
+          position: relative;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   const [lectores, setLectores] = useState<LectorCoordenadas[]>([]);
   const [lecturas, setLecturas] = useState<Lectura[]>([]);
   const [loading, setLoading] = useState(false);
@@ -344,8 +372,23 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     };
 
     setCapas(prev => [...prev, nuevaCapaCompleta]);
+    // Limpiar completamente el estado de nuevaCapa
     setNuevaCapa({ nombre: '', color: '#228be6' });
     setMostrarFormularioCapa(false);
+    
+    // Limpiar los resultados del filtro actual
+    setResultadosFiltro({ lecturas: [], lectores: [] });
+    setSelectedMatricula(null);
+    // Resetear los filtros
+    setFilters({
+      matricula: '',
+      fechaInicio: '',
+      horaInicio: '',
+      fechaFin: '',
+      horaFin: '',
+      lectorId: '',
+      soloRelevantes: false
+    });
   };
 
   const handleEditarCapa = (id: string) => {
@@ -369,6 +412,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
         : capa
     ));
 
+    // Limpiar completamente el estado de nuevaCapa tras editar
     setNuevaCapa({ nombre: '', color: '#228be6' });
     setEditandoCapa(null);
     setMostrarFormularioCapa(false);
@@ -388,77 +432,82 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const renderCapaMarkers = (capa: Capa) => {
     if (!capa.activa) return null;
 
-    return (
-      <>
-        {/* Renderizar lectores de la capa */}
-        {capa.lectores.map((lector) => {
-          const lecturasEnLector = capa.lecturas.filter(l => l.ID_Lector === lector.ID_Lector);
-          return (
-            <Marker 
-              key={`${capa.id}-lector-${lector.ID_Lector}`}
-              position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
-              icon={createMarkerIcon(lecturasEnLector.length, 'lector', capa.color)}
-              zIndexOffset={300}
-            >
-              <Popup>
-                <div className="lectura-popup">
-                  <Group justify="space-between" mb="xs">
-                    <Text fw={700} size="sm">Lector {lector.ID_Lector}</Text>
-                    <Badge color="blue" variant="light" size="sm">
-                      {lecturasEnLector.length} lecturas
-                    </Badge>
-                  </Group>
-                  <Stack gap={4}>
-                    {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
-                    {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
-                    {lector.Provincia && <Text size="sm"><b>Provincia:</b> {lector.Provincia}</Text>}
-                    {lector.Organismo_Regulador && <Text size="sm"><b>Organismo:</b> {lector.Organismo_Regulador}</Text>}
-                    <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
-                  </Stack>
-                  {lecturasEnLector.length > 0 && (
-                    <>
-                      <Divider my="xs" />
-                      <Text fw={700} size="sm" mb="xs">Pasos registrados</Text>
-                      <Stack gap={4}>
-                        {ordenarLecturasPorFecha(lecturasEnLector).map((lectura, idx) => (
-                          <Paper key={lectura.ID_Lectura} p="xs" withBorder>
-                            <Group justify="space-between">
-                              <Badge 
-                                color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
-                                variant="light"
-                                size="sm"
-                              >
-                                {lectura.Tipo_Fuente}
-                              </Badge>
-                              <Text size="xs" c="dimmed">
-                                {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
-                              </Text>
-                            </Group>
-                            <Group gap="xs" mt={4}>
-                              {lectura.Velocidad && (
-                                <Badge color="gray" variant="light" size="xs">
-                                  {lectura.Velocidad} km/h
-                                </Badge>
-                              )}
-                              {lectura.Carril && (
-                                <Badge color="gray" variant="light" size="xs">
-                                  Carril {lectura.Carril}
-                                </Badge>
-                              )}
-                            </Group>
-                          </Paper>
-                        ))}
-                      </Stack>
-                    </>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
-          );
-        })}
+    const markers: JSX.Element[] = [];
 
-        {/* Renderizar lecturas individuales de la capa */}
-        {capa.lecturas.filter(l => !l.ID_Lector).map((lectura) => (
+    // Renderizar lectores de la capa
+    capa.lectores.forEach((lector) => {
+      const lecturasEnLector = capa.lecturas.filter(l => l.ID_Lector === lector.ID_Lector);
+      if (!lector.Coordenada_X || !lector.Coordenada_Y) return;
+
+      markers.push(
+        <Marker 
+          key={`${capa.id}-lector-${lector.ID_Lector}`}
+          position={[lector.Coordenada_Y, lector.Coordenada_X]}
+          icon={createMarkerIcon(lecturasEnLector.length, 'lector', capa.color)}
+          zIndexOffset={300}
+        >
+          <Popup>
+            <div className="lectura-popup">
+              <Group justify="space-between" mb="xs">
+                <Text fw={700} size="sm">Lector {lector.ID_Lector}</Text>
+                <Badge color="blue" variant="light" size="sm">
+                  {lecturasEnLector.length} lecturas
+                </Badge>
+              </Group>
+              <Stack gap={4}>
+                {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
+                {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
+                {lector.Provincia && <Text size="sm"><b>Provincia:</b> {lector.Provincia}</Text>}
+                {lector.Organismo_Regulador && <Text size="sm"><b>Organismo:</b> {lector.Organismo_Regulador}</Text>}
+                <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
+              </Stack>
+              {lecturasEnLector.length > 0 && (
+                <>
+                  <Divider my="xs" />
+                  <Text fw={700} size="sm" mb="xs">Pasos registrados</Text>
+                  <Stack gap={4}>
+                    {ordenarLecturasPorFecha(lecturasEnLector).map((lectura, idx) => (
+                      <Paper key={lectura.ID_Lectura} p="xs" withBorder>
+                        <Group justify="space-between">
+                          <Badge 
+                            color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
+                            variant="light"
+                            size="sm"
+                          >
+                            {lectura.Tipo_Fuente}
+                          </Badge>
+                          <Text size="xs" c="dimmed">
+                            {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
+                          </Text>
+                        </Group>
+                        <Group gap="xs" mt={4}>
+                          {lectura.Velocidad && (
+                            <Badge color="gray" variant="light" size="xs">
+                              {lectura.Velocidad} km/h
+                            </Badge>
+                          )}
+                          {lectura.Carril && (
+                            <Badge color="gray" variant="light" size="xs">
+                              Carril {lectura.Carril}
+                            </Badge>
+                          )}
+                        </Group>
+                      </Paper>
+                    ))}
+                  </Stack>
+                </>
+              )}
+            </div>
+          </Popup>
+        </Marker>
+      );
+    });
+
+    // Renderizar lecturas individuales
+    capa.lecturas
+      .filter(l => !l.ID_Lector && l.Coordenada_X && l.Coordenada_Y)
+      .forEach((lectura) => {
+        markers.push(
           <Marker 
             key={`${capa.id}-lectura-${lectura.ID_Lectura}`}
             position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
@@ -486,9 +535,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               </div>
             </Popup>
           </Marker>
-        ))}
-      </>
-    );
+        );
+      });
+
+    return markers;
   };
 
   // Función para renderizar los resultados del filtro actual
@@ -1005,9 +1055,13 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
         />
         
         {renderReaderLayers()}
-        {renderResultadosFiltro()}
-        {renderCoincidencias()}
+        {/* Solo mostrar resultados del filtro si no se han guardado en una capa y no hay capas activas con la misma matrícula */}
+        {resultadosFiltro.lecturas.length > 0 && 
+         !mostrarFormularioCapa && 
+         !capas.some(capa => capa.activa && capa.filtros.matricula === selectedMatricula) && 
+         renderResultadosFiltro()}
         {capas.map(renderCapaMarkers)}
+        {renderCoincidencias()}
       </MapContainer>
       <Tooltip label={isFullscreen ? "Cerrar pantalla completa (Esc)" : "Pantalla completa"}>
         <ActionIcon
