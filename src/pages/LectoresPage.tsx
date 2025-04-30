@@ -6,8 +6,8 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconEdit, IconTrash, IconCheck, IconMap, IconList, IconFileExport, IconUpload, IconSearch, IconX, IconListDetails, IconChevronDown, IconChevronUp, IconPlus } from '@tabler/icons-react';
-import { getLectores, updateLector, getLectoresParaMapa, deleteLector, importarLectores } from '../services/lectoresApi';
-import type { Lector, LectorUpdateData, LectorCoordenadas } from '../types/data';
+import { getLectores, updateLector, getLectoresParaMapa, deleteLector, importarLectores, getLectorSugerencias } from '../services/lectoresApi';
+import type { Lector, LectorUpdateData, LectorCoordenadas, LectorSugerenciasResponse } from '../types/data';
 import EditLectorModal from '../components/modals/EditLectorModal';
 import ImportarLectoresModal from '../components/modals/ImportarLectoresModal';
 import AnalisisLecturasPanel, { AnalisisLecturasPanelHandle } from '../components/analisis/AnalisisLecturasPanel';
@@ -115,6 +115,8 @@ function LectoresPage() {
 
   const [batchEditModalOpened, { open: openBatchEditModal, close: closeBatchEditModal }] = useDisclosure(false);
 
+  const [sugerencias, setSugerencias] = useState<LectorSugerenciasResponse>({ provincias: [], localidades: [], carreteras: [], organismos: [], contactos: [] });
+
   // Función para cargar los lectores
   const fetchLectores = useCallback(async () => {
     setLoading(true);
@@ -198,31 +200,16 @@ function LectoresPage() {
   console.log("[MapFilters] Datos base mapLectores:", mapLectores);
   
   const provinciasUnicas = useMemo(() => {
-    const provincias = [...lectores, ...mapLectores]
-      .map(l => l.Provincia)
-      .filter((p): p is string => p != null && p.trim() !== '');
-    return Array.from(new Set(provincias)).sort();
-  }, [lectores, mapLectores]);
+    return sugerencias.provincias.sort();
+  }, [sugerencias.provincias]);
 
   const carreterasUnicas = useMemo(() => {
-    console.log("[MapFilters] Calculando carreterasUnicas...");
-    const carreterasMapped = [...lectores, ...mapLectores].map(l => l.Carretera);
-    const carreterasFiltered = carreterasMapped.filter((c): c is string => c != null && c.trim() !== '');
-    const uniqueSet = new Set(carreterasFiltered);
-    const result = Array.from(uniqueSet).sort().map(carretera => ({ value: carretera, label: carretera }));
-    console.log("[MapFilters] Carreteras Únicas (resultado final - formato objeto):", result);
-    return result;
-  }, [lectores, mapLectores]);
+    return sugerencias.carreteras.sort().map(carretera => ({ value: carretera, label: carretera }));
+  }, [sugerencias.carreteras]);
 
   const organismosUnicos = useMemo(() => {
-    console.log("[MapFilters] Calculando organismosUnicos...");
-    const organismosMapped = [...lectores, ...mapLectores].map(l => l.Organismo_Regulador);
-    const organismosFiltered = organismosMapped.filter((o): o is string => o != null && o.trim() !== '');
-    const uniqueSet = new Set(organismosFiltered);
-    const result = Array.from(uniqueSet).sort().map(organismo => ({ value: organismo, label: organismo }));
-    console.log("[MapFilters] Organismos Únicos (resultado final - formato objeto):", result);
-    return result;
-  }, [lectores, mapLectores]);
+    return sugerencias.organismos.sort().map(organismo => ({ value: organismo, label: organismo }));
+  }, [sugerencias.organismos]);
 
   const lectorSearchSuggestions = useMemo(() => {
     const suggestions = new Set<string>();
@@ -610,6 +597,19 @@ function LectoresPage() {
       await fetchMapData();
     }
   };
+
+  // Efecto para cargar sugerencias al inicio
+  useEffect(() => {
+    const loadSugerencias = async () => {
+      try {
+        const data = await getLectorSugerencias();
+        setSugerencias(data);
+      } catch (error) {
+        console.error('Error al cargar sugerencias:', error);
+      }
+    };
+    loadSugerencias();
+  }, []);
 
   return (
     <Box p="md">
