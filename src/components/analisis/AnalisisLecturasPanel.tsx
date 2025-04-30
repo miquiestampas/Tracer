@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, forwardRef, useImpera
 import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme } from '@mantine/core';
 import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff } from '@tabler/icons-react';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff, IconChevronDown, IconChevronRight, IconBuildingCommunity } from '@tabler/icons-react';
 import { notifications, showNotification } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus, DataTableColumn } from 'mantine-datatable';
 import dayjs from 'dayjs';
@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import type { Lectura, Lector } from '../../types/data'; // Importar tipos necesarios
 import * as XLSX from 'xlsx'; // Importación para la exportación a Excel
 import { ProgressOverlay } from '../common/ProgressOverlay';
+import { getLectorSugerencias } from '../../services/lectoresApi';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -80,8 +81,18 @@ export interface AnalisisLecturasPanelHandle {
   exportarListaLectores: () => Promise<void>;
 }
 
+interface LecturaAgrupada {
+    Matricula: string;
+    pasos: number;
+    lecturasPorOperacion: Record<number, Lectura[]>;
+    expanded: boolean;
+    ID_Lectura: number;
+    relevancia?: { ID_Relevante: number, Nota?: string | null } | null;
+}
+
 // --- Componente con forwardRef ---
-const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLecturasPanelProps>((props, ref) => {
+const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLecturasPanelProps>(
+  (props, ref) => {
     const {
       casoIdFijo = null,
       permitirSeleccionCaso = true,
@@ -103,8 +114,11 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [selectedCasos, setSelectedCasos] = useState<string[]>([]);
     const [selectedCarreteras, setSelectedCarreteras] = useState<string[]>([]);
     const [selectedSentidos, setSelectedSentidos] = useState<string[]>([]);
+    const [selectedOrganismos, setSelectedOrganismos] = useState<string[]>([]);
+    const [selectedProvincias, setSelectedProvincias] = useState<string[]>([]);
     const [matricula, setMatricula] = useState('');
     const [minPasos, setMinPasos] = useState<number | ''>('');
+    const [maxPasos, setMaxPasos] = useState<number | ''>('');
     const [lectoresList, setLectoresList] = useState<SelectOption[]>([]);
     const [casosList, setCasosList] = useState<SelectOption[]>([]);
     const [carreterasList, setCarreterasList] = useState<SelectOption[]>([]);
@@ -118,15 +132,24 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [selectedRecords, setSelectedRecords] = useState<Lectura[]>([]);
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 15;
-    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
+    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'asc' });
     const [casosSeleccionados, setCasosSeleccionados] = useState<number[]>([]);
+    const [organismosList, setOrganismosList] = useState<SelectOption[]>([]);
+    const [provinciasList, setProvinciasList] = useState<SelectOption[]>([]);
     
     // --- Procesar datos ---
     const sortedAndPaginatedResults = useMemo(() => {
         const accessor = sortStatus.columnAccessor as keyof Lectura;
-        const data = _.orderBy(results, [accessor], [sortStatus.direction]);
+        let data = _.orderBy(results, [accessor], [sortStatus.direction]);
+        // Filtrar por minPasos y maxPasos si están definidos
+        data = data.filter((l) => {
+          const pasos = l.pasos ?? 1;
+          const minOk = minPasos === '' || pasos >= minPasos;
+          const maxOk = maxPasos === '' || pasos <= maxPasos;
+          return minOk && maxOk;
+        });
         return data.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-    }, [results, sortStatus, page, PAGE_SIZE]);
+    }, [results, sortStatus, page, PAGE_SIZE, minPasos, maxPasos]);
 
     // --- Cargar datos iniciales ---
     useEffect(() => {
@@ -144,51 +167,83 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                     if (data && data.lectores && data.carreteras) {
                         setLectoresList(data.lectores);
                         setCarreterasList(data.carreteras);
-                         console.log(`AnalisisLecturasPanel: Filtros específicos cargados - ${data.lectores.length} lectores, ${data.carreteras.length} carreteras.`);
+                        console.log(`AnalisisLecturasPanel: Filtros específicos cargados - ${data.lectores.length} lectores, ${data.carreteras.length} carreteras.`);
                     } else { throw new Error("Formato inesperado para filtros específicos"); }
                 } else {
-                     console.log("AnalisisLecturasPanel: Fetching filtros globales...");
-                     const fetches: (Promise<Response> | null)[] = [];
-                     fetches.push(fetch(`${API_BASE_URL}/lectores?limit=2000`)); // Límite alto para obtener todos
-                     if (permitirSeleccionCaso) {
-                         fetches.push(fetch(`${API_BASE_URL}/casos?limit=1000`));
-                     } else { fetches.push(null); }
-                     const responses = await Promise.all(fetches);
-                     const lectoresResponse = responses[0];
-                     if (lectoresResponse instanceof Response) {
-                         if (!lectoresResponse.ok) throw new Error(`Lectores Globales: ${lectoresResponse.statusText || lectoresResponse.status}`);
-                         const lectoresData = await lectoresResponse.json();
-                         if (lectoresData && Array.isArray(lectoresData.lectores)) {
-                            const formattedLectores: SelectOption[] = lectoresData.lectores.map((l: any) => ({ value: String(l.ID_Lector), label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` }));
+                    console.log("AnalisisLecturasPanel: Fetching filtros globales...");
+                    const fetches: (Promise<Response> | null)[] = [];
+                    fetches.push(fetch(`${API_BASE_URL}/lectores?limit=10000`)); // Aumentado el límite para obtener todos los lectores
+                    if (permitirSeleccionCaso) {
+                        fetches.push(fetch(`${API_BASE_URL}/casos?limit=1000`));
+                    } else { fetches.push(null); }
+                    const responses = await Promise.all(fetches);
+                    const lectoresResponse = responses[0];
+                    if (lectoresResponse instanceof Response) {
+                        if (!lectoresResponse.ok) throw new Error(`Lectores Globales: ${lectoresResponse.statusText || lectoresResponse.status}`);
+                        const lectoresData = await lectoresResponse.json();
+                        if (lectoresData && Array.isArray(lectoresData.lectores)) {
+                            const formattedLectores: SelectOption[] = lectoresData.lectores.map((l: any) => ({ 
+                                value: String(l.ID_Lector), 
+                                label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` 
+                            }));
                             setLectoresList(formattedLectores);
-                            const todasCarreteras = lectoresData.lectores.map((l: any) => l.Carretera?.trim()).filter((c): c is string => !!c);
-                            const uniqueCarreteras = Array.from(new Set<string>(todasCarreteras)).sort((a, b) => a.localeCompare(b));
+                            const todasCarreteras = lectoresData.lectores
+                                .map((l: any) => l.Carretera?.trim())
+                                .filter((c): c is string => !!c);
+                            const uniqueCarreteras = Array.from(new Set<string>(todasCarreteras))
+                                .sort((a, b) => a.localeCompare(b));
                             setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
-                         } else if (lectoresData && Array.isArray(lectoresData)) {
-                             const formattedLectores: SelectOption[] = lectoresData.map((l: any) => ({ value: String(l.ID_Lector), label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` }));
-                             setLectoresList(formattedLectores);
-                             const todasCarreteras = lectoresData.map((l: any) => l.Carretera?.trim()).filter((c): c is string => !!c);
-                             const uniqueCarreteras = Array.from(new Set<string>(todasCarreteras)).sort((a, b) => a.localeCompare(b));
-                             setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
-                         } else { throw new Error("Formato inesperado para lectores globales"); }
-                     }
-                     const casosResponse = responses[1];
-                     if (permitirSeleccionCaso && casosResponse instanceof Response) {
-                         if (!casosResponse.ok) throw new Error(`Casos Globales: ${casosResponse.statusText || casosResponse.status}`);
-                         const casosData = await casosResponse.json();
-                         if (Array.isArray(casosData)) {
-                            const formattedCasos: SelectOption[] = casosData.map((c: any) => ({ value: String(c.ID_Caso), label: c.Nombre_del_Caso || 'Caso sin nombre' }));
+                        } else if (lectoresData && Array.isArray(lectoresData)) {
+                            const formattedLectores: SelectOption[] = lectoresData.map((l: any) => ({ 
+                                value: String(l.ID_Lector), 
+                                label: `${l.Nombre || 'Sin Nombre'} (${l.ID_Lector})` 
+                            }));
+                            setLectoresList(formattedLectores);
+                            const todasCarreteras = lectoresData
+                                .map((l: any) => l.Carretera?.trim())
+                                .filter((c): c is string => !!c);
+                            const uniqueCarreteras = Array.from(new Set<string>(todasCarreteras))
+                                .sort((a, b) => a.localeCompare(b));
+                            setCarreterasList(uniqueCarreteras.map((c: string) => ({ value: c, label: c })));
+                        } else { throw new Error("Formato inesperado para lectores globales"); }
+                    }
+                    const casosResponse = responses[1];
+                    if (permitirSeleccionCaso && casosResponse instanceof Response) {
+                        if (!casosResponse.ok) throw new Error(`Casos Globales: ${casosResponse.statusText || casosResponse.status}`);
+                        const casosData = await casosResponse.json();
+                        if (Array.isArray(casosData)) {
+                            const formattedCasos: SelectOption[] = casosData.map((c: any) => ({ 
+                                value: String(c.ID_Caso), 
+                                label: c.Nombre_del_Caso || 'Caso sin nombre' 
+                            }));
                             setCasosList(formattedCasos);
-                         } else { throw new Error("Formato inesperado para casos globales"); }
-                     }
+                        } else { throw new Error("Formato inesperado para casos globales"); }
+                    }
                 }
             } catch (error) {
-                 notifications.show({ title: 'Error al cargar opciones de filtro', message: `${error instanceof Error ? error.message : String(error)}`, color: 'red', });
-                 console.error("AnalisisLecturasPanel: Error fetching initial filter data:", error);
-            } finally { setInitialLoading(false); }
+                notifications.show({ 
+                    title: 'Error al cargar opciones de filtro', 
+                    message: `${error instanceof Error ? error.message : String(error)}`, 
+                    color: 'red', 
+                });
+                console.error("AnalisisLecturasPanel: Error fetching initial filter data:", error);
+            } finally { 
+                setInitialLoading(false); 
+            }
         };
         fetchInitialData();
     }, [casoIdFijo, permitirSeleccionCaso]);
+
+    useEffect(() => {
+        const fetchSugerencias = async () => {
+            const sugerencias = await getLectorSugerencias();
+            setOrganismosList(sugerencias.organismos.map(o => ({ value: o, label: o })));
+            setProvinciasList(sugerencias.provincias.map(p => ({ value: p, label: p })));
+            setCarreterasList(sugerencias.carreteras.map(c => ({ value: c, label: c })));
+            // setLectoresList(sugerencias.lectores); // Eliminar, no existe en LectorSugerenciasResponse
+        };
+        fetchSugerencias();
+    }, []);
 
     // --- Función de Búsqueda ---
     const handleSearch = async () => {
@@ -224,7 +279,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                     const errorData = await apiResponse.json();
                     errorDetail += ` - ${JSON.stringify(errorData)}`;
                 } catch (e) {
-                    // Si no se puede parsear como JSON, usar el texto plano
                     const text = await apiResponse.text();
                     errorDetail += ` - ${text}`;
                 }
@@ -232,22 +286,24 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             }
             const data = await apiResponse.json();
             rawResults = data;
-            let processedResults = rawResults;
-            if (rawResults.length > 0) {
-                const plateCounts = rawResults.reduce((acc, lectura) => { acc[lectura.Matricula] = (acc[lectura.Matricula] || 0) + 1; return acc; }, {} as Record<string, number>);
-                processedResults = rawResults.map(lectura => ({ ...lectura, pasos: plateCounts[lectura.Matricula] }));
-                const minPasosValue = typeof minPasos === 'number' ? minPasos : parseInt(minPasos, 10);
-                if (!isNaN(minPasosValue) && minPasosValue > 1) {
-                    processedResults = processedResults.filter(lectura => lectura.pasos && lectura.pasos >= minPasosValue);
-                }
-            }
-            setResults(processedResults);
+            setResults(rawResults);
             setPage(1);
-            notifications.show({ title: 'Búsqueda completada', message: `Se encontraron ${processedResults.length} lecturas.`, color: 'teal', autoClose: 3000 });
+            notifications.show({ 
+                title: 'Búsqueda completada', 
+                message: `Se encontraron ${rawResults.length} lecturas con los criterios especificados.`, 
+                color: 'teal', 
+                autoClose: 5000 
+            });
         } catch (error) {
-            notifications.show({ title: 'Error en la búsqueda', message: `No se pudieron obtener los resultados. ${error instanceof Error ? error.message : String(error)}`, color: 'red' });
+            notifications.show({ 
+                title: 'Error en la búsqueda', 
+                message: `No se pudieron obtener los resultados. ${error instanceof Error ? error.message : String(error)}`, 
+                color: 'red' 
+            });
             console.error("Error during search:", error);
-        } finally { setLoading(false); }
+        } finally { 
+            setLoading(false); 
+        }
     };
 
     // --- NUEVA: Función para Limpiar Filtros ---
@@ -264,6 +320,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setSelectedSentidos([]);
         setMatricula('');
         setMinPasos('');
+        setMaxPasos('');
         // Opcional: Limpiar resultados también?
         // setResults([]);
         // setPage(1);
@@ -337,16 +394,22 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const handleMarcarRelevante = async () => {
         if (selectedRecords.length === 0) return;
         setLoading(true);
-        const idsToMark = selectedRecords.map(r => r.ID_Lectura);
+        // Obtener todas las lecturas seleccionadas
+        const lecturasParaMarcar = selectedRecords.filter(lectura => lectura.ID_Lectura != null);
+        if (lecturasParaMarcar.length === 0) {
+            notifications.show({ title: 'Error', message: 'No hay lecturas válidas para marcar.', color: 'red' });
+            setSelectedRecords([]);
+            setLoading(false);
+            return;
+        }
+        const idsToMark = lecturasParaMarcar.map(r => r.ID_Lectura);
         console.log("Marcando como relevante IDs:", idsToMark);
-
         if (casoIdFijo === null || casoIdFijo === undefined || isNaN(casoIdFijo)) {
             notifications.show({ title: 'Error', message: 'No se pudo determinar el ID del caso actual para marcar la lectura.', color: 'red' });
             setSelectedRecords([]);
             setLoading(false);
             return;
         }
-
         const results = await Promise.allSettled(
             idsToMark.map(id => 
                 fetch(`${API_BASE_URL}/lecturas/${id}/marcar_relevante`, {
@@ -359,58 +422,43 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 })
                     .then(response => {
                         if (!response.ok) { 
-                            // Intentar leer detalle del error si existe
                             return response.json().catch(() => null).then(errorData => {
                                 const detail = errorData?.detail || `HTTP ${response.status}`;
                                 throw new Error(`Error marcando ${id}: ${detail}`);
                             });
                         }
-                        return response.json(); // Devolver los datos de relevancia creados
+                        return response.json();
                     })
             )
         );
-
         let successCount = 0;
-        const updatedRelevanciaMap = new Map<number, any>();
-
         results.forEach((result, index) => {
             const id = idsToMark[index];
             if (result.status === 'fulfilled') {
                 successCount++;
-                updatedRelevanciaMap.set(id, result.value); // Guardar los datos de relevancia devueltos por la API
                 console.log(`Lectura ${id} marcada como relevante.`);
             } else {
                 console.error(`Error marcando lectura ${id}:`, result.reason);
                 notifications.show({ title: 'Error Parcial', message: `No se pudo marcar la lectura ID ${id}: ${result.reason.message}`, color: 'red' });
             }
         });
-
         if (successCount > 0) {
-             notifications.show({ title: 'Éxito', message: `${successCount} de ${idsToMark.length} lecturas marcadas como relevantes.`, color: 'green' });
-            // Actualizar estado local para reflejar cambios
-            setResults(prevResults => prevResults.map(lectura => {
-                if (updatedRelevanciaMap.has(lectura.ID_Lectura)) {
-                    return { ...lectura, relevancia: updatedRelevanciaMap.get(lectura.ID_Lectura) };
-                }
-                return lectura;
-            }));
+            notifications.show({ title: 'Éxito', message: `${successCount} de ${idsToMark.length} lecturas marcadas como relevantes.`, color: 'green' });
         }
-
-        setSelectedRecords([]); // Limpiar selección
+        setSelectedRecords([]);
         setLoading(false);
     };
 
     const handleDesmarcarRelevante = async () => {
-        const recordsToUnmark = selectedRecords.filter(r => r.relevancia);
-        if (recordsToUnmark.length === 0) {
+        const lecturasParaDesmarcar = selectedRecords.filter(l => l.relevancia && l.ID_Lectura != null);
+        if (lecturasParaDesmarcar.length === 0) {
             notifications.show({ title: 'Nada que hacer', message: 'Ninguna de las lecturas seleccionadas está marcada como relevante.', color: 'blue' });
             setSelectedRecords([]);
             return;
         }
         setLoading(true);
-        const idsToUnmark = recordsToUnmark.map(r => r.ID_Lectura);
+        const idsToUnmark = lecturasParaDesmarcar.map(r => r.ID_Lectura);
         console.log("Desmarcando como relevante IDs:", idsToUnmark);
-
         const results = await Promise.allSettled(
             idsToUnmark.map(id => 
                 fetch(`${API_BASE_URL}/lecturas/${id}/desmarcar_relevante`, { method: 'DELETE' })
@@ -425,33 +473,20 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                     })
             )
         );
-        
         let successCount = 0;
-        const unmarkedIds = new Set<number>();
-
         results.forEach((result, index) => {
             const id = idsToUnmark[index];
             if (result.status === 'fulfilled') {
                 successCount++;
-                unmarkedIds.add(id);
                 console.log(`Lectura ${id} desmarcada como relevante.`);
             } else {
                 console.error(`Error desmarcando lectura ${id}:`, result.reason);
                 notifications.show({ title: 'Error Parcial', message: `No se pudo desmarcar la lectura ID ${id}: ${result.reason.message}`, color: 'red' });
             }
         });
-
         if (successCount > 0) {
              notifications.show({ title: 'Éxito', message: `${successCount} de ${idsToUnmark.length} lecturas desmarcadas.`, color: 'green' });
-            // Actualizar estado local
-             setResults(prevResults => prevResults.map(lectura => {
-                if (unmarkedIds.has(lectura.ID_Lectura)) {
-                    return { ...lectura, relevancia: null };
-                }
-                return lectura;
-            }));
         }
-
         setSelectedRecords([]); // Limpiar selección
         setLoading(false);
     };
@@ -459,17 +494,11 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const handleGuardarVehiculos = async () => {
         const matriculasUnicas = Array.from(new Set(selectedRecords.map(r => r.Matricula)));
         if (matriculasUnicas.length === 0) return;
-        
-        setLoading(true); // Usar el mismo loading state general
+        setLoading(true);
         console.log("Intentando guardar vehículos con matrículas:", matriculasUnicas);
-
         let vehiculosCreados = 0;
         let vehiculosExistentes = 0;
         let errores = 0;
-
-        // Podríamos verificar primero cuáles ya existen con un GET /vehiculos?matricula=..., 
-        // pero por simplicidad, intentaremos crear y manejaremos el error 400 (Conflict/Bad Request).
-
         const results = await Promise.allSettled(
             matriculasUnicas.map(matricula => 
                 fetch(`${API_BASE_URL}/vehiculos`, {
@@ -479,18 +508,15 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 }).then(async response => {
                     if (response.status === 201) return { status: 'created', matricula }; // Creado
                     if (response.status === 400) { // Asumimos 400 para "ya existe"
-                         // Intentar leer el detalle por si da más info
                          const errorData = await response.json().catch(() => null);
                          console.warn(`Vehículo ${matricula} ya existe o petición inválida:`, errorData?.detail);
                          return { status: 'exists', matricula }; // Ya existía
                     }
-                     // Otro error
                     const errorData = await response.json().catch(() => null);
                     throw new Error(errorData?.detail || `HTTP ${response.status}`);
                 })
             )
         );
-
         results.forEach(result => {
             if (result.status === 'fulfilled') {
                 if (result.value.status === 'created') vehiculosCreados++;
@@ -501,12 +527,10 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 notifications.show({ title: 'Error Parcial', message: `No se pudo procesar una matrícula: ${result.reason.message}`, color: 'red' });
             }
         });
-
         let message = '';
         if (vehiculosCreados > 0) message += `${vehiculosCreados} vehículo(s) nuevo(s) guardado(s). `; 
         if (vehiculosExistentes > 0) message += `${vehiculosExistentes} vehículo(s) ya existían. `; 
         if (errores > 0) message += `${errores} matrícula(s) no se pudieron procesar.`;
-        
         if (message) {
             notifications.show({ 
                 title: "Guardar Vehículos Completado", 
@@ -514,93 +538,21 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 color: errores > 0 ? (vehiculosCreados > 0 ? 'orange' : 'red') : 'green' 
             });
         }
-
         setSelectedRecords([]); // Limpiar selección
         setLoading(false);
     };
 
     // --- Columnas ---
-    const columns: DataTableColumn<Lectura>[] = useMemo(() => {
-        // Estado del checkbox "Seleccionar Todo" para la página actual
-        // Ya no necesitamos la lógica del checkbox de selección global aquí
-        /* 
-        const recordIdsOnPageSet = new Set(sortedAndPaginatedResults.map(r => r.ID_Lectura));
-        const selectedIdsOnPage = selectedRecords.filter(sr => recordIdsOnPageSet.has(sr.ID_Lectura));
-        const allRecordsOnPageSelected = sortedAndPaginatedResults.length > 0 && selectedIdsOnPage.length === sortedAndPaginatedResults.length;
-        const indeterminate = selectedIdsOnPage.length > 0 && !allRecordsOnPageSelected;
-        */
-
-        return [
-            // --- Columna de Checkbox eliminada ---
-            /*
-            {
-                accessor: 'select',
-                title: (
-                    <Checkbox
-                        aria-label="Seleccionar todas las filas visibles"
-                        checked={allRecordsOnPageSelected}
-                        indeterminate={indeterminate}
-                        onChange={(e) => {
-                             setSelectedRecords(currentSelected => {
-                                 const selectedIdsSet = new Set(currentSelected.map(sr => sr.ID_Lectura));
-                                 const recordsToAdd = sortedAndPaginatedResults.filter(r => !selectedIdsSet.has(r.ID_Lectura));
-                                 const recordIdsOnPage = sortedAndPaginatedResults.map(r => r.ID_Lectura);
- 
-                                 if (allRecordsOnPageSelected) {
-                                     // Deseleccionar solo los de esta página
-                                     return currentSelected.filter(r => !recordIdsOnPage.includes(r.ID_Lectura));
-                                 } else {
-                                     // Seleccionar todos los de esta página (añadir los que falten)
-                                     return [...currentSelected, ...recordsToAdd];
-                                 }
-                             });
-                         }}
-                         size="xs"
-                    />
-                ),
-                width: 40,
-                styles: {
-                    cell: { paddingLeft: 'var(--mantine-spacing-xs)', paddingRight: 'var(--mantine-spacing-xs)' },
-                },
-                render: (record) => (
-                    <Checkbox
-                        aria-label={`Seleccionar fila ${record.ID_Lectura}`}
-                         checked={selectedRecords.some(sr => sr.ID_Lectura === record.ID_Lectura)}
-                         onChange={() => {
-                             setSelectedRecords(currentSelected =>
-                                 currentSelected.some(sr => sr.ID_Lectura === record.ID_Lectura)
-                                     ? currentSelected.filter(sr => sr.ID_Lectura !== record.ID_Lectura)
-                                     : [...currentSelected, record]
-                             );
-                         }}
-                         size="xs"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                ),
-            },
-            */
-            {
-                 accessor: 'relevancia', 
-                 title: <IconBookmark size={16} />,
-                 width: 30, // Mantener ancho fijo pequeño
-                 textAlign: 'center', 
-                 render: (record) => 
-                     record.relevancia ? (
-                         <Tooltip label={record.relevancia.Nota || 'Marcado como relevante'} withArrow position="top-start">
-                             <IconBookmark size={16} color="orange" />
-                         </Tooltip>
-                     ) : null,
-            },
-            { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (r: Lectura) => dayjs(r.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), sortable: true }, // width eliminado
-            { accessor: 'Matricula', title: 'Matrícula', sortable: true }, // width eliminado
-            { accessor: 'lector.ID_Lector', title: 'ID Lector', render: (r: Lectura) => r.lector?.ID_Lector || '-', sortable: true }, // width eliminado
-            { accessor: 'lector.Sentido', title: 'Sentido', render: (r: Lectura) => r.lector?.Sentido || '-', sortable: true }, // width eliminado
-            { accessor: 'lector.Orientacion', title: 'Orientación', render: (r: Lectura) => r.lector?.Orientacion || '-', sortable: true }, // width eliminado
-            { accessor: 'lector.Carretera', title: 'Carretera', render: (r: Lectura) => r.lector?.Carretera || '-', sortable: true }, // width eliminado
-            { accessor: 'Carril', title: 'Carril', render: (r: Lectura) => r.Carril || '-', sortable: true }, // width eliminado
-            { accessor: 'pasos', title: 'Pasos', textAlign: 'right', render: (r: Lectura) => r.pasos || '-', sortable: true, width: 70 }, // width mantenido/ajustado pequeño
-        ];
-    }, [/* sortedAndPaginatedResults, */ selectedRecords]); // Quitar dependencia no usada
+    const columns: DataTableColumn<Lectura>[] = useMemo(() => [
+        { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', sortable: true, render: (l) => dayjs(l.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss') },
+        { accessor: 'Matricula', title: 'Matrícula', sortable: true },
+        { accessor: 'ID_Lector', title: 'ID Lector', sortable: true, render: (l) => l.ID_Lector || l.lector?.ID_Lector || '-' },
+        { accessor: 'Sentido', title: 'Sentido', sortable: true, render: (l) => l.lector?.Sentido || '-' },
+        { accessor: 'Orientacion', title: 'Orientación', sortable: true, render: (l) => l.lector?.Orientacion || '-' },
+        { accessor: 'Carretera', title: 'Carretera', sortable: true, render: (l) => l.lector?.Carretera || '-' },
+        { accessor: 'Carril', title: 'Carril', sortable: true, render: (l) => l.Carril || '-' },
+        { accessor: 'pasos', title: 'Pasos', sortable: true, render: (l) => l.pasos ?? 1 },
+    ], []);
 
     // --- Renderizado ---
     return (
@@ -685,37 +637,64 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 clearable
                                 disabled={initialLoading}
                                 leftSection={<IconDeviceCctv style={iconStyle} />}
+                                comboboxProps={{
+                                    withinPortal: true,
+                                    position: 'bottom',
+                                    middlewares: { flip: false, shift: false },
+                                    offset: 0,
+                                }}
                             />
-                            <MultiSelect
-                                label="Carretera"
-                                placeholder="Todas"
-                                data={carreterasList}
-                                value={selectedCarreteras}
-                                onChange={setSelectedCarreteras}
-                                searchable
-                                clearable
-                                disabled={initialLoading}
-                                leftSection={<IconRoad style={iconStyle} />}
-                            />
-                            {tipoFuenteFijo === 'LPR' && (
+                            <Group grow>
                                 <MultiSelect
-                                    label="Sentido"
-                                    placeholder="Ambos"
-                                    data={sentidosList}
-                                    value={selectedSentidos}
-                                    onChange={setSelectedSentidos}
+                                    label="Organismo"
+                                    data={organismosList}
+                                    value={selectedOrganismos}
+                                    onChange={setSelectedOrganismos}
+                                    searchable
                                     clearable
-                                    leftSection={<IconArrowsUpDown style={iconStyle} />}
+                                    leftSection={<IconBuildingCommunity style={iconStyle} />}
                                 />
-                            )}
+                                <MultiSelect
+                                    label="Provincia"
+                                    data={provinciasList}
+                                    value={selectedProvincias}
+                                    onChange={setSelectedProvincias}
+                                    searchable
+                                    clearable
+                                    leftSection={<IconDeviceCctv style={iconStyle} />}
+                                />
+                            </Group>
+                            <Group grow>
+                                <MultiSelect
+                                    label="Carretera"
+                                    placeholder="Todas"
+                                    data={carreterasList}
+                                    value={selectedCarreteras}
+                                    onChange={setSelectedCarreteras}
+                                    searchable
+                                    clearable
+                                    leftSection={<IconRoad style={iconStyle} />}
+                                />
+                                {tipoFuenteFijo === 'LPR' ? (
+                                    <MultiSelect
+                                        label="Sentido"
+                                        placeholder="Ambos"
+                                        data={sentidosList}
+                                        value={selectedSentidos}
+                                        onChange={setSelectedSentidos}
+                                        clearable
+                                        leftSection={<IconArrowsUpDown style={iconStyle} />}
+                                    />
+                                ) : null}
+                            </Group>
                             <TextInput
                                 label="Matrícula (parcial)"
-                                placeholder="Ej: %BC%"
+                                placeholder="Ej: ?98?C*"
                                 value={matricula}
                                 onChange={(event) => setMatricula(event.currentTarget.value)}
                                 leftSection={<IconLicense style={iconStyle} />}
                             />
-                            {tipoFuenteFijo === 'LPR' && (
+                            <Group grow>
                                 <NumberInput
                                     label="Mín. Pasos"
                                     placeholder="Cualquiera"
@@ -726,7 +705,17 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     allowNegative={false}
                                     clampBehavior="strict"
                                 />
-                            )}
+                                <NumberInput
+                                    label="Máx. Pasos"
+                                    placeholder="Cualquiera"
+                                    value={maxPasos}
+                                    onChange={(value) => setMaxPasos(value === '' ? '' : Number(value))}
+                                    min={1}
+                                    allowDecimal={false}
+                                    allowNegative={false}
+                                    clampBehavior="strict"
+                                />
+                            </Group>
                             <Button 
                                 onClick={handleSearch} 
                                 loading={loading} 
@@ -797,34 +786,32 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                             </Group>
                         </Group>
                         <DataTable<Lectura>
-                           withTableBorder
-                           borderRadius="sm"
-                           withColumnBorders
-                           striped
-                           highlightOnHover
-                           records={sortedAndPaginatedResults}
-                           columns={columns}
-                           minHeight={200} 
-                           totalRecords={results.length}
-                           recordsPerPage={PAGE_SIZE}
-                           page={page}
-                           onPageChange={setPage}
-                           sortStatus={sortStatus}
-                           onSortStatusChange={setSortStatus}
-                           idAccessor="ID_Lectura"
-                           noRecordsText={loading ? 'Cargando...' : (results.length === 0 ? 'No se encontraron resultados con los filtros aplicados' : '')}
-                           noRecordsIcon={<></>}
-                           selectedRecords={selectedRecords}
-                           onSelectedRecordsChange={handleSelectionChange}
-                           rowClassName={({ Matricula }) => 
-                               interactedMatriculas.has(Matricula) ? 'highlighted-row' : undefined
-                           }
+                            withTableBorder
+                            borderRadius="sm"
+                            withColumnBorders
+                            striped
+                            highlightOnHover
+                            records={sortedAndPaginatedResults}
+                            columns={columns}
+                            minHeight={200}
+                            totalRecords={results.length}
+                            recordsPerPage={PAGE_SIZE}
+                            page={page}
+                            onPageChange={setPage}
+                            sortStatus={sortStatus}
+                            onSortStatusChange={setSortStatus}
+                            idAccessor="ID_Lectura"
+                            selectedRecords={selectedRecords}
+                            onSelectedRecordsChange={handleSelectionChange}
+                            noRecordsText={loading ? 'Cargando...' : (results.length === 0 ? 'No se encontraron resultados con los filtros aplicados' : '')}
+                            noRecordsIcon={null}
                         />
                      </Paper>
                  </Grid.Col>
             </Grid>
         </Box>
     );
-});
+  }
+);
 
 export default AnalisisLecturasPanel; 
