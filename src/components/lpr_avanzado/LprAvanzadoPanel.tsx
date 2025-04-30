@@ -4,7 +4,7 @@ import { TimeInput } from '@mantine/dates';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconX, IconLayersIntersect, IconDeviceFloppy, IconCar, IconPlayerPlay, IconTrash, IconPencil, IconColorSwatch, IconFilterOff, IconUpload, IconCheck, IconBookmark, IconBookmarkOff, IconArrowsUpDown } from '@tabler/icons-react';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconCalendar, IconRoad, IconX, IconLayersIntersect, IconDeviceFloppy, IconCar, IconPlayerPlay, IconTrash, IconPencil, IconColorSwatch, IconFilterOff, IconUpload, IconCheck, IconBookmark, IconBookmarkOff, IconArrowsUpDown, IconBuildingCommunity } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus, DataTableProps } from 'mantine-datatable';
 import dayjs from 'dayjs';
@@ -15,6 +15,7 @@ import { updateSavedSearch } from '../../services/casosApi';
 import type { SavedSearch, SavedSearchUpdatePayload } from '../../types/data';
 import apiClient from '../../services/api';
 import appEventEmitter from '../../utils/eventEmitter';
+import { getLectorSugerencias } from '../../services/lectoresApi';
 
 // Definir logger (usando console)
 const logger = console;
@@ -248,6 +249,11 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         },
     });
 
+    const [organismosList, setOrganismosList] = useState<SelectOption[]>([]);
+    const [provinciasList, setProvinciasList] = useState<SelectOption[]>([]);
+    const [selectedOrganismos, setSelectedOrganismos] = useState<string[]>([]);
+    const [selectedProvincias, setSelectedProvincias] = useState<string[]>([]);
+
     // --- Cargar datos iniciales (Ahora usa el nuevo endpoint) ---
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -295,6 +301,15 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         
      // Depender solo de casoId para recargar si cambia
     }, [casoId]);
+
+    useEffect(() => {
+        const fetchSugerencias = async () => {
+            const sugerencias = await getLectorSugerencias();
+            setOrganismosList(sugerencias.organismos.map(o => ({ value: o, label: o })));
+            setProvinciasList(sugerencias.provincias.map(p => ({ value: p, label: p })));
+        };
+        fetchSugerencias();
+    }, []);
 
     // --- Cargar Búsquedas Guardadas --- 
     const fetchSavedSearches = async () => {
@@ -1124,8 +1139,29 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                              <TimeInput label="Hasta Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeTo} onChange={(e) => handleFilterChange('timeTo', e.currentTarget.value)} />
                          </Group>
                          <MultiSelect label="Lectores" placeholder="Todos" data={lectoresList} value={currentFilters.selectedLectores} onChange={(v) => handleFilterChange('selectedLectores', v)} leftSection={<IconDeviceCctv size={16} />} searchable clearable disabled={initialLoading} />
-                         <MultiSelect label="Carretera" placeholder="Todas" data={carreterasList} value={currentFilters.selectedCarreteras} onChange={(v) => handleFilterChange('selectedCarreteras', v)} leftSection={<IconRoad size={16} />} searchable clearable disabled={initialLoading} />
-                         <MultiSelect
+                         <Group grow>
+                           <MultiSelect
+                             label="Organismo"
+                             data={organismosList}
+                             value={selectedOrganismos}
+                             onChange={setSelectedOrganismos}
+                             searchable
+                             clearable
+                             leftSection={<IconBuildingCommunity style={iconStyle} />}
+                           />
+                           <MultiSelect
+                             label="Provincia"
+                             data={provinciasList}
+                             value={selectedProvincias}
+                             onChange={setSelectedProvincias}
+                             searchable
+                             clearable
+                             leftSection={<IconDeviceCctv size={16} />}
+                           />
+                         </Group>
+                         <Group grow>
+                           <MultiSelect label="Carretera" placeholder="Todas" data={carreterasList} value={currentFilters.selectedCarreteras} onChange={(v) => handleFilterChange('selectedCarreteras', v)} leftSection={<IconRoad size={16} />} searchable clearable disabled={initialLoading} />
+                           <MultiSelect
                              label="Sentido"
                              placeholder="Ambos"
                              data={sentidoOptions}
@@ -1135,7 +1171,8 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                              searchable={false}
                              clearable
                              style={{ flex: 1, minWidth: 100 }}
-                         />
+                           />
+                         </Group>
                          <TextInput label="Matrícula (parcial)" placeholder="Ej: ?98?C*" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
                          <Group grow>
                              <NumberInput
@@ -1161,7 +1198,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                          </Group>
                         
                         <Button 
-                            leftSection={<IconPlayerPlay size={16} />} 
+                            leftSection={<IconSearch size={16} />} 
                             onClick={handleExecuteFilter} 
                             loading={resultsLoading}
                             size="sm"
