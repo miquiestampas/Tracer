@@ -58,7 +58,7 @@ export interface Lectura {
   // Añadir campos que faltan según el linter
   relevancia?: { ID_Relevante: number, Nota?: string | null } | null; // Asumiendo que relevancia también es global
   lector?: Lector | null; // Relación con Lector
-  pasos?: number; // Campo calculado o de la API
+  pasos: number; // Campo calculado por la API
   // Otros campos existentes...
   ID_Vehiculo?: number | null;
   FotoMatricula?: string | null;

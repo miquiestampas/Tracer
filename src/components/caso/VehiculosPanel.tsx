@@ -8,6 +8,7 @@ import apiClient from '../../services/api';
 import { notifications } from '@mantine/notifications';
 import { openConfirmModal } from '@mantine/modals'; // Importar para confirmación
 import appEventEmitter from '../../utils/eventEmitter'; // Importar el emisor de eventos
+import { ProgressOverlay } from '../common/ProgressOverlay';
 
 interface VehiculosPanelProps {
     casoId: number;
@@ -307,7 +308,7 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
 
     return (
         <Box style={{ position: 'relative' }}>
-            <LoadingOverlay visible={loading} />
+            <ProgressOverlay visible={loading} progress={loading ? 100 : 0} label="Cargando vehículos..." />
             <Title order={3} mb="md">Vehículos Identificados en el Caso</Title>
             {error && <Alert color="red" title="Error" mb="md">{error}</Alert>}
             <DataTable<Vehiculo>

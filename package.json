@@ -11,13 +11,13 @@
   "dependencies": {
     "@changey/react-leaflet-markercluster": "^4.0.0-rc1",
     "@emotion/react": "^11.14.0",
-    "@mantine/core": "^7.17.4",
+    "@mantine/core": "^7.17.5",
     "@mantine/dates": "^7.17.4",
     "@mantine/form": "^7.17.4",
-    "@mantine/hooks": "^7.17.4",
-    "@mantine/modals": "^7.17.4",
-    "@mantine/notifications": "^7.17.4",
-    "@tabler/icons-react": "^3.31.0",
+    "@mantine/hooks": "^7.17.5",
+    "@mantine/modals": "^7.17.5",
+    "@mantine/notifications": "^7.17.5",
+    "@tabler/icons-react": "^2.47.0",
     "@turf/boolean-point-in-polygon": "^7.2.0",
     "@types/leaflet": "^1.9.17",
     "@types/leaflet-draw": "^1.0.11",
@@ -47,6 +47,6 @@
     "@types/xlsx": "^0.0.35",
     "@vitejs/plugin-react": "^4.2.1",
     "typescript": "^5.8.3",
-    "vite": "^6.3.2"
+    "vite": "^6.3.3"
   }
 }

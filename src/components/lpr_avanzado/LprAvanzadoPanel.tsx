@@ -1160,8 +1160,8 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                            />
                          </Group>
                          <Group grow>
-                           <MultiSelect label="Carretera" placeholder="Todas" data={carreterasList} value={currentFilters.selectedCarreteras} onChange={(v) => handleFilterChange('selectedCarreteras', v)} leftSection={<IconRoad size={16} />} searchable clearable disabled={initialLoading} />
-                           <MultiSelect
+                         <MultiSelect label="Carretera" placeholder="Todas" data={carreterasList} value={currentFilters.selectedCarreteras} onChange={(v) => handleFilterChange('selectedCarreteras', v)} leftSection={<IconRoad size={16} />} searchable clearable disabled={initialLoading} />
+                         <MultiSelect
                              label="Sentido"
                              placeholder="Ambos"
                              data={sentidoOptions}
@@ -1171,7 +1171,7 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                              searchable={false}
                              clearable
                              style={{ flex: 1, minWidth: 100 }}
-                           />
+                         />
                          </Group>
                          <TextInput label="Matrícula (parcial)" placeholder="Ej: ?98?C*" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
                          <Group grow>
@@ -1320,21 +1320,58 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                                     },
                                     content: ({ record }: { record: ResultadoAgrupado }) => {
                                         return (
-                                            <Box p="sm" bg="gray.1" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
+                                            <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
                                                 <Stack gap="xs">
                                                     {record.readings.length > 0 ? (
-                                                        record.readings.map((reading) => (
-                                                            <Paper key={reading.ID_Lectura} shadow="xs" p="xs" withBorder>
-                                                                <Group justify="space-between" gap="xs" wrap="nowrap">
-                                                                    <Text size="xs" fw={500}>{dayjs(reading.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                                                                    <Text size="xs">Sentido: {reading.lector?.Sentido || '-'}</Text>
-                                                                    <Text size="xs">Carretera: {reading.lector?.Carretera || '-'}</Text>
-                                                                    <Text size="xs">Carril: {reading.Carril || '-'}</Text>
-                                                                    {/* Añadir más detalles si se desea, como ID Lector */}
-                                                                    {/* <Text size="xs">Lector: {reading.ID_Lector || '-'}</Text> */}
-                                                                </Group>
-                                                            </Paper>
-                                                        ))
+                                                        <DataTable
+                                                            withTableBorder
+                                                            borderRadius="sm"
+                                                            withColumnBorders
+                                                            striped
+                                                            highlightOnHover
+                                                            records={record.readings}
+                                                            columns={[
+                                                                {
+                                                                    accessor: 'Fecha_y_Hora',
+                                                                    title: 'Fecha y Hora',
+                                                                    width: 250,
+                                                                    render: (l) => dayjs(l.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')
+                                                                },
+                                                                {
+                                                                    accessor: 'lector.Nombre',
+                                                                    title: 'Lector',
+                                                                    width: 200,
+                                                                    render: (l) => l.lector?.Nombre || '-'
+                                                                },
+                                                                {
+                                                                    accessor: 'lector.Carretera',
+                                                                    title: 'Carretera',
+                                                                    width: 80,
+                                                                    render: (l) => l.lector?.Carretera || '-'
+                                                                },
+                                                                {
+                                                                    accessor: 'lector.Provincia',
+                                                                    title: 'Provincia',
+                                                                    width: 120,
+                                                                    render: (l) => l.lector?.Provincia || '-'
+                                                                },
+                                                                {
+                                                                    accessor: 'lector.Sentido',
+                                                                    title: 'Sentido',
+                                                                    width: 100,
+                                                                    render: (l) => l.lector?.Sentido || '-'
+                                                                },
+                                                                {
+                                                                    accessor: 'Carril',
+                                                                    title: 'Carril',
+                                                                    width: 80,
+                                                                    render: (l) => l.Carril || '-'
+                                                                }
+                                                            ]}
+                                                            noRecordsText=""
+                                                            noRecordsIcon={<></>}
+                                                            style={{ backgroundColor: 'white' }}
+                                                        />
                                                     ) : (
                                                         <Text size="xs" c="dimmed">No hay lecturas individuales disponibles para esta matrícula.</Text>
                                                     )}

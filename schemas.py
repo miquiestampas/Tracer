@@ -134,6 +134,14 @@ class VehiculoUpdate(BaseModel):
 class CasoEstadoUpdate(BaseModel):
     Estado: str = Field(..., example=EstadoCasoEnum.EN_ANALISIS.value)
 
+# --- Schemas para Actualización Parcial (PATCH) ---
+class CasoUpdate(BaseModel):
+    Nombre_del_Caso: Optional[str] = None
+    Año: Optional[int] = None
+    NIV: Optional[str] = None
+    Descripcion: Optional[str] = None
+    Estado: Optional[str] = None
+
 # --- Schemas para Lectura (GET) ---
 class Caso(CasoBase):
     ID_Caso: int

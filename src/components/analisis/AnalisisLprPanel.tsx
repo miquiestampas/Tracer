@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Box, LoadingOverlay, Alert, Group, Button, Pagination } from '@mantine/core';
+import { Box, LoadingOverlay, Alert, Group, Button, Pagination, Select } from '@mantine/core';
 import { DataTable, DataTableSortStatus, type DataTableColumn } from 'mantine-datatable';
 import { notifications } from '@mantine/notifications';
 import { IconCar, IconBookmark, IconBookmarkOff, IconCheck } from '@tabler/icons-react';
@@ -297,6 +297,33 @@ function AnalisisLprPanel({ casoId }: AnalisisPanelProps) {
                  onChange={(p) => setPagination(prev => ({...prev, page: p}))} 
                  mt="sm" 
             />
+
+            {/* Agrupar Organismo y Provincia */}
+            <Group grow mb="xs">
+                <Select
+                    label="Organismo"
+                    placeholder="Todos"
+                    // ...props de Organismo...
+                />
+                <Select
+                    label="Provincia"
+                    placeholder="Todas"
+                    // ...props de Provincia...
+                />
+            </Group>
+            {/* Agrupar Carretera y Sentido */}
+            <Group grow mb="xs">
+                <Select
+                    label="Carretera"
+                    placeholder="Todas"
+                    // ...props de Carretera...
+                />
+                <Select
+                    label="Sentido"
+                    placeholder="Ambos"
+                    // ...props de Sentido...
+                />
+            </Group>
         </Box>
     );
 }
