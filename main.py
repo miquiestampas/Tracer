@@ -1302,90 +1302,18 @@ async def get_lecturas_relevantes_por_caso(caso_id: int, db: Session = Depends(g
 
 @app.post("/casos/{caso_id}/saved_searches", response_model=schemas.SavedSearch, status_code=status.HTTP_201_CREATED)
 def create_saved_search(caso_id: int, saved_search_data: schemas.SavedSearchCreate, db: Session = Depends(get_db)):
-    logger.info(f"POST /casos/{caso_id}/saved_searches con datos: {saved_search_data.nombre}")
+    logger.info(f"POST /casos/{caso_id}/saved_searches con datos: {saved_search_data.name}")
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if not db_caso:
         logger.warning(f"[Create SavedSearch] Caso con ID {caso_id} no encontrado.")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
 
-    # Calcular result_count y unique_plates
-    filtros = saved_search_data.filtros
-    logger.info(f"Calculando resultados para filtros: {filtros}")
-    
-    # Construir la consulta base para lecturas filtradas
-    query = select(models.Lectura.Matricula).distinct()
-    # Aplicar filtro por caso_id (implícito si las lecturas están vinculadas a archivos del caso)
-    # Necesitamos unir ArchivoExcel para filtrar por caso_id
-    query = query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id)
-    
-    # Aplicar filtros dinámicamente
-    if filtros.get("fechaInicio"): # Asumiendo que el filtro guardado usa 'fechaInicio'
-        query = query.filter(models.Lectura.Fecha_y_Hora >= dayjs(filtros["fechaInicio"]).start_of('day').to_pydatetime())
-    if filtros.get("fechaFin"): # Asumiendo 'fechaFin'
-        query = query.filter(models.Lectura.Fecha_y_Hora <= dayjs(filtros["fechaFin"]).end_of('day').to_pydatetime())
-    if filtros.get("timeFrom"): # Asumiendo 'timeFrom'
-        # Convertir HH:MM a segundos desde medianoche para comparación
-        try:
-            h, m = map(int, filtros["timeFrom"].split(':'))
-            seconds_from = h * 3600 + m * 60
-            query = query.filter((extract('hour', models.Lectura.Fecha_y_Hora) * 3600 + extract('minute', models.Lectura.Fecha_y_Hora) * 60 + extract('second', models.Lectura.Fecha_y_Hora)) >= seconds_from)
-        except ValueError:
-            logger.warning(f"Formato de hora inicio inválido: {filtros['timeFrom']}")
-    if filtros.get("timeTo"): # Asumiendo 'timeTo'
-        try:
-            h, m = map(int, filtros["timeTo"].split(':'))
-            seconds_to = h * 3600 + m * 60
-            query = query.filter((extract('hour', models.Lectura.Fecha_y_Hora) * 3600 + extract('minute', models.Lectura.Fecha_y_Hora) * 60 + extract('second', models.Lectura.Fecha_y_Hora)) <= seconds_to)
-        except ValueError:
-            logger.warning(f"Formato de hora fin inválido: {filtros['timeTo']}")
-
-    if filtros.get("selectedLectores") and len(filtros["selectedLectores"]) > 0:
-        query = query.filter(models.Lectura.ID_Lector.in_(filtros["selectedLectores"]))
-    
-    # Unir con Lector si se filtra por carretera O por sentido
-    needs_lector_join_saved = False
-    if filtros.get("selectedCarreteras") and len(filtros["selectedCarreteras"]) > 0:
-         needs_lector_join_saved = True
-    if filtros.get("selectedSentidos") and len(filtros["selectedSentidos"]) > 0:
-         needs_lector_join_saved = True
-         
-    if needs_lector_join_saved:
-         # Unir Lectura con Lector (asegurarse que no se une dos veces si ya estaba por otro filtro)
-         # SQLAlchemy es generalmente inteligente con esto, pero ser explícito puede ayudar
-         if models.Lector not in [j.entity.class_ for j in query.get_final_froms()]:
-             query = query.join(models.Lector, models.Lectura.ID_Lector == models.Lector.ID_Lector)
-
-    # Filtro por carretera
-    if filtros.get("selectedCarreteras") and len(filtros["selectedCarreteras"]) > 0:
-         query = query.filter(models.Lector.Carretera.in_(filtros["selectedCarreteras"]))
-         
-    # Filtro por sentido
-    if filtros.get("selectedSentidos") and len(filtros["selectedSentidos"]) > 0:
-         query = query.filter(models.Lector.Sentido.in_(filtros["selectedSentidos"]))
-
-    # Ejecutar la consulta para obtener matrículas únicas
-    try:
-        result = db.execute(query)
-        unique_plates_list = [row[0] for row in result.fetchall()]
-        result_count = len(unique_plates_list)
-        logger.info(f"Consulta ejecutada. Matrículas únicas encontradas: {result_count}")
-    except Exception as e_query:
-        logger.error(f"Error al ejecutar la consulta para calcular resultados: {e_query}", exc_info=True)
-        # Decidir si fallar la creación o guardar con counts nulos
-        # Por ahora, guardaremos con nulos para no impedir el guardado
-        unique_plates_list = None
-        result_count = None
-        notifications.show({ title: 'Advertencia', message: 'No se pudo calcular el número de resultados para la búsqueda guardada.', color: 'orange' })
-
-    # Crear la instancia del modelo con los datos calculados
+    # Crear la instancia del modelo
     db_saved_search = models.SavedSearch(
         caso_id=caso_id,
-        nombre=saved_search_data.nombre,
-        filtros=saved_search_data.filtros, # Guardar el objeto de filtros original
-        color=saved_search_data.color,
-        notas=saved_search_data.notas,
-        result_count=result_count,      # Guardar el recuento calculado
-        unique_plates=unique_plates_list # Guardar la lista de matrículas
+        name=saved_search_data.name,
+        filters=saved_search_data.filters,
+        results=saved_search_data.results
     )
 
     try:
@@ -1402,7 +1330,7 @@ def create_saved_search(caso_id: int, saved_search_data: schemas.SavedSearchCrea
 @app.get("/casos/{caso_id}/saved_searches", response_model=List[schemas.SavedSearch])
 def read_saved_searches(caso_id: int, db: Session = Depends(get_db)):
     logger.info(f"GET /casos/{caso_id}/saved_searches - Listando búsquedas guardadas.")
-    searches = db.query(models.SavedSearch).filter(models.SavedSearch.caso_id == caso_id).order_by(models.SavedSearch.nombre).all()
+    searches = db.query(models.SavedSearch).filter(models.SavedSearch.caso_id == caso_id).order_by(models.SavedSearch.name).all()
     return searches
 
 @app.put("/saved_searches/{search_id}", response_model=schemas.SavedSearch)
@@ -1416,8 +1344,6 @@ def update_saved_search(search_id: int, search_update_data: schemas.SavedSearchU
         update_data = search_update_data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_search, key, value)
-        
-        # Nota: Si se permitiera actualizar filtros, aquí habría que recalcular result_count/unique_plates.
         
         db.commit()
         db.refresh(db_search)
@@ -1440,7 +1366,7 @@ def delete_saved_search(search_id: int, db: Session = Depends(get_db)):
         db.delete(db_search)
         db.commit()
         logger.info(f"Búsqueda guardada ID {search_id} eliminada.")
-        return None # Retornar None o Response(status_code=204)
+        return None
     except Exception as e:
         db.rollback()
         logger.error(f"Error al eliminar búsqueda guardada ID {search_id}: {e}", exc_info=True)
@@ -1999,3 +1925,131 @@ def update_caso(caso_id: int, caso_update: schemas.CasoUpdate, db: Session = Dep
     db.commit()
     db.refresh(db_caso)
     return db_caso
+
+@app.post("/lecturas/por_filtros", response_model=List[schemas.Lectura])
+def read_lecturas_por_filtros(
+    # Filtros de Fecha/Hora
+    fecha_inicio: Optional[str] = None,
+    fecha_fin: Optional[str] = None,
+    hora_inicio: Optional[str] = None, 
+    hora_fin: Optional[str] = None, 
+    # Filtros de Identificadores (Listas)
+    lector_ids: Optional[List[str]] = Query(None), 
+    caso_ids: Optional[List[int]] = Query(None), 
+    carretera_ids: Optional[List[str]] = Query(None),
+    sentido: Optional[List[str]] = Query(None),
+    matricula: Optional[str] = None,
+    tipo_fuente: Optional[str] = Query(None),
+    solo_relevantes: Optional[bool] = False,
+    min_pasos: Optional[int] = None,
+    max_pasos: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    logger.info(f"POST /lecturas/por_filtros - Filtros: min_pasos={min_pasos} max_pasos={max_pasos} carreteras={carretera_ids}")
+    
+    # Base query
+    base_query = db.query(models.Lectura).join(models.Lector)
+    
+    # --- Aplicar filtros comunes ---
+    if caso_ids:
+        base_query = base_query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
+    if lector_ids:
+        base_query = base_query.filter(models.Lectura.ID_Lector.in_(lector_ids))
+    if carretera_ids:
+        base_query = base_query.filter(models.Lector.Carretera.in_(carretera_ids))
+    if sentido:
+        base_query = base_query.filter(models.Lector.Sentido.in_(sentido))
+    if tipo_fuente:
+        base_query = base_query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
+    if solo_relevantes:
+        base_query = base_query.join(models.LecturaRelevante)
+    
+    # Filtros de fecha y hora
+    try:
+        if fecha_inicio:
+            fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            base_query = base_query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+        if fecha_fin:
+            fecha_fin_dt = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+            base_query = base_query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
+        if hora_inicio:
+            hora_inicio_time = datetime.datetime.strptime(hora_inicio, "%H:%M").time()
+            base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
+        if hora_fin:
+            hora_fin_time = datetime.datetime.strptime(hora_fin, "%H:%M").time()
+            base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
+    except ValueError:
+        logger.warning("Formato de fecha/hora inválido recibido.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
+
+    # Filtro por matrícula (usando el nuevo sistema de patrones)
+    if matricula:
+        sql_pattern = matricula.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+        base_query = base_query.filter(models.Lectura.Matricula.ilike(sql_pattern))
+
+    # Filtro por número de pasos (lecturas por matrícula)
+    if min_pasos is not None or max_pasos is not None:
+        # Crear una subconsulta con los mismos filtros para contar pasos
+        pasos_subquery = (
+            db.query(models.Lectura.Matricula, func.count('*').label('num_pasos'))
+            .join(models.Lector)
+        )
+        
+        # Aplicar los mismos filtros a la subconsulta
+        if caso_ids:
+            pasos_subquery = pasos_subquery.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
+        if lector_ids:
+            pasos_subquery = pasos_subquery.filter(models.Lectura.ID_Lector.in_(lector_ids))
+        if carretera_ids:
+            pasos_subquery = pasos_subquery.filter(models.Lector.Carretera.in_(carretera_ids))
+        if sentido:
+            pasos_subquery = pasos_subquery.filter(models.Lector.Sentido.in_(sentido))
+        if tipo_fuente:
+            pasos_subquery = pasos_subquery.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
+        if solo_relevantes:
+            pasos_subquery = pasos_subquery.join(models.LecturaRelevante)
+            
+        # Aplicar los mismos filtros de fecha/hora
+        try:
+            if fecha_inicio:
+                fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+                pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+            if fecha_fin:
+                fecha_fin_dt = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
+            if hora_inicio:
+                hora_inicio_time = datetime.datetime.strptime(hora_inicio, "%H:%M").time()
+                pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
+            if hora_fin:
+                hora_fin_time = datetime.datetime.strptime(hora_fin, "%H:%M").time()
+                pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
+        except ValueError:
+            logger.warning("Formato de fecha/hora inválido recibido en subconsulta de pasos.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
+
+        if matricula:
+            pasos_subquery = pasos_subquery.filter(models.Lectura.Matricula.ilike(sql_pattern))
+
+        # Agrupar y filtrar por número de pasos
+        pasos_subquery = (
+            pasos_subquery.group_by(models.Lectura.Matricula)
+            .having(and_(
+                func.count('*') >= min_pasos if min_pasos is not None else True,
+                func.count('*') <= max_pasos if max_pasos is not None else True
+            ))
+        )
+
+        # Filtrar la consulta principal para incluir solo las matrículas que cumplen con los criterios de pasos
+        base_query = base_query.filter(
+            models.Lectura.Matricula.in_(
+                pasos_subquery.with_entities(models.Lectura.Matricula)
+            )
+        )
+
+    # Ordenar y aplicar paginación
+    query = base_query.order_by(models.Lectura.Fecha_y_Hora.desc())
+    query = query.options(joinedload(models.Lectura.lector))
+    lecturas = query.all()
+
+    logger.info(f"POST /lecturas/por_filtros - Encontradas {len(lecturas)} lecturas tras aplicar filtros.")
+    return lecturas

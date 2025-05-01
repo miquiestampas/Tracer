@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, forwardRef, useImpera
 import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme, Table } from '@mantine/core';
 import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
-import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff, IconChevronDown, IconChevronRight, IconBuildingCommunity } from '@tabler/icons-react';
+import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff, IconChevronDown, IconChevronRight, IconBuildingCommunity, IconTableOptions, IconTable, IconPlus, IconX } from '@tabler/icons-react';
 import { notifications, showNotification } from '@mantine/notifications';
 import { DataTable, DataTableSortStatus, DataTableColumn } from 'mantine-datatable';
 import dayjs from 'dayjs';
@@ -14,7 +14,7 @@ import type { Lectura, Lector } from '../../types/data'; // Importar tipos neces
 import * as XLSX from 'xlsx'; // Importación para la exportación a Excel
 import { ProgressOverlay } from '../common/ProgressOverlay';
 import { getLectorSugerencias } from '../../services/lectoresApi';
-import { Lectura as LecturaAPI } from '../../types/api';
+import { Lectura as LecturaAPI } from '../../types/api.ts';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -82,18 +82,47 @@ export interface AnalisisLecturasPanelHandle {
   exportarListaLectores: () => Promise<void>;
 }
 
-interface LecturaAgrupada {
+interface ExtendedLectura {
+    _isGroup?: boolean;
+    _isSubRow?: boolean;
+    _expanded?: boolean;
+    _lecturas?: ExtendedLectura[];
+    _groupId?: string;
+    _lecturas_originales?: ExtendedLectura[];
+    carriles_detectados?: string[];
+    pasos?: number;
+    es_relevante?: boolean;
     Matricula: string;
-    pasos: number;
-    lecturasPorOperacion: Record<number, Lectura[]>;
-    expanded: boolean;
-    ID_Lectura: number;
-    relevancia?: { ID_Relevante: number, Nota?: string | null } | null;
+    Fecha_y_Hora: string;
+    ID_Lectura: number | string;
+    ID_Archivo: number;
+    Tipo_Fuente: string;
+    lector?: {
+        Nombre?: string;
+        Carretera?: string;
+        Sentido?: string;
+    };
+    [key: string]: any;
 }
 
-// Extender el tipo de Lectura para incluir las propiedades adicionales que necesitamos
-interface Lectura extends LecturaAPI {
-    es_relevante?: boolean;
+interface SavedSearch {
+    id: number;
+    name: string;
+    caso_id: number;
+    filters: {
+        fechaInicio: Date | null;
+        fechaFin: Date | null;
+        timeFrom: string;
+        timeTo: string;
+        selectedLectores: string[];
+        selectedCarreteras: string[];
+        selectedSentidos: string[];
+        matricula: string;
+        minPasos: number | null;
+        maxPasos: number | null;
+    };
+    results: ExtendedLectura[];
+    created_at?: string;
 }
 
 // --- Componente con forwardRef ---
@@ -134,47 +163,192 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     ]);
     const [loading, setLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
-    const [results, setResults] = useState<Lectura[]>([]);
-    const [selectedRecords, setSelectedRecords] = useState<number[]>([]);
+    const [results, setResults] = useState<ExtendedLectura[]>([]);
+    const [selectedRecords, setSelectedRecords] = useState<(number | string)[]>([]);
     const [page, setPage] = useState(1);
-    const PAGE_SIZE = 15;
-    const [sortStatus, setSortStatus] = useState<DataTableSortStatus>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
+    const PAGE_SIZE = 25;
+    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<ExtendedLectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
     const [casosSeleccionados, setCasosSeleccionados] = useState<number[]>([]);
     const [organismosList, setOrganismosList] = useState<SelectOption[]>([]);
     const [provinciasList, setProvinciasList] = useState<SelectOption[]>([]);
     const [sortField, setSortField] = useState<string | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+    const [isGroupedByVehicle, setIsGroupedByVehicle] = useState(false);
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+    const [selectedSearches, setSelectedSearches] = useState<number[]>([]);
+    const [showSavedSearches, setShowSavedSearches] = useState(false);
     
     // --- Procesar datos ---
-    const sortedAndPaginatedResults = useMemo(() => {
-        if (!results.length) return [];
-        
-        const accessor = sortStatus.columnAccessor as keyof Lectura;
-        let data = [...results];
-        
-        // Agrupar por matrícula para calcular pasos
-        const pasosPorMatricula = data.reduce((acc, lectura) => {
-            if (!acc[lectura.Matricula]) {
-                acc[lectura.Matricula] = 0;
-            }
-            acc[lectura.Matricula]++;
-            return acc;
-        }, {} as Record<string, number>);
+    const getLectorBaseId = (nombreLector: string): string => {
+        // Eliminar el sufijo del carril (C1, C2, etc)
+        return nombreLector.replace(/\s+C\d+$/, '');
+    };
 
-        // Añadir el conteo de pasos a cada lectura
-        data = data.map(lectura => ({
-            ...lectura,
-            pasos: pasosPorMatricula[lectura.Matricula]
-        }));
+    const agruparLecturasSimultaneas = (lecturas: ExtendedLectura[]): ExtendedLectura[] => {
+        // Ordenar las lecturas por fecha para asegurar consistencia
+        const lecturasOrdenadas = [...lecturas].sort((a, b) => a.Fecha_y_Hora.localeCompare(b.Fecha_y_Hora));
+        
+        // Crear grupos por ventana de tiempo + matrícula + punto de control base
+        const grupos: { [key: string]: ExtendedLectura[] } = {};
+        
+        lecturasOrdenadas.forEach(lectura => {
+            if (!lectura.lector?.Nombre || !lectura.Fecha_y_Hora || !lectura.Matricula) return;
+
+            const puntoControl = getLectorBaseId(lectura.lector.Nombre);
+            const timestamp = dayjs(lectura.Fecha_y_Hora);
+            
+            // Buscar un grupo existente que coincida dentro de la ventana de tiempo
+            let grupoEncontrado = false;
+            for (const [clave, grupo] of Object.entries(grupos)) {
+                const [grupoTimestamp, grupoMatricula, grupoPuntoControl] = clave.split('_');
+                
+                // Verificar si es el mismo vehículo y punto de control
+                if (grupoMatricula === lectura.Matricula && grupoPuntoControl === puntoControl) {
+                    // Verificar si está dentro de la ventana de tiempo (±2 segundos)
+                    const diferencia = Math.abs(timestamp.diff(dayjs(grupoTimestamp), 'second'));
+                    if (diferencia <= 2) {
+                        grupos[clave].push(lectura);
+                        grupoEncontrado = true;
+                        break;
+                    }
+                }
+            }
+
+            // Si no se encontró un grupo existente, crear uno nuevo
+            if (!grupoEncontrado) {
+                const nuevaClave = `${lectura.Fecha_y_Hora}_${lectura.Matricula}_${puntoControl}`;
+                grupos[nuevaClave] = [lectura];
+            }
+        });
+
+        // Convertir los grupos en lecturas únicas
+        const lecturasAgrupadas = Object.values(grupos).map(grupoLecturas => {
+            if (grupoLecturas.length === 1) {
+                return grupoLecturas[0];
+            }
+
+            // Ordenar el grupo por fecha
+            grupoLecturas.sort((a, b) => a.Fecha_y_Hora.localeCompare(b.Fecha_y_Hora));
+
+            // Si hay múltiples lecturas, crear una lectura consolidada
+            const lecturaBase = grupoLecturas[0]; // Usar la primera lectura como base
+            const carriles = grupoLecturas
+                .map(l => l.lector?.Nombre?.match(/C\d+$/)?.[0] || '')
+                .filter(Boolean)
+                .sort();
+
+            // Calcular el rango de tiempo si hay diferencia
+            const fechaInicial = dayjs(grupoLecturas[0].Fecha_y_Hora);
+            const fechaFinal = dayjs(grupoLecturas[grupoLecturas.length - 1].Fecha_y_Hora);
+            const diferenciaTiempo = fechaFinal.diff(fechaInicial, 'second');
+
+            return {
+                ...lecturaBase,
+                carriles_detectados: carriles,
+                _lecturas_originales: grupoLecturas,
+                ID_Lectura: `${lecturaBase.ID_Lectura}_consolidated`,
+                lector: {
+                    ...lecturaBase.lector,
+                    Nombre: carriles.length > 1 
+                        ? `${getLectorBaseId(lecturaBase.lector?.Nombre || '')} (${carriles.join(', ')})${
+                            diferenciaTiempo > 0 ? ` [Δt=${diferenciaTiempo}s]` : ''
+                        }`
+                        : lecturaBase.lector?.Nombre
+                }
+            };
+        });
+
+        // Ordenar el resultado final por fecha
+        return lecturasAgrupadas.sort((a, b) => b.Fecha_y_Hora.localeCompare(a.Fecha_y_Hora));
+    };
+
+    const processedResults = useMemo(() => {
+        if (!results.length) return [];
+
+        // Primero agrupar las lecturas simultáneas
+        const lecturasAgrupadas = agruparLecturasSimultaneas(results);
+        console.log('Lecturas originales:', results.length, 'Lecturas agrupadas:', lecturasAgrupadas.length);
+        
+        if (!isGroupedByVehicle) {
+            return lecturasAgrupadas;
+        }
+
+        // Agrupar por matrícula las lecturas ya agrupadas por simultaneidad
+        const groupedByMatricula = _.groupBy(lecturasAgrupadas, 'Matricula');
+        
+        return Object.entries(groupedByMatricula).flatMap(([matricula, lecturas]) => {
+            const group: ExtendedLectura = {
+                Matricula: matricula,
+                pasos: lecturas.length,
+                _isGroup: true,
+                _lecturas: lecturas,
+                _expanded: expandedGroups.has(`group_${matricula}`),
+                ID_Lectura: `group_${matricula}`,
+                Fecha_y_Hora: lecturas[0].Fecha_y_Hora,
+                lector: lecturas[0].lector,
+                ID_Archivo: lecturas[0].ID_Archivo,
+                Tipo_Fuente: lecturas[0].Tipo_Fuente
+            };
+
+            const expandedRows: ExtendedLectura[] = expandedGroups.has(`group_${matricula}`) 
+                ? lecturas.map(lectura => ({
+                    ...lectura,
+                    _isSubRow: true,
+                    _groupId: `group_${matricula}`
+                })) 
+                : [];
+
+            return [group, ...expandedRows];
+        });
+    }, [results, isGroupedByVehicle, expandedGroups]);
+
+    const sortedAndPaginatedResults = useMemo(() => {
+        if (!processedResults.length) return [];
+        
+        const accessor = sortStatus.columnAccessor as string;
+        let data = [...processedResults];
         
         // Aplicar ordenamiento
-        data = _.orderBy(data, [accessor], [sortStatus.direction]);
+        data.sort((a, b) => {
+            // Función para obtener el valor de una propiedad anidada
+            const getNestedValue = (obj: any, path: string) => {
+                return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+            };
+
+            // Obtener los valores a comparar
+            let aValue = getNestedValue(a, accessor);
+            let bValue = getNestedValue(b, accessor);
+            
+            // Si alguno de los valores es undefined o null, ponerlo al final
+            if (aValue === undefined || aValue === null) return 1;
+            if (bValue === undefined || bValue === null) return -1;
+
+            // Para fechas
+            if (accessor === 'Fecha_y_Hora') {
+                const aDate = new Date(aValue).getTime();
+                const bDate = new Date(bValue).getTime();
+                return sortStatus.direction === 'asc' ? aDate - bDate : bDate - aDate;
+            }
+
+            // Para números
+            if (typeof aValue === 'number' && typeof bValue === 'number') {
+                return sortStatus.direction === 'asc' ? aValue - bValue : bValue - aValue;
+            }
+
+            // Para strings (incluyendo propiedades de objetos anidados)
+            const aString = String(aValue).toLowerCase();
+            const bString = String(bValue).toLowerCase();
+            const comparison = aString.localeCompare(bString);
+            
+            return sortStatus.direction === 'asc' ? comparison : -comparison;
+        });
         
         // Aplicar paginación
         const start = (page - 1) * PAGE_SIZE;
         const end = start + PAGE_SIZE;
         return data.slice(start, end);
-    }, [results, sortStatus, page]);
+    }, [processedResults, sortStatus, page]);
 
     // --- Cargar datos iniciales ---
     useEffect(() => {
@@ -415,11 +589,12 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     };
 
     // --- Handler de selección ---
-    const handleSelectionChange = useCallback((newSelectedRecords: Lectura[]) => {
-        setSelectedRecords(newSelectedRecords.map(record => record.ID_Lectura));
-        const newlySelectedMatriculas = newSelectedRecords.map(record => record.Matricula);
-        if (newlySelectedMatriculas.length > 0) {
-             addInteractedMatricula(newlySelectedMatriculas);
+    const handleSelectionChange = useCallback((selectedRecords: ExtendedLectura[]) => {
+        const ids = selectedRecords.map(record => record.ID_Lectura);
+        setSelectedRecords(ids);
+        const matriculas = selectedRecords.map(record => record.Matricula);
+        if (matriculas.length > 0) {
+            addInteractedMatricula(matriculas);
         }
     }, [addInteractedMatricula]);
 
@@ -629,45 +804,111 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setLoading(false);
     };
 
+    // Función para expandir/colapsar grupos
+    const toggleGroupExpansion = useCallback((groupId: string) => {
+        setExpandedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) {
+                next.delete(groupId);
+            } else {
+                next.add(groupId);
+            }
+            return next;
+        });
+    }, []);
+
     // --- Columnas ---
-    const columns: DataTableColumn<Lectura>[] = useMemo(() => [
+    const columns = useMemo(() => [
+        ...(isGroupedByVehicle ? [{
+            accessor: 'expand',
+            title: '',
+            width: 40,
+            render: (record: ExtendedLectura) => {
+                if (!record._isGroup) return null;
+                return (
+                    <ActionIcon 
+                        variant="subtle" 
+                        onClick={() => toggleGroupExpansion(record.ID_Lectura as string)}
+                    >
+                        {expandedGroups.has(record.ID_Lectura as string) ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
+                    </ActionIcon>
+                );
+            }
+        }] : []),
         {
             accessor: 'Fecha_y_Hora',
             title: 'Fecha y Hora',
             sortable: true,
-            render: (l) => dayjs(l.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')
+            render: (record: ExtendedLectura) => {
+                if (record._isSubRow) {
+                    return <Text ml={20}>{dayjs(record.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>;
+                }
+                if (record._isGroup) {
+                    return `${record._lecturas?.length || 0} lecturas`;
+                }
+                return dayjs(record.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss');
+            }
         },
         {
             accessor: 'Matricula',
             title: 'Matrícula',
-            sortable: true
+            sortable: true,
+            render: (record: ExtendedLectura) => {
+                if (record._isSubRow) {
+                    return <Text ml={20}>{record.Matricula}</Text>;
+                }
+                return record.Matricula;
+            }
         },
         {
             accessor: 'lector.Nombre',
             title: 'Lector',
             sortable: true,
-            render: (l) => l.lector?.Nombre || '-'
+            render: (record: ExtendedLectura) => {
+                const text = record.lector?.Nombre || '-';
+                if (record.carriles_detectados && record.carriles_detectados.length > 1) {
+                    return (
+                        <Tooltip label={`Detectado en carriles: ${record.carriles_detectados.join(', ')}`}>
+                            <Text>
+                                {getLectorBaseId(text)}
+                                <Text component="span" size="xs" color="dimmed"> ({record.carriles_detectados.length} carriles)</Text>
+                            </Text>
+                        </Tooltip>
+                    );
+                }
+                return record._isSubRow ? <Text ml={20}>{text}</Text> : text;
+            }
         },
         {
             accessor: 'lector.Carretera',
             title: 'Carretera',
             sortable: true,
-            render: (l) => l.lector?.Carretera || '-'
+            render: (record: ExtendedLectura) => {
+                const text = record.lector?.Carretera || '-';
+                return record._isSubRow ? <Text ml={20}>{text}</Text> : text;
+            }
         },
         {
             accessor: 'lector.Sentido',
             title: 'Sentido',
             sortable: true,
-            render: (l) => l.lector?.Sentido || '-'
+            render: (record: ExtendedLectura) => {
+                const text = record.lector?.Sentido || '-';
+                return record._isSubRow ? <Text ml={20}>{text}</Text> : text;
+            }
         },
         {
             accessor: 'pasos',
             title: 'Pasos',
             sortable: true,
             textAlign: 'right',
-            width: 80
+            width: 80,
+            render: (record: ExtendedLectura) => {
+                if (record._isSubRow) return null;
+                return record.pasos;
+            }
         }
-    ], []);
+    ] as DataTableColumn<ExtendedLectura>[], [isGroupedByVehicle, toggleGroupExpansion, expandedGroups]);
 
     // --- Handler de cambio de página ---
     const handlePageChange = useCallback((newPage: number) => {
@@ -680,7 +921,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     }, []);
 
     // --- Handler de cambio de ordenamiento ---
-    const handleSortStatusChange = useCallback((newSortStatus: DataTableSortStatus) => {
+    const handleSortStatusChange = useCallback((newSortStatus: DataTableSortStatus<ExtendedLectura>) => {
         setSortStatus(newSortStatus);
         setPage(1); // Resetear a la primera página al cambiar el ordenamiento
     }, []);
@@ -716,7 +957,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     };
 
     // Función para ordenar los resultados
-    const sortResults = (results: Lectura[]) => {
+    const sortResults = (results: ExtendedLectura[]) => {
         if (!sortField) return results;
 
         return [...results].sort((a, b) => {
@@ -728,11 +969,11 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 bValue = getPasosPorMatricula(b.Matricula);
             } else if (sortField.includes('.')) {
                 const [parent, child] = sortField.split('.');
-                aValue = a[parent as keyof Lectura]?.[child as keyof typeof a[keyof Lectura]];
-                bValue = b[parent as keyof Lectura]?.[child as keyof typeof b[keyof Lectura]];
+                aValue = a[parent as keyof ExtendedLectura]?.[child as keyof typeof a[keyof ExtendedLectura]];
+                bValue = b[parent as keyof ExtendedLectura]?.[child as keyof typeof b[keyof ExtendedLectura]];
             } else {
-                aValue = a[sortField as keyof Lectura];
-                bValue = b[sortField as keyof Lectura];
+                aValue = a[sortField as keyof ExtendedLectura];
+                bValue = b[sortField as keyof ExtendedLectura];
             }
 
             if (aValue === bValue) return 0;
@@ -775,6 +1016,147 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             });
         }
     };
+
+    // Cargar búsquedas guardadas al iniciar
+    useEffect(() => {
+        const fetchSavedSearches = async () => {
+            if (!casoIdFijo) return;
+            try {
+                const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/saved_searches`);
+                if (!response.ok) throw new Error('Error al cargar búsquedas guardadas');
+                const data = await response.json();
+                setSavedSearches(data);
+            } catch (error) {
+                console.error('Error cargando búsquedas guardadas:', error);
+                notifications.show({
+                    title: 'Error',
+                    message: 'No se pudieron cargar las búsquedas guardadas',
+                    color: 'red'
+                });
+            }
+        };
+
+        fetchSavedSearches();
+    }, [casoIdFijo]);
+
+    // Función para guardar la búsqueda actual
+    const handleSaveSearch = useCallback(async () => {
+        if (!casoIdFijo) {
+            notifications.show({
+                title: 'Error',
+                message: 'No se puede guardar la búsqueda sin un caso seleccionado',
+                color: 'red'
+            });
+            return;
+        }
+
+        const searchName = window.prompt('Nombre para esta búsqueda:');
+        if (!searchName) return;
+
+        const newSearch = {
+            name: searchName,
+            caso_id: casoIdFijo,
+            filters: {
+                fechaInicio,
+                fechaFin,
+                timeFrom,
+                timeTo,
+                selectedLectores,
+                selectedCarreteras,
+                selectedSentidos,
+                matricula,
+                minPasos,
+                maxPasos
+            },
+            results: [...results]
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/saved_searches`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(newSearch)
+            });
+
+            if (!response.ok) throw new Error('Error al guardar la búsqueda');
+            
+            const savedSearch = await response.json();
+            setSavedSearches(prev => [...prev, savedSearch]);
+            
+            notifications.show({
+                title: 'Búsqueda Guardada',
+                message: `Se ha guardado la búsqueda "${searchName}"`,
+                color: 'green'
+            });
+        } catch (error) {
+            console.error('Error guardando búsqueda:', error);
+            notifications.show({
+                title: 'Error',
+                message: 'No se pudo guardar la búsqueda',
+                color: 'red'
+            });
+        }
+    }, [casoIdFijo, fechaInicio, fechaFin, timeFrom, timeTo, selectedLectores, selectedCarreteras, selectedSentidos, matricula, minPasos, maxPasos, results]);
+
+    // Función para eliminar una búsqueda guardada
+    const handleDeleteSavedSearch = async (searchId: number) => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/saved_searches/${searchId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) throw new Error('Error al eliminar la búsqueda');
+
+            setSavedSearches(prev => prev.filter(s => s.id !== searchId));
+            setSelectedSearches(prev => prev.filter(id => id !== searchId));
+
+            notifications.show({
+                title: 'Búsqueda Eliminada',
+                message: 'La búsqueda ha sido eliminada correctamente',
+                color: 'green'
+            });
+        } catch (error) {
+            console.error('Error eliminando búsqueda:', error);
+            notifications.show({
+                title: 'Error',
+                message: 'No se pudo eliminar la búsqueda',
+                color: 'red'
+            });
+        }
+    };
+
+    // Función para realizar el cruce de búsquedas
+    const handleCrossSearch = useCallback(() => {
+        if (selectedSearches.length < 2) {
+            notifications.show({
+                title: 'Error',
+                message: 'Selecciona al menos 2 búsquedas para realizar el cruce',
+                color: 'red'
+            });
+            return;
+        }
+
+        const selectedResults = selectedSearches
+            .map(id => savedSearches.find(s => s.id === id)?.results || [])
+            .map(results => new Set(results.map(r => r.Matricula)));
+
+        // Encontrar matrículas comunes
+        const commonMatriculas = selectedResults.reduce((common, current) => {
+            return new Set([...common].filter(x => current.has(x)));
+        });
+
+        // Filtrar resultados para mostrar solo las matrículas comunes
+        const crossedResults = results.filter(r => commonMatriculas.has(r.Matricula));
+        setResults(crossedResults);
+
+        notifications.show({
+            title: 'Cruce Completado',
+            message: `Se encontraron ${commonMatriculas.size} vehículos en común`,
+            color: 'green'
+        });
+    }, [selectedSearches, savedSearches, results]);
 
     // --- Renderizado ---
     return (
@@ -976,9 +1358,18 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                             zIndex={500}
                         />
                         <Group justify="space-between" mb="md">
-                            <Title order={4}>Resultados ({results.length})</Title>
+                            <Title order={4}>Resultados ({results.length} lecturas, {Array.from(new Set(results.map(r => r.Matricula))).length} vehículos)</Title>
                             <Group>
-                                 <Button 
+                                <Button 
+                                    size="xs" 
+                                    variant={isGroupedByVehicle ? "filled" : "outline"}
+                                    color="blue"
+                                    leftSection={isGroupedByVehicle ? <IconTableOptions size={16} /> : <IconTable size={16} />}
+                                    onClick={() => setIsGroupedByVehicle(!isGroupedByVehicle)}
+                                >
+                                    {isGroupedByVehicle ? 'Vista Normal' : 'Agrupar por Vehículo'}
+                                </Button>
+                                <Button 
                                     size="xs" 
                                     variant="outline" 
                                     leftSection={<IconBookmark size={16} />}
@@ -987,7 +1378,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 >
                                     Marcar Relevante ({selectedRecords.length})
                                 </Button>
-                                 <Button 
+                                <Button 
                                     size="xs" 
                                     variant="outline" 
                                     color="orange" 
@@ -997,7 +1388,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 >
                                     Desmarcar Relevante ({selectedRecords.length})
                                 </Button>
-                                 <Button 
+                                <Button 
                                     size="xs" 
                                     variant="outline" 
                                     color="green" 
@@ -1007,10 +1398,83 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 >
                                     Guardar Vehículos ({selectedRecords.length})
                                 </Button>
+                                <Button 
+                                    size="xs" 
+                                    variant="outline" 
+                                    color="blue" 
+                                    leftSection={<IconPlus size={16} />}
+                                    onClick={handleSaveSearch}
+                                    disabled={loading}
+                                >
+                                    Guardar Búsqueda
+                                </Button>
+                                <Button 
+                                    size="xs" 
+                                    variant="outline" 
+                                    color="violet" 
+                                    leftSection={<IconSearch size={16} />}
+                                    onClick={() => setShowSavedSearches(!showSavedSearches)}
+                                >
+                                    Búsquedas Guardadas
+                                </Button>
                             </Group>
                         </Group>
+
+                        {showSavedSearches && (
+                            <Paper shadow="sm" p="md" mb="md" withBorder>
+                                <Group justify="space-between" mb="sm">
+                                    <Title order={5}>Búsquedas Guardadas</Title>
+                                    <Button 
+                                        size="xs" 
+                                        variant="light" 
+                                        color="blue"
+                                        onClick={handleCrossSearch}
+                                        disabled={selectedSearches.length < 2}
+                                    >
+                                        Realizar Cruce ({selectedSearches.length} seleccionadas)
+                                    </Button>
+                                </Group>
+                                <Stack>
+                                    {savedSearches.map(search => (
+                                        <Group key={search.id} justify="space-between">
+                                            <Checkbox
+                                                label={
+                                                    <Text size="sm">
+                                                        {search.name} ({search.results.length} lecturas)
+                                                        <Text size="xs" color="dimmed" mt={2}>
+                                                            Creada: {dayjs(search.created_at).format('DD/MM/YYYY HH:mm')}
+                                                        </Text>
+                                                    </Text>
+                                                }
+                                                checked={selectedSearches.includes(search.id)}
+                                                onChange={(e) => {
+                                                    if (e.currentTarget.checked) {
+                                                        setSelectedSearches(prev => [...prev, search.id]);
+                                                    } else {
+                                                        setSelectedSearches(prev => prev.filter(id => id !== search.id));
+                                                    }
+                                                }}
+                                            />
+                                            <ActionIcon 
+                                                color="red" 
+                                                variant="subtle"
+                                                onClick={() => handleDeleteSavedSearch(search.id)}
+                                            >
+                                                <IconX size={16} />
+                                            </ActionIcon>
+                                        </Group>
+                                    ))}
+                                    {savedSearches.length === 0 && (
+                                        <Text color="dimmed" size="sm" ta="center">
+                                            No hay búsquedas guardadas
+                                        </Text>
+                                    )}
+                                </Stack>
+                            </Paper>
+                        )}
+
                         <Box style={{ maxHeight: 'calc(100vh - 400px)', overflow: 'auto' }}>
-                            <DataTable<Lectura>
+                            <DataTable<ExtendedLectura>
                                 withTableBorder
                                 borderRadius="sm"
                                 withColumnBorders
@@ -1019,18 +1483,18 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 records={sortedAndPaginatedResults}
                                 columns={columns}
                                 minHeight={200}
-                                totalRecords={results.length}
+                                totalRecords={processedResults.length}
                                 recordsPerPage={PAGE_SIZE}
                                 page={page}
                                 onPageChange={handlePageChange}
                                 idAccessor="ID_Lectura"
-                                selectedRecords={selectedRecords}
-                                onSelectedRecordsChange={setSelectedRecords}
+                                selectedRecords={selectedRecords.map(id => processedResults.find(r => r.ID_Lectura === id)).filter(Boolean) as ExtendedLectura[]}
+                                onSelectedRecordsChange={handleSelectionChange}
                                 noRecordsText={loading ? 'Cargando...' : (results.length === 0 ? 'No se encontraron resultados con los filtros aplicados' : '')}
                                 noRecordsIcon={<></>}
                                 fetching={loading}
                                 sortStatus={sortStatus}
-                                onSortStatusChange={setSortStatus}
+                                onSortStatusChange={handleSortStatusChange}
                                 style={{ tableLayout: 'fixed' }}
                             />
                         </Box>

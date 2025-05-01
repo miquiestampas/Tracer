@@ -112,15 +112,24 @@ class SavedSearch(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     caso_id = Column(Integer, ForeignKey("Casos.ID_Caso", ondelete="CASCADE"), nullable=False, index=True)
-    nombre = Column(String(150), nullable=False)
-    # Usar JSON o JSONB si es PostgreSQL
-    filtros = Column(JSON, nullable=False) 
-    color = Column(String(7), nullable=True) # Para código hexadecimal #RRGGBB
-    notas = Column(Text, nullable=True)
-    result_count = Column(Integer, nullable=True) 
-    unique_plates = Column(JSON, nullable=True) # Guardar matrículas como array JSON
+    name = Column(String(150), nullable=False)
+    filters = Column(JSON, nullable=False)  # Almacena los filtros como JSON
+    results = Column(JSON, nullable=False)  # Almacena los resultados como JSON
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     caso = relationship("Caso", back_populates="saved_searches")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "caso_id": self.caso_id,
+            "name": self.name,
+            "filters": self.filters,
+            "results": self.results,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
 
 # Función para crear las tablas (la llamaremos desde main.py)
 def create_db_and_tables():
