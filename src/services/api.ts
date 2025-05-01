@@ -7,10 +7,10 @@ const API_BASE_URL = 'http://localhost:8000'; // O el puerto que use FastAPI/Uvi
 
 // Crea una instancia de Axios con la configuración correcta
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: API_BASE_URL
+  // headers: {
+  //   'Content-Type': 'application/json',
+  // },
 });
 
 // Interceptor para manejar errores

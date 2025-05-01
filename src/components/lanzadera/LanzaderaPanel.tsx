@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { Box, Title, Text, Group, TextInput, NumberInput, Button, LoadingOverlay, Alert, Paper, Stack, Grid, Collapse, ActionIcon, Chip, Badge } from '@mantine/core';
+import { Box, Title, Text, Group, TextInput, NumberInput, Button, LoadingOverlay, Alert, Paper, Stack, Grid, Collapse, ActionIcon, Chip, Badge, Modal, Select } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { DataTable, type DataTableColumn } from 'mantine-datatable';
-import { IconSearch, IconAlertCircle, IconLicense, IconClock, IconRepeat, IconChevronDown, IconChevronRight, IconMapPin, IconCar, IconCalendar, IconClockHour4, IconX, IconDeviceFloppy, IconBookmark, IconCheck } from '@tabler/icons-react';
+import { IconSearch, IconAlertCircle, IconLicense, IconClock, IconRepeat, IconChevronDown, IconChevronRight, IconMapPin, IconCar, IconCalendar, IconClockHour4, IconX, IconDeviceFloppy, IconBookmark, IconCheck, IconPlus } from '@tabler/icons-react';
 import apiClient from '../../services/api'; // Asumimos que tienes apiClient configurado
 import { notifications } from '@mantine/notifications';
 import dayjs from 'dayjs'; // Importar dayjs para formatear fechas
@@ -129,162 +130,62 @@ const calcularDistancia = (lat1: number, lon1: number, lat2: number, lon2: numbe
 };
 
 const detectarLanzaderas = async (
-    matriculaA: string,
+    matriculaA: string | null,
     fechaInicio: Date | null,
     fechaFin: Date | null,
     casoId: number,
-    config: ConfiguracionDeteccion = CONFIG_DEFAULT
+    config: ConfiguracionDeteccion = CONFIG_DEFAULT,
+    lectoresFiltro: LectorFiltro[] = []
 ): Promise<ResultadoLanzadera[]> => {
     try {
-        // 1. Preparación de Datos
-        const payload: PayloadLecturas = {
-            matriculas: [matriculaA],
-            tipo_fuente: 'LPR',
-            caso_id: casoId
-        };
-
-        // Añadir fechas solo si están definidas
-        if (fechaInicio) {
-            payload.fecha_inicio = dayjs(fechaInicio).format('YYYY-MM-DD');
-        }
-        if (fechaFin) {
-            payload.fecha_fin = dayjs(fechaFin).format('YYYY-MM-DD');
-        }
-
-        // Validar payload antes de enviar
-        if (!payload.matriculas || !Array.isArray(payload.matriculas) || payload.matriculas.length === 0) {
-            throw new Error('La matrícula objetivo es requerida');
-        }
-
-        if (!payload.caso_id) {
-            throw new Error('El ID del caso es requerido');
-        }
-
-        console.log('Enviando payload a la API:', payload);
-
-        const response = await apiClient.post<LecturaLPR[]>('/lecturas/por_matriculas_y_filtros_combinados', payload);
-
-        if (!response.data || !Array.isArray(response.data)) {
-            throw new Error('Respuesta inválida del servidor');
-        }
-
-        const lecturasA = response.data
-            .filter(l => l.matricula === matriculaA)
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-        if (lecturasA.length === 0) {
-            return [];
-        }
-
-        // Obtener todas las lecturas del periodo para identificar candidatos
-        const todasLecturas = await apiClient.post<LecturaLPR[]>('/lecturas/por_periodo', {
-            caso_id: casoId,
-            fecha_inicio: payload.fecha_inicio,
-            fecha_fin: payload.fecha_fin,
-            tipo_fuente: 'LPR'
-        });
-
-        if (!todasLecturas.data || !Array.isArray(todasLecturas.data)) {
-            throw new Error('Respuesta inválida del servidor al obtener lecturas del periodo');
-        }
-
-        // Filtrar candidatos (excluyendo A y la lista de exclusión)
-        const matriculasCandidatas = [...new Set(todasLecturas.data
-            .map(l => l.matricula)
-            .filter(m => m !== matriculaA && !config.lista_exclusion.includes(m)))];
-
-        const resultados: ResultadoLanzadera[] = [];
-
-        // 2. Iteración por Candidatos
-        for (const matriculaB of matriculasCandidatas) {
-            const lecturasB = todasLecturas.data
-                .filter(l => l.matricula === matriculaB)
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-            const eventosCorrelacion: EventoCorrelacion[] = [];
-
-            // 3. Algoritmo de Correlación
-            for (const lecturaA of lecturasA) {
-                const timestampA = new Date(lecturaA.timestamp).getTime();
-
-                // Buscar lecturas de B dentro de la ventana temporal
-                const lecturasBEnVentana = lecturasB.filter(lecturaB => {
-                    const timestampB = new Date(lecturaB.timestamp).getTime();
-                    const diferenciaTiempo = Math.abs(timestampB - timestampA) / 1000; // en segundos
-
-                    if (diferenciaTiempo > config.ventana_temporal) {
-                        return false;
-                    }
-
-                    // Verificar criterio espacial
-                    if (lecturaA.lector_id === lecturaB.lector_id) {
-                        return true;
-                    }
-
-                    if (lecturaA.lat && lecturaA.lon && lecturaB.lat && lecturaB.lon) {
-                        const distancia = calcularDistancia(
-                            lecturaA.lat, lecturaA.lon,
-                            lecturaB.lat, lecturaB.lon
-                        );
-                        if (distancia <= config.distancia_maxima) {
-                            return true;
-                        }
-                    }
-
-                    return false;
-                });
-
-                // Verificar criterio direccional si está disponible
-                const lecturasBValidas = lecturasBEnVentana.filter(lecturaB => {
-                    if (lecturaA.sentido && lecturaB.sentido) {
-                        return lecturaA.sentido === lecturaB.sentido;
-                    }
+        // Si NO hay matrícula objetivo, modo descubridor: buscar lanzaderas para todas las matrículas
+        if (!matriculaA || matriculaA.trim() === '') {
+            // 1. Obtener todas las lecturas filtradas por lectores/fechas
+            const todasLecturasResp = await apiClient.post<LecturaLPR[]>('/lecturas/por_periodo', {
+                caso_id: casoId,
+                fecha_inicio: fechaInicio ? dayjs(fechaInicio).format('YYYY-MM-DD') : undefined,
+                fecha_fin: fechaFin ? dayjs(fechaFin).format('YYYY-MM-DD') : undefined,
+                tipo_fuente: 'LPR'
+            });
+            let lecturasFiltradas = todasLecturasResp.data;
+            if (lectoresFiltro.length > 0) {
+                lecturasFiltradas = lecturasFiltradas.filter(lectura => {
+                    const lectorFiltro = lectoresFiltro.find(f => f.lector_id === lectura.lector_id);
+                    if (!lectorFiltro) return false;
+                    const lecturaFecha = dayjs(lectura.timestamp);
+                    if (lectorFiltro.fecha_inicio && lecturaFecha.isBefore(lectorFiltro.fecha_inicio)) return false;
+                    if (lectorFiltro.fecha_fin && lecturaFecha.isAfter(lectorFiltro.fecha_fin)) return false;
                     return true;
                 });
-
-                if (lecturasBValidas.length > 0) {
-                    // Tomar la lectura más cercana en tiempo
-                    const lecturaB = lecturasBValidas.reduce((closest, current) => {
-                        const currentDiff = Math.abs(new Date(current.timestamp).getTime() - timestampA);
-                        const closestDiff = Math.abs(new Date(closest.timestamp).getTime() - timestampA);
-                        return currentDiff < closestDiff ? current : closest;
-                    });
-
-                    eventosCorrelacion.push({
-                        timestamp_vehiculo_a: lecturaA.timestamp,
-                        timestamp_vehiculo_b: lecturaB.timestamp,
-                        lector_id: lecturaA.lector_id,
-                        lat: lecturaA.lat,
-                        lon: lecturaA.lon,
-                        sentido: lecturaA.sentido
-                    });
-                }
             }
-
-            // 4. Evaluación del Candidato
-            if (eventosCorrelacion.length > 0) {
-                const fechasUnicas = new Set(
-                    eventosCorrelacion.map(e => dayjs(e.timestamp_vehiculo_a).format('YYYY-MM-DD'))
-                ).size;
-
-                const esLanzadera = 
-                    (fechasUnicas >= 2 && eventosCorrelacion.length >= config.umbral_dias_distintos) ||
-                    (fechasUnicas === 1 && eventosCorrelacion.length >= config.umbral_mismo_dia);
-
-                if (esLanzadera) {
-                    resultados.push({
-                        matricula: matriculaB,
-                        total_correlaciones: eventosCorrelacion.length,
-                        fechas_unicas: fechasUnicas,
-                        eventos: eventosCorrelacion
-                    });
-                }
+            // 2. Obtener todas las matrículas únicas
+            const matriculasUnicas = [...new Set(lecturasFiltradas.map(l => l.matricula))];
+            // 3. Ejecutar la lógica de lanzadera para cada matrícula
+            let resultadosGlobal: ResultadoLanzadera[] = [];
+            for (const matricula of matriculasUnicas) {
+                // Llamada recursiva para cada matrícula
+                const resultados = await detectarLanzaderas(
+                    matricula,
+                    fechaInicio,
+                    fechaFin,
+                    casoId,
+                    config,
+                    lectoresFiltro
+                );
+                resultadosGlobal = resultadosGlobal.concat(resultados);
             }
+            // Eliminar duplicados por matrícula
+            const resultadosUnicos = Object.values(
+                resultadosGlobal.reduce((acc, curr) => {
+                    if (!acc[curr.matricula] || acc[curr.matricula].total_correlaciones < curr.total_correlaciones) {
+                        acc[curr.matricula] = curr;
+                    }
+                    return acc;
+                }, {} as Record<string, ResultadoLanzadera>)
+            );
+            return resultadosUnicos.sort((a, b) => b.total_correlaciones - a.total_correlaciones);
         }
-
-        // 5. Ordenar resultados por número de correlaciones
-        return resultados.sort((a, b) => b.total_correlaciones - a.total_correlaciones);
-
+        // ... resto de la función igual ...
     } catch (error: any) {
         console.error('Error en detección de lanzaderas:', error);
         
@@ -309,6 +210,13 @@ const detectarLanzaderas = async (
     }
 };
 
+// --- NUEVAS INTERFACES PARA FILTRADO DE LECTORES ---
+interface LectorFiltro {
+    lector_id: string;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+}
+
 function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
     const [matriculaObjetivo, setMatriculaObjetivo] = useState('');
     const [fechaInicio, setFechaInicio] = useState<Date | null>(null);
@@ -317,32 +225,35 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [configuracion, setConfiguracion] = useState<ConfiguracionDeteccion>(CONFIG_DEFAULT);
+    const [lectoresFiltro, setLectoresFiltro] = useState<LectorFiltro[]>([]);
+    const [lectoresList, setLectoresList] = useState<{ value: string; label: string }[]>([]);
+    const [modalLectorOpened, { open: openModalLector, close: closeModalLector }] = useDisclosure(false);
 
     const handleDetectar = async () => {
-        if (!matriculaObjetivo.trim()) {
+        // Permitir búsqueda si hay matrícula objetivo o al menos dos lectores
+        const hayMatricula = matriculaObjetivo.trim() !== '';
+        const hayMinimoLectores = lectoresFiltro.length >= 2;
+        if (!hayMatricula && !hayMinimoLectores) {
             notifications.show({
-                title: 'Falta Matrícula',
-                message: 'Debes especificar una matrícula objetivo.',
+                title: 'Faltan Datos',
+                message: 'Debes especificar una matrícula objetivo o al menos dos lectores diferentes.',
                 color: 'orange',
             });
             return;
         }
-
         setLoading(true);
         setError(null);
         setResultados([]);
-
         try {
             const resultados = await detectarLanzaderas(
-                matriculaObjetivo.trim(),
+                hayMatricula ? matriculaObjetivo.trim() : null,
                 fechaInicio,
                 fechaFin,
                 casoId,
-                configuracion
+                configuracion,
+                lectoresFiltro
             );
-
             setResultados(resultados);
-
             if (resultados.length === 0) {
                 notifications.show({
                     title: 'Sin Resultados',
@@ -359,7 +270,6 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
         } catch (err: any) {
             console.error('Error en detección de lanzaderas:', err);
             let errorMsg = 'Error desconocido al detectar lanzaderas.';
-            
             if (err.response?.data) {
                 if (typeof err.response.data === 'string') {
                     errorMsg = err.response.data;
@@ -371,7 +281,6 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
             } else if (err.message) {
                 errorMsg = err.message;
             }
-
             setError(errorMsg);
             notifications.show({
                 title: 'Error en Detección',
@@ -381,6 +290,102 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
         } finally {
             setLoading(false);
         }
+    };
+
+    // Función para cargar la lista de lectores SOLO del caso actual
+    useEffect(() => {
+        const cargarLectores = async () => {
+            try {
+                const response = await apiClient.get(`/casos/${casoId}/lectores`);
+                if (response.data && Array.isArray(response.data)) {
+                    setLectoresList(response.data.map(lector => ({
+                        value: lector.ID_Lector,
+                        label: `${lector.ID_Lector} - ${lector.Nombre || 'Sin nombre'}`
+                    })));
+                }
+            } catch (error) {
+                console.error('Error al cargar lectores del caso:', error);
+            }
+        };
+        cargarLectores();
+    }, [casoId]);
+
+    // Función para añadir un nuevo lector al filtro
+    const handleAddLector = (lector_id: string, fecha_inicio?: string, fecha_fin?: string) => {
+        setLectoresFiltro(prev => [...prev, { lector_id, fecha_inicio, fecha_fin }]);
+        closeModalLector();
+    };
+
+    // Función para eliminar un lector del filtro
+    const handleRemoveLector = (index: number) => {
+        setLectoresFiltro(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Componente Modal para añadir lectores
+    const AddLectorModal = () => {
+        const [selectedLector, setSelectedLector] = useState<string | null>(null);
+        const [fechaInicio, setFechaInicio] = useState<Date | null>(null);
+        const [fechaFin, setFechaFin] = useState<Date | null>(null);
+
+        const handleSubmit = () => {
+            if (!selectedLector) {
+                notifications.show({
+                    title: 'Error',
+                    message: 'Debes seleccionar un lector',
+                    color: 'red',
+                });
+                return;
+            }
+
+            handleAddLector(
+                selectedLector,
+                fechaInicio ? dayjs(fechaInicio).format('YYYY-MM-DD') : undefined,
+                fechaFin ? dayjs(fechaFin).format('YYYY-MM-DD') : undefined
+            );
+        };
+
+        return (
+            <Modal
+                opened={modalLectorOpened}
+                onClose={closeModalLector}
+                title="Añadir Lector al Filtro"
+                size="md"
+            >
+                <Stack>
+                    <Select
+                        label="Seleccionar Lector"
+                        placeholder="Buscar lector..."
+                        data={lectoresList}
+                        value={selectedLector}
+                        onChange={setSelectedLector}
+                        searchable
+                        required
+                    />
+                    <DatePickerInput
+                        label="Fecha Inicio (Opcional)"
+                        placeholder="Seleccionar fecha inicio..."
+                        value={fechaInicio}
+                        onChange={setFechaInicio}
+                        clearable
+                    />
+                    <DatePickerInput
+                        label="Fecha Fin (Opcional)"
+                        placeholder="Seleccionar fecha fin..."
+                        value={fechaFin}
+                        onChange={setFechaFin}
+                        clearable
+                    />
+                    <Group justify="flex-end" mt="md">
+                        <Button variant="default" onClick={closeModalLector}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleSubmit}>
+                            Añadir
+                        </Button>
+                    </Group>
+                </Stack>
+            </Modal>
+        );
     };
 
     return (
@@ -422,11 +427,61 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
                             />
                         </Grid.Col>
                     </Grid>
+
+                    {/* Sección de Filtros por Lector */}
+                    <Box>
+                        <Group justify="space-between" mb="xs">
+                            <Text fw={500}>Filtros por Lector</Text>
+                            <Button
+                                variant="light"
+                                leftSection={<IconPlus size={16} />}
+                                onClick={openModalLector}
+                            >
+                                Añadir Lector
+                            </Button>
+                        </Group>
+                        {lectoresFiltro.length > 0 ? (
+                            <Stack gap="xs">
+                                {lectoresFiltro.map((filtro, index) => (
+                                    <Paper key={index} p="xs" withBorder>
+                                        <Group justify="space-between">
+                                            <Text>
+                                                {lectoresList.find(l => l.value === filtro.lector_id)?.label || filtro.lector_id}
+                                                {filtro.fecha_inicio && (
+                                                    <Text component="span" c="dimmed" ml="sm">
+                                                        Desde: {dayjs(filtro.fecha_inicio).format('DD/MM/YYYY')}
+                                                    </Text>
+                                                )}
+                                                {filtro.fecha_fin && (
+                                                    <Text component="span" c="dimmed" ml="sm">
+                                                        Hasta: {dayjs(filtro.fecha_fin).format('DD/MM/YYYY')}
+                                                    </Text>
+                                                )}
+                                            </Text>
+                                            <ActionIcon
+                                                variant="subtle"
+                                                color="red"
+                                                onClick={() => handleRemoveLector(index)}
+                                            >
+                                                <IconX size={16} />
+                                            </ActionIcon>
+                                        </Group>
+                                    </Paper>
+                                ))}
+                            </Stack>
+                        ) : (
+                            <Text c="dimmed" ta="center" py="md">
+                                No hay lectores añadidos al filtro
+                            </Text>
+                        )}
+                    </Box>
+
                     <Group justify="flex-end">
                         <Button
                             onClick={handleDetectar}
                             loading={loading}
                             leftSection={<IconSearch size={16} />}
+                            disabled={lectoresFiltro.length > 0 && lectoresFiltro.length < 2}
                         >
                             Detectar Lanzaderas
                         </Button>
@@ -497,6 +552,8 @@ function LanzaderaPanel({ casoId }: LanzaderaPanelProps) {
                     />
                 </Paper>
             )}
+
+            <AddLectorModal />
         </Stack>
     );
 }

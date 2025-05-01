@@ -34,13 +34,13 @@ import ProgressModal from '../components/modals/ProgressModal';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
-  LPR: ['Matricula', 'Fecha', 'Hora', 'ID_Lector'], // Fecha y Hora separadas
-  GPS: ['Matricula', 'Fecha', 'Hora', 'Coordenada_X', 'Coordenada_Y'], // Fecha y Hora separadas
+  LPR: ['Matricula', 'Fecha', 'Hora', 'ID_Lector'],
+  GPS: ['Matricula', 'Fecha', 'Hora', 'ID_Lector'],
 };
 // Campos opcionales
 const OPTIONAL_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
     LPR: ['Carril', 'Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
-    GPS: ['Sentido', 'Velocidad']
+    GPS: ['Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
 };
 
 // --- NUEVO: Diccionario de Términos para Auto-Mapeo ---

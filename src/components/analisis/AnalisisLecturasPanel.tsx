@@ -181,31 +181,25 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     
     // --- Procesar datos ---
     const getLectorBaseId = (nombreLector: string): string => {
-        // Eliminar el sufijo del carril (C1, C2, etc)
+        if (!nombreLector) return '';
         return nombreLector.replace(/\s+C\d+$/, '');
     };
 
+    // Solo agrupar si se solicita
     const agruparLecturasSimultaneas = (lecturas: ExtendedLectura[]): ExtendedLectura[] => {
         // Ordenar las lecturas por fecha para asegurar consistencia
         const lecturasOrdenadas = [...lecturas].sort((a, b) => a.Fecha_y_Hora.localeCompare(b.Fecha_y_Hora));
-        
-        // Crear grupos por ventana de tiempo + matrícula + punto de control base
         const grupos: { [key: string]: ExtendedLectura[] } = {};
-        
         lecturasOrdenadas.forEach(lectura => {
-            if (!lectura.lector?.Nombre || !lectura.Fecha_y_Hora || !lectura.Matricula) return;
-
-            const puntoControl = getLectorBaseId(lectura.lector.Nombre);
+            // Permitir agrupamiento aunque falte lector.Nombre (usar 'Desconocido')
+            const nombreLector = lectura.lector?.Nombre || 'Desconocido';
+            if (!lectura.Fecha_y_Hora || !lectura.Matricula) return;
+            const puntoControl = getLectorBaseId(nombreLector);
             const timestamp = dayjs(lectura.Fecha_y_Hora);
-            
-            // Buscar un grupo existente que coincida dentro de la ventana de tiempo
             let grupoEncontrado = false;
             for (const [clave, grupo] of Object.entries(grupos)) {
                 const [grupoTimestamp, grupoMatricula, grupoPuntoControl] = clave.split('_');
-                
-                // Verificar si es el mismo vehículo y punto de control
                 if (grupoMatricula === lectura.Matricula && grupoPuntoControl === puntoControl) {
-                    // Verificar si está dentro de la ventana de tiempo (±2 segundos)
                     const diferencia = Math.abs(timestamp.diff(dayjs(grupoTimestamp), 'second'));
                     if (diferencia <= 2) {
                         grupos[clave].push(lectura);
@@ -214,35 +208,24 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                     }
                 }
             }
-
-            // Si no se encontró un grupo existente, crear uno nuevo
             if (!grupoEncontrado) {
                 const nuevaClave = `${lectura.Fecha_y_Hora}_${lectura.Matricula}_${puntoControl}`;
                 grupos[nuevaClave] = [lectura];
             }
         });
-
-        // Convertir los grupos en lecturas únicas
         const lecturasAgrupadas = Object.values(grupos).map(grupoLecturas => {
             if (grupoLecturas.length === 1) {
                 return grupoLecturas[0];
             }
-
-            // Ordenar el grupo por fecha
             grupoLecturas.sort((a, b) => a.Fecha_y_Hora.localeCompare(b.Fecha_y_Hora));
-
-            // Si hay múltiples lecturas, crear una lectura consolidada
-            const lecturaBase = grupoLecturas[0]; // Usar la primera lectura como base
+            const lecturaBase = grupoLecturas[0];
             const carriles = grupoLecturas
                 .map(l => l.lector?.Nombre?.match(/C\d+$/)?.[0] || '')
                 .filter(Boolean)
                 .sort();
-
-            // Calcular el rango de tiempo si hay diferencia
             const fechaInicial = dayjs(grupoLecturas[0].Fecha_y_Hora);
             const fechaFinal = dayjs(grupoLecturas[grupoLecturas.length - 1].Fecha_y_Hora);
             const diferenciaTiempo = fechaFinal.diff(fechaInicial, 'second');
-
             return {
                 ...lecturaBase,
                 carriles_detectados: carriles,
@@ -258,25 +241,20 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 }
             };
         });
-
-        // Ordenar el resultado final por fecha
         return lecturasAgrupadas.sort((a, b) => b.Fecha_y_Hora.localeCompare(a.Fecha_y_Hora));
     };
 
     const processedResults = useMemo(() => {
         if (!results.length) return [];
-
-        // Primero agrupar las lecturas simultáneas
+        if (!isGroupedByVehicle) {
+            // No agrupar, mostrar los datos originales tal cual
+            return results;
+        }
+        // Si se agrupa, primero agrupar lecturas simultáneas
         const lecturasAgrupadas = agruparLecturasSimultaneas(results);
         console.log('Lecturas originales:', results.length, 'Lecturas agrupadas:', lecturasAgrupadas.length);
-        
-        if (!isGroupedByVehicle) {
-            return lecturasAgrupadas;
-        }
-
         // Agrupar por matrícula las lecturas ya agrupadas por simultaneidad
         const groupedByMatricula = _.groupBy(lecturasAgrupadas, 'Matricula');
-        
         return Object.entries(groupedByMatricula).flatMap(([matricula, lecturas]) => {
             const group: ExtendedLectura = {
                 Matricula: matricula,
@@ -290,7 +268,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 ID_Archivo: lecturas[0].ID_Archivo,
                 Tipo_Fuente: lecturas[0].Tipo_Fuente
             };
-
             const expandedRows: ExtendedLectura[] = expandedGroups.has(`group_${matricula}`) 
                 ? lecturas.map(lectura => ({
                     ...lectura,
@@ -298,7 +275,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                     _groupId: `group_${matricula}`
                 })) 
                 : [];
-
             return [group, ...expandedRows];
         });
     }, [results, isGroupedByVehicle, expandedGroups]);
@@ -356,49 +332,31 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             setInitialLoading(true);
             try {
                 if (casoIdFijo) {
-                    console.log(`[AnalisisLecturasPanel] Cargando filtros para caso ${casoIdFijo}...`);
-                    const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/filtros_disponibles`);
+                    console.log(`[AnalisisLecturasPanel] Cargando lectores para caso ${casoIdFijo}...`);
+                    const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/lectores`);
                     if (!response.ok) {
                         throw new Error(`Error HTTP: ${response.status}`);
                     }
                     const data = await response.json();
-                    
-                    if (!data || !Array.isArray(data.lectores) || !Array.isArray(data.carreteras)) {
+                    if (!data || !Array.isArray(data)) {
                         throw new Error('Formato de respuesta inválido');
                     }
-
                     // Procesar lectores
-                    const lectoresOptions = data.lectores
+                    const lectoresOptions = data
                         .filter(l => l && l.ID_Lector)
                         .map(l => ({
                             value: String(l.ID_Lector),
                             label: `${l.Nombre || l.ID_Lector} (${l.ID_Lector})`
                         }));
                     setLectoresList(lectoresOptions);
-
-                    // Procesar carreteras
-                    const carreterasOptions = data.carreteras
-                        .filter(c => c && typeof c === 'string')
-                        .map(c => ({
-                            value: c,
-                            label: c
-                        }));
-                    setCarreterasList(carreterasOptions);
-
-                    console.log(`[AnalisisLecturasPanel] Cargados ${lectoresOptions.length} lectores y ${carreterasOptions.length} carreteras`);
+                    // Si necesitas carreteras, puedes mantener la lógica anterior o adaptarla
                 }
-            } catch (error) {
-                console.error('[AnalisisLecturasPanel] Error cargando filtros:', error);
-                notifications.show({
-                    title: 'Error',
-                    message: 'No se pudieron cargar los filtros. Por favor, recarga la página.',
-                    color: 'red'
-                });
+            } catch (e) {
+                console.error(e);
             } finally {
                 setInitialLoading(false);
             }
         };
-
         fetchInitialData();
     }, [casoIdFijo]);
 
@@ -1335,7 +1293,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 Ejecutar Filtro
                             </Button>
                             <Button 
-                                variant="subtle" 
+                                variant="outline" 
                                 color="gray" 
                                 leftSection={<IconFilterOff size={16} />} 
                                 onClick={handleClearFilters}
