@@ -148,16 +148,36 @@ export interface LectorSugerenciasResponse {
 }
 
 // --- Tipos para Búsquedas Guardadas --- 
-export interface SavedSearch {
-    id: number;
-    caso_id: number;
-    nombre: string;
-    filtros: any; // O un tipo más específico: CurrentLprFilters normalizado?
-    color: string | null;
-    notas: string | null;
-    result_count: number | null;
-    unique_plates: string[] | null;
-    // Podríamos añadir fecha_creacion si existe en backend
+export interface SavedSearchFilters {
+  fechaInicio?: string;
+  fechaFin?: string;
+  timeFrom?: string;
+  timeTo?: string;
+  selectedLectores?: string[];
+  selectedCarreteras?: string[];
+  selectedSentidos?: string[];
+  matricula?: string;
+  minPasos?: number;
+  maxPasos?: number;
+}
+
+export interface SavedSearchCreate {
+  name: string;
+  caso_id: number;
+  filters: SavedSearchFilters;
+  results: any[]; // Tipo más específico según tus necesidades
+}
+
+export interface SavedSearchUpdate {
+  name?: string;
+  filters?: SavedSearchFilters;
+  results?: any[]; // Tipo más específico según tus necesidades
+}
+
+export interface SavedSearch extends SavedSearchCreate {
+  id: number;
+  created_at: string;
+  updated_at: string;
 }
 
 // Payload para actualizar una búsqueda guardada (solo campos editables)

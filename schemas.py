@@ -255,34 +255,35 @@ class LecturaIntersectionRequest(BaseModel):
 
 # --- Schemas para Búsquedas Guardadas ---
 class SavedSearchBase(BaseModel):
-    nombre: str = Field(..., example="Vehículos sospechosos Zona Norte")
-    filtros: Dict[str, Any] = Field(..., example={
-        "fechaInicio": "2024-01-10", 
-        "timeFrom": "10:00", 
-        "selectedLectores": ["CAM001", "CAM005"], 
-        "selectedCarreteras": [],
-        "matricula": ""
-        # Añadir más campos si existen en el filtro
+    name: str = Field(..., example="Vehículos sospechosos Zona Norte")
+    filters: Dict[str, Any] = Field(..., example={
+        "fechaInicio": "2024-01-10",
+        "fechaFin": "2024-01-20",
+        "timeFrom": "10:00",
+        "timeTo": "18:00",
+        "selectedLectores": ["CAM001", "CAM005"],
+        "selectedCarreteras": ["M-30", "A-6"],
+        "selectedSentidos": ["Norte", "Sur"],
+        "matricula": "1234???",
+        "minPasos": 2,
+        "maxPasos": 10
     })
-    color: Optional[str] = Field(None, example="#FF5733", pattern="^#[0-9a-fA-F]{6}$")
-    notas: Optional[str] = Field(None, example="Búsqueda inicial tras aviso.")
 
 class SavedSearchCreate(SavedSearchBase):
-    pass
+    caso_id: int
+    results: List[Dict[str, Any]]
 
 class SavedSearchUpdate(BaseModel):
-    nombre: Optional[str] = None
-    # Filtros no se actualizan por ahora para simplificar
-    # filtros: Optional[Dict[str, Any]] = None
-    color: Optional[str] = Field(None, pattern="^#[0-9a-fA-F]{6}$")
-    notas: Optional[str] = None
+    name: Optional[str] = None
+    filters: Optional[Dict[str, Any]] = None
+    results: Optional[List[Dict[str, Any]]] = None
 
-# Schema para la respuesta (GET)
 class SavedSearch(SavedSearchBase):
     id: int
     caso_id: int
-    result_count: Optional[int] = None
-    unique_plates: Optional[List[str]] = None
+    results: List[Dict[str, Any]]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
     class Config:
         from_attributes = True

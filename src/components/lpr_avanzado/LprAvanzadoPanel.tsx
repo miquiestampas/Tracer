@@ -626,135 +626,77 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         // 1. Obtener los objetos SavedSearch activos completos
         const activeSearches = savedSearches.filter(s => searchIds.includes(s.id));
         if (activeSearches.length !== searchIds.length) {
-             console.error("Discrepancia entre activeSearchIds y savedSearches encontrados.");
-             notifications.show({ title: 'Error en Cruce', message: 'Algunas búsquedas activas no se encontraron.', color: 'red' });
-             setLoading(false);
-             return;
-        }
-
-        // 2. Verificar y obtener las listas de matrículas únicas
-        const platesLists: string[][] = [];
-        let missingPlates = false;
-        for (const search of activeSearches) {
-            if (search.unique_plates && search.unique_plates.length > 0) {
-                platesLists.push(search.unique_plates);
-            } else if (search.result_count === 0) {
-                // Si una búsqueda no tiene resultados, la intersección será vacía
-                console.info(`La búsqueda ${search.nombre} (${search.id}) tiene 0 resultados. La intersección será vacía.`);
-                 setLoading(false);
-                 notifications.show({ title: 'Cruce Vacío', message: `Una de las búsquedas (${search.nombre}) no tiene resultados.`, color: 'orange' });
-                 return; // Intersección es vacía
-            } else {
-                // Si tiene resultados pero no tenemos la lista (debería haberse calculado)
-                console.warn(`La búsqueda ${search.nombre} (${search.id}) no tiene la lista unique_plates precalculada.`);
-                missingPlates = true;
-                // Podríamos intentar recalcularla aquí o mostrar error
-                // Por ahora, mostraremos error y cancelaremos.
-                notifications.show({ title: 'Error en Cruce', message: `Faltan datos precalculados para la búsqueda ${search.nombre}. Vuelve a guardarla.`, color: 'red' });
-                setLoading(false);
-                return;
-            }
-        }
-
-        if (platesLists.length === 0) {
-             console.info("No hay listas de matrículas válidas para cruzar.");
-             setLoading(false);
-             return;
-        }
-
-        // 3. Calcular la intersección
-        let intersection = new Set(platesLists[0]);
-        for (let i = 1; i < platesLists.length; i++) {
-            const currentSet = new Set(platesLists[i]);
-            intersection = new Set([...intersection].filter(plate => currentSet.has(plate)));
-        }
-        const intersectedPlates = Array.from(intersection);
-        console.info(`Intersección calculada: ${intersectedPlates.length} matrículas comunes.`);
-
-        if (intersectedPlates.length === 0) {
-            notifications.show({ title: 'Cruce Completado', message: 'No se encontraron matrículas comunes entre las búsquedas seleccionadas.', color: 'orange' });
+            console.error("Discrepancia entre activeSearchIds y savedSearches encontrados.");
+            notifications.show({ title: 'Error en Cruce', message: 'Algunas búsquedas activas no se encontraron.', color: 'red' });
             setLoading(false);
             return;
         }
 
-        // 4. Llamar a la API para obtener lecturas detalladas de la intersección
-        notifications.show({ 
-            id: `loading-intersection-${searchIds.join('-')}`, // ID único para la notificación
-            title: 'Calculando Cruce', 
-            message: `Buscando lecturas para ${intersectedPlates.length} matrículas comunes...`, 
-            color: 'blue', 
-            loading: true, 
-            autoClose: false // Mantener hasta que termine
+        // 2. Obtener lecturas para cada búsqueda
+        const allReadings: Lectura[] = [];
+        for (const search of activeSearches) {
+            try {
+                const response = await fetch(`http://localhost:8000/lecturas/por_filtros`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...search.filtros,
+                        caso_id: casoId,
+                        tipo_fuente: 'LPR'
+                    }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error HTTP ${response.status}`);
+                }
+
+                const readings: Lectura[] = await response.json();
+                allReadings.push(...readings);
+            } catch (error) {
+                console.error(`Error obteniendo lecturas para búsqueda ${search.nombre}:`, error);
+                notifications.show({
+                    title: 'Error en Búsqueda',
+                    message: `No se pudieron obtener las lecturas para ${search.nombre}: ${error instanceof Error ? error.message : String(error)}`,
+                    color: 'red'
+                });
+            }
+        }
+
+        // 3. Agrupar lecturas por matrícula
+        const grouped = _.groupBy(allReadings, 'Matricula');
+        const groupedResultsArray: ResultadoAgrupado[] = Object.entries(grouped).map(([matricula, readings]) => {
+            const sortedReadings = _.sortBy(readings, r => new Date(r.Fecha_y_Hora));
+            return {
+                matricula,
+                count: readings.length,
+                firstSeen: dayjs(sortedReadings[0].Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'),
+                lastSeen: dayjs(sortedReadings[sortedReadings.length - 1].Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'),
+                readings: sortedReadings,
+            };
         });
 
-        try {
-            const response = await fetch(`http://localhost:8000/lecturas/por_matriculas_y_filtros_combinados`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    matriculas: intersectedPlates,
-                    caso_id: casoId, 
-                    tipo_fuente: 'LPR' // O el tipo relevante si es variable
-                }),
+        // 4. Aplicar filtro de pasos si está configurado
+        const minPasos = currentFilters.minPasos;
+        const maxPasos = currentFilters.maxPasos;
+        let filteredResults = groupedResultsArray;
+        if (minPasos !== null || maxPasos !== null) {
+            console.info(`Aplicando filtro de Pasos: Min=${minPasos}, Max=${maxPasos}`);
+            filteredResults = groupedResultsArray.filter(group => {
+                const count = group.count;
+                const minOk = (minPasos === null || count >= minPasos);
+                const maxOk = (maxPasos === null || count <= maxPasos);
+                return minOk && maxOk;
             });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ detail: 'Error desconocido en la API' }));
-                throw new Error(errorData.detail || `Error HTTP ${response.status}`);
-            }
-
-            const finalResults: Lectura[] = await response.json();
-
-            // 5. Agrupar y mostrar resultados (misma lógica que antes)
-             if (finalResults.length > 0) {
-                const grouped = _.groupBy(finalResults, 'Matricula');
-                const groupedResultsArray: ResultadoAgrupado[] = Object.entries(grouped).map(([matricula, readings]) => {
-                     const sortedReadings = _.sortBy(readings, r => new Date(r.Fecha_y_Hora));
-                    return {
-                        matricula,
-                        count: readings.length,
-                        firstSeen: dayjs(sortedReadings[0].Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'),
-                        lastSeen: dayjs(sortedReadings[sortedReadings.length - 1].Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'),
-                        readings: sortedReadings,
-                    };
-                });
-                setDisplayedResults(groupedResultsArray);
-                notifications.update({ 
-                    id: `loading-intersection-${searchIds.join('-')}`,
-                    title: 'Cruce Completado', 
-                    message: `Mostrando ${groupedResultsArray.length} matrículas comunes y sus ${finalResults.length} lecturas.`, 
-                    color: 'green', 
-                    icon: <IconCheck size={18} />, 
-                    loading: false, 
-                    autoClose: 5000 
-                });
-            } else {
-                 // Esto no debería pasar si intersectedPlates no era vacío, pero por si acaso
-                 setDisplayedResults([]);
-                 notifications.update({ 
-                    id: `loading-intersection-${searchIds.join('-')}`,
-                    title: 'Cruce Extraño', 
-                    message: 'Se encontraron matrículas comunes pero no sus lecturas.', 
-                    color: 'orange', 
-                    loading: false, 
-                    autoClose: 5000 
-                });
-            }
-
-        } catch (error) {
-            console.error("Error al obtener lecturas para la intersección:", error);
-            notifications.update({ 
-                id: `loading-intersection-${searchIds.join('-')}`,
-                title: 'Error en Cruce', 
-                message: `No se pudieron obtener las lecturas detalladas: ${error instanceof Error ? error.message : String(error)}`, 
-                color: 'red', 
-                loading: false, 
-                autoClose: 5000 
-            });
-             setDisplayedResults([]); // Limpiar resultados en caso de error
-        } finally {
-            setLoading(false);
+            console.info(`Resultados tras filtro Pasos: ${filteredResults.length}`);
         }
+
+        setDisplayedResults(filteredResults);
+        notifications.show({
+            title: 'Cruce Completado',
+            message: `Se encontraron ${filteredResults.length} matrículas con ${allReadings.length} lecturas totales.`,
+            color: 'green'
+        });
+        setLoading(false);
     };
 
     // --- NUEVO: Handler para Eliminar Múltiples Búsquedas Seleccionadas ---

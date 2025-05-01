@@ -5,23 +5,19 @@ import axios from 'axios';
 // Si ejecutas ambos localmente, probablemente sea algo así:
 const API_BASE_URL = 'http://localhost:8000'; // O el puerto que use FastAPI/Uvicorn
 
-// Crea una instancia de Axios sin Content-Type por defecto
+// Crea una instancia de Axios con la configuración correcta
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  // Quitar la cabecera Content-Type por defecto
-  // headers: {
-  //   'Content-Type': 'application/json',
-  // },
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
-// Puedes añadir interceptores si necesitas manejar errores globalmente o tokens
+// Interceptor para manejar errores
 apiClient.interceptors.response.use(
-  (response) => response, // Simplemente devuelve la respuesta si es exitosa
+  (response) => response,
   (error) => {
-    // Manejo básico de errores
-    console.error('Error en la petición API:', error.response || error.message);
-    // Puedes lanzar el error de nuevo o devolver una promesa rechazada
-    // para manejarlo específicamente en cada llamada
+    console.error('Error en la petición API:', error.response?.data || error.message);
     return Promise.reject(error);
   }
 );
