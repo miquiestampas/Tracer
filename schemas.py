@@ -308,50 +308,7 @@ class SavedSearch(SavedSearchBase):
 # LecturaRelevante.model_rebuild() 
 
 # --- Schemas para Detección de Vehículo Lanzadera ---
-
-class LanzaderaDetectionPayload(BaseModel):
-    """Payload para la detección de vehículos lanzadera."""
-    matricula_objetivo: Optional[str] = None
-    ventana_tiempo_segundos: int = 300  # 5 minutos por defecto
-    min_coincidencias: int = 2
-    fecha_inicio: Optional[str] = None
-    fecha_fin: Optional[str] = None
-    hora_inicio: Optional[str] = None
-    hora_fin: Optional[str] = None
-
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
-
-class CoincidenciaDetalleSchema(BaseModel):
-    """Esquema para los detalles de una coincidencia temporal."""
-    lector_id: Optional[str] = None
-    lat: Optional[float] = None
-    lon: Optional[float] = None
-    sentido: Optional[str] = None
-    orientacion: Optional[str] = None
-    matriculas_par: List[str]
-    timestamp_vehiculo_1: SkipValidation[datetime.datetime]
-    timestamp_vehiculo_2: SkipValidation[datetime.datetime]
-    lectura_verificada: bool
-    id_lectura_1: int
-    id_lectura_2: int
-
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
-
-class ConvoyDetectionResponse(BaseModel):
-    """Respuesta de la detección de convoyes."""
-    vehiculos_en_convoy: List[str]
-    detalles_coocurrencias: List[CoincidenciaDetalleSchema]
-
-    class Config:
-        arbitrary_types_allowed = True
+# Removed as part of cleanup
 
 # --- Schemas ANTIGUOS (Relacionados con ResultadoLanzadera...) --- 
 # Los comentamos o eliminamos ya que no se usarán con el nuevo enfoque
