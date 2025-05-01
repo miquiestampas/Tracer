@@ -103,7 +103,7 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
         />
         <Group>
           <Button
-            variant="light"
+            variant="outline"
             leftSection={<IconClearAll size={16} />}
             onClick={onLimpiar}
             disabled={loading}
