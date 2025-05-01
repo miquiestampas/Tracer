@@ -30,6 +30,7 @@ import type { Caso, ArchivoExcel, UploadResponse } from '../types/data';
 import * as XLSX from 'xlsx'; // Importar librería xlsx
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ProgressOverlay } from '../components/common/ProgressOverlay';
+import ProgressModal from '../components/modals/ProgressModal';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
@@ -429,7 +430,7 @@ function ImportarPage() {
       return;
     }
 
-    // Validar mapeo antes de subir (igual que en saveMapping)
+    // Validar mapeo antes de subir
     const missingMappings = REQUIRED_FIELDS[fileType].filter(field => !columnMapping[field]);
     if (missingMappings.length > 0) {
         notifications.show({
@@ -447,70 +448,32 @@ function ImportarPage() {
     setUploadError(null);
 
     try {
-      // Llamar a la API de subida
-      const uploadResult: UploadResponse = await uploadArchivoExcel(
+      const response = await uploadArchivoExcel(
         selectedCasoId,
         fileType,
         selectedFile,
         mappingJson
       );
-
-      // --- Manejo de Respuesta Mejorado ---
-      if (uploadResult && uploadResult.archivo) {
-          // Notificación de éxito principal
-          notifications.show({
-            title: 'Importación Exitosa',
-            // Acceder al nombre del archivo a través de uploadResult.archivo
-            message: `Archivo '${uploadResult.archivo.Nombre_del_Archivo}' importado correctamente.`, 
-            color: 'green',
-            icon: <IconCheck size={18} />,
-            autoClose: 6000
-          });
-
-          // Notificación adicional si se crearon lectores
-          if (uploadResult.nuevos_lectores_creados && uploadResult.nuevos_lectores_creados.length > 0) {
-              notifications.show({
-                  title: 'Nuevos Lectores Creados',
-                  message: `Se crearon ${uploadResult.nuevos_lectores_creados.length} lectores nuevos. Puedes añadirles más información en "Gestión de Lectores". IDs: ${uploadResult.nuevos_lectores_creados.join(', ')}`,
-                  color: 'yellow', 
-                  icon: <IconAlertCircle size={18} />,
-                  autoClose: 10000 // Más tiempo para leer
-              });
-          }
-
-          // Resetear formulario y recargar lista de archivos
-          setSelectedFile(null);
-          setExcelHeaders([]);
-          setColumnMapping({});
-          await fetchArchivos(selectedCasoId); // Recargar lista tras éxito
-      } else {
-          // Esto no debería ocurrir si la API devuelve UploadResponse
-          throw new Error("La respuesta de la API no contiene la información del archivo esperado.");
-      }
-      // --- Fin Manejo de Respuesta Mejorado ---
-
-    } catch (error: any) {
-      console.error("Error detallado al importar:", error);
-      let errorMessage = 'Error desconocido al importar el archivo.';
-      if (error.response && error.response.data && error.response.data.detail) {
-        // Intentar obtener el mensaje de error específico de FastAPI
-        if (typeof error.response.data.detail === 'string') {
-            errorMessage = error.response.data.detail;
-        } else if (Array.isArray(error.response.data.detail)) {
-            // Si es un error de validación Pydantic
-            try {
-                errorMessage = error.response.data.detail.map((e: any) => `${e.loc?.join(' -> ') || 'Error'}: ${e.msg}`).join('; ');
-            } catch { /* fallback */ }
-        }
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      setUploadError(`Error al importar el archivo. Mensaje: ${errorMessage}`);
+      
       notifications.show({
-        title: 'Error de Importación',
-        message: errorMessage,
-        color: 'red',
-        icon: <IconX size={18} />
+        title: 'Éxito',
+        message: `Archivo "${response.archivo.Nombre_del_Archivo}" importado correctamente`,
+        color: 'green'
+      });
+      
+      // Limpiar el formulario
+      setSelectedFile(null);
+      setExcelHeaders([]);
+      setColumnMapping({});
+      // Recargar la lista de archivos
+      fetchArchivos(selectedCasoId);
+    } catch (error) {
+      console.error('Error al subir el archivo:', error);
+      setUploadError(error instanceof Error ? error.message : 'Error al subir el archivo');
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo subir el archivo. Por favor, intenta de nuevo.',
+        color: 'red'
       });
     } finally {
       setIsUploading(false);
@@ -521,10 +484,15 @@ function ImportarPage() {
   return (
     <Box p="md">
       <Title order={2} mb="xl">Importar Datos desde Excel</Title>
-      <ProgressOverlay 
-        visible={isUploading || isReadingHeaders} 
-        progress={(isUploading || isReadingHeaders) ? 100 : 0} 
-        label={isUploading ? "Subiendo archivo..." : "Leyendo encabezados..."}
+      
+      <ProgressModal
+        open={isUploading || isReadingHeaders}
+        progress={isUploading ? 75 : isReadingHeaders ? 25 : 0}
+        onCancel={() => {
+          setIsUploading(false);
+          setIsReadingHeaders(false);
+        }}
+        message={isUploading ? "Subiendo archivo..." : isReadingHeaders ? "Leyendo encabezados..." : ""}
       />
 
       {/* Formulario de importación principal */}
