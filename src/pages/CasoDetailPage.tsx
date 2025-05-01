@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Box, Text, Loader, Alert, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea, Title } from '@mantine/core';
+import { Box, Text, Loader, Alert, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea, Title, Divider } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook, IconTable, IconTarget, IconMap, IconRoute, IconDeviceCctv, IconArrowsJoin, IconBookmark, IconHelpCircle, IconRefresh } from '@tabler/icons-react';
 import { getCasoById } from '../services/casosApi';
@@ -52,13 +52,12 @@ type DataSourceType = 'LPR' | 'GPS';
 
 // --- NUEVO: Definir las secciones/botones (ACTUALIZADO) --- 
 const caseSections = [
-    { id: 'analisis-lpr', label: 'Lecturas LPR', icon: IconDeviceCctv },
-    { id: 'busqueda-cruzada-lpr', label: 'Búsqueda Cruzada', icon: IconFlask },
-    { id: 'lanzadera', label: 'Vehículo Lanzadera', icon: IconArrowsJoin },
-    { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconBookmark },
-    { id: 'vehiculos', label: 'Vehículos', icon: IconCar },
-    { id: 'mapa', label: 'Mapa', icon: IconMap },
-    { id: 'archivos', label: 'Archivos Importados', icon: IconFiles },
+    { id: 'analisis-lpr', label: 'Lecturas LPR', icon: IconDeviceCctv, section: 'lecturas' },
+    { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconBookmark, section: 'lecturas' },
+    { id: 'lanzadera', label: 'Vehículo Lanzadera', icon: IconArrowsJoin, section: 'lecturas' },
+    { id: 'vehiculos', label: 'Vehículos', icon: IconCar, section: 'vehiculos' },
+    { id: 'mapa', label: 'Mapa', icon: IconMap, section: 'vehiculos' },
+    { id: 'archivos', label: 'Archivos Importados', icon: IconFiles, section: 'archivos' },
 ];
 
 // --- Añadir tipo para lecturas de mapa --- 
@@ -113,26 +112,6 @@ const helpTexts: { [key: string]: React.ReactNode } = {
       </Stack>
     </Box>
   ),
-  'busqueda-cruzada-lpr': (
-    <Box maw={400}>
-      <Text fw={500} mb="sm">Ayuda: Búsqueda Cruzada</Text>
-      <Stack gap="xs">
-        <Text size="xs">
-          <strong>Propósito:</strong> Identifica vehículos (matrículas) que aparecen en <strong>múltiples conjuntos de filtros diferentes</strong> dentro de este mismo caso. Es útil para encontrar vehículos vistos bajo distintas condiciones (p.ej., en dos zonas diferentes o en dos franjas horarias).
-        </Text>
-        <Text size="xs">
-          <strong>Uso Correcto:</strong>
-          <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li><strong>Define y Guarda Búsquedas:</strong> Usa los filtros para definir un criterio (p.ej., Lector A entre 8:00-9:00). Haz clic en "Guardar Búsqueda" y dale un nombre descriptivo (p.ej., "Entrada Mañana"). Repite para otros criterios (p.ej., "Salida Tarde").</li>
-            <li><strong>Selecciona Búsquedas Guardadas:</strong> Marca las casillas de las búsquedas guardadas que quieres cruzar (mínimo 2).</li>
-            <li><strong>Realiza el Cruce:</strong> Haz clic en "Realizar Cruce".</li>
-            <li><strong>Resultados:</strong> Se mostrará la lista de matrículas que aparecen en <strong>todas</strong> las búsquedas seleccionadas.</li>
-            <li><strong>Ver Lecturas (Opcional):</strong> Puedes seleccionar las matrículas resultantes para ver sus lecturas detalladas.</li>
-          </ol>
-        </Text>
-      </Stack>
-    </Box>
-  ), 
   'lanzadera': (
     <Box maw={400}>
       <Text fw={500} mb="sm">Ayuda: Vehículo Lanzadera</Text>
@@ -574,38 +553,60 @@ function CasoDetailPage() {
             <Text size="xl" fw={700} mt="md" mb="lg">Detalles del Caso: {caso.Nombre_del_Caso} ({caso.Año})</Text>
 
             {/* --- NUEVO: Grupo de Botones de Navegación --- */}
-            <Group mb="xl">
-                {caseSections.map((section) => (
-                    <Button
-                        key={section.id}
-                        variant={activeMainTab === section.id ? 'filled' : 'light'} // Resaltar activo
-                        onClick={() => setActiveMainTab(section.id)}
-                        leftSection={<section.icon size={16} />}
-                        color="gray" // Color base para todos
-                        styles={(theme) => ({
-                            root: {
-                                 // Asegurar contraste para el botón activo
-                                 backgroundColor: activeMainTab === section.id 
-                                     ? theme.colors[theme.primaryColor][6] // Color primario relleno
-                                     : undefined,
-                                 color: activeMainTab === section.id
-                                     ? theme.white // Texto blanco en activo
-                                     : undefined,
-                                 '&:hover': {
-                                     backgroundColor: activeMainTab !== section.id 
-                                         ? theme.colors.gray[1] // Hover sutil para no activos
-                                         : undefined,
-                                 },
-                            },
-                            label: {
-                                fontWeight: activeMainTab === section.id ? 600 : 400,
-                            }
-                        })}
-                    >
-                        {section.label}
-                    </Button>
-                ))}
-            </Group>
+            <Stack gap="xs" mb="md">
+                <Group gap={0} align="flex-start">
+                    <Box>
+                        <Text fw={500} c="blue" mb="xs">Análisis sobre Lecturas</Text>
+                        <Group gap="xs">
+                            {caseSections.filter(section => section.section === 'lecturas').map((section) => (
+                                <Button
+                                    key={section.id}
+                                    variant={activeMainTab === section.id ? 'filled' : 'light'}
+                                    leftSection={<section.icon size={16} />}
+                                    onClick={() => setActiveMainTab(section.id)}
+                                    color="blue"
+                                >
+                                    {section.label}
+                                </Button>
+                            ))}
+                        </Group>
+                    </Box>
+                    <Divider orientation="vertical" mx="md" />
+                    <Box>
+                        <Text fw={500} c="violet" mb="xs">Análisis sobre Vehículos</Text>
+                        <Group gap="xs">
+                            {caseSections.filter(section => section.section === 'vehiculos').map((section) => (
+                                <Button
+                                    key={section.id}
+                                    variant={activeMainTab === section.id ? 'filled' : 'light'}
+                                    leftSection={<section.icon size={16} />}
+                                    onClick={() => setActiveMainTab(section.id)}
+                                    color="violet"
+                                >
+                                    {section.label}
+                                </Button>
+                            ))}
+                        </Group>
+                    </Box>
+                    <Divider orientation="vertical" mx="md" />
+                    <Box>
+                        <Text fw={500} c="gray" mb="xs">Archivos</Text>
+                        <Group gap="xs">
+                            {caseSections.filter(section => section.section === 'archivos').map((section) => (
+                                <Button
+                                    key={section.id}
+                                    variant={activeMainTab === section.id ? 'filled' : 'light'}
+                                    leftSection={<section.icon size={16} />}
+                                    onClick={() => setActiveMainTab(section.id)}
+                                    color="gray"
+                                >
+                                    {section.label}
+                                </Button>
+                            ))}
+                        </Group>
+                    </Box>
+                </Group>
+            </Stack>
             {/* --- FIN Grupo de Botones --- */}
 
             <Box mt="lg" style={{ position: 'relative' }}> {/* Añadir position relative al contenedor padre */} 
@@ -643,34 +644,6 @@ function CasoDetailPage() {
                     />
                 </Box>
 
-                {/* Pestaña Búsqueda Cruzada (Añadir icono ayuda aquí después) */} 
-                <Box style={{ display: activeMainTab === 'busqueda-cruzada-lpr' ? 'block' : 'none', position: 'relative' }}>
-                   {/* --- Icono de Ayuda para esta pestaña --- */}
-                   <Tooltip
-                        label={helpTexts['busqueda-cruzada-lpr']}
-                        multiline withArrow position="bottom-start" offset={8}
-                        styles={{ tooltip: { maxWidth: '400px' } }} 
-                        zIndex={1001} 
-                    >
-                        <ActionIcon 
-                            variant="subtle" 
-                            color="blue" 
-                            size="lg" 
-                            aria-label="Ayuda Búsqueda Cruzada"
-                            style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
-                        >
-                            <IconHelpCircle size="1.8rem" stroke={1.5} />
-                        </ActionIcon>
-                    </Tooltip>
-                    {/* --- Fin Icono Ayuda --- */}
-                    
-                    <LprAvanzadoPanel 
-                        casoId={idCasoNum!}
-                        interactedMatriculas={interactedMatriculas}
-                        addInteractedMatricula={addInteractedMatricula}
-                    />
-                </Box>
-
                 {/* Pestaña Lanzadera */}
                 <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none', position: 'relative' }}>
                     {/* --- Icono de Ayuda para esta pestaña --- */}
@@ -695,7 +668,7 @@ function CasoDetailPage() {
                     <LanzaderaPanel casoId={idCasoNum!} />
                 </Box>
 
-                {/* ... Resto de las pestañas (añadir icono ayuda en cada una) ... */}
+                {/* ... Resto de las pestañas ... */}
                  <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none', position: 'relative' }}>
                      {/* --- Icono de Ayuda para esta pestaña --- */}
                      <Tooltip

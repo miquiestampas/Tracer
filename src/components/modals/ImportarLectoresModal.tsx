@@ -23,6 +23,7 @@ import { IconUpload, IconFileSpreadsheet, IconAlertCircle, IconInfoCircle } from
 import * as XLSX from 'xlsx';
 import proj4 from 'proj4'; // Importar proj4js
 import { ProgressOverlay } from '../common/ProgressOverlay';
+import ProgressModal from '../modals/ProgressModal';
 
 // Interfaz para las propiedades del componente
 interface ImportarLectoresModalProps {
@@ -415,10 +416,11 @@ const ImportarLectoresModal: React.FC<ImportarLectoresModalProps> = ({
       size="xl"
       overlayProps={{ backgroundOpacity: 0.55, blur: 3 }}
     >
-      <ProgressOverlay 
-        visible={isLoading} 
-        progress={isLoading ? 100 : 0} 
-        label="Procesando archivo..."
+      <ProgressModal
+        open={isLoading}
+        progress={isLoading ? 100 : 0}
+        onCancel={() => setIsLoading(false)}
+        message={isLoading ? "Procesando archivo..." : ""}
       />
       
       {/* Paso 1: Subir archivo */}
