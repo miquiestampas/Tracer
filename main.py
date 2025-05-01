@@ -965,7 +965,7 @@ def read_lecturas(
     caso_ids: Optional[List[int]] = Query(None), 
     carretera_ids: Optional[List[str]] = Query(None),
     sentido: Optional[List[str]] = Query(None),
-    matricula: Optional[str] = None,
+    matricula: Optional[List[str]] = Query(None),
     tipo_fuente: Optional[str] = Query(None),
     solo_relevantes: Optional[bool] = False,
     min_pasos: Optional[int] = None,
@@ -1009,10 +1009,17 @@ def read_lecturas(
         logger.warning("Formato de fecha/hora inválido recibido.")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
 
-    # Filtro por matrícula (usando el nuevo sistema de patrones)
+    # Filtro por matrícula (usando or_ para múltiples valores y comodines)
     if matricula:
-        sql_pattern = matricula.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
-        base_query = base_query.filter(models.Lectura.Matricula.ilike(sql_pattern))
+        condiciones = []
+        for m in matricula:
+            sql_pattern = m.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+            if '*' in m or '%' in m or '?' in m or '_' in m:
+                condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
+            else:
+                condiciones.append(models.Lectura.Matricula == m)
+        if condiciones:
+            base_query = base_query.filter(or_(*condiciones))
 
     # Filtro por número de pasos (lecturas por matrícula)
     if min_pasos is not None or max_pasos is not None:
@@ -1053,9 +1060,6 @@ def read_lecturas(
         except ValueError:
             logger.warning("Formato de fecha/hora inválido recibido en subconsulta de pasos.")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
-
-        if matricula:
-            pasos_subquery = pasos_subquery.filter(models.Lectura.Matricula.ilike(sql_pattern))
 
         # Agrupar y filtrar por número de pasos
         pasos_subquery = (

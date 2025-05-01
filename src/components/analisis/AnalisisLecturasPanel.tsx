@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme, Table } from '@mantine/core';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme, Table, Select } from '@mantine/core';
 import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
 import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff, IconChevronDown, IconChevronRight, IconBuildingCommunity, IconTableOptions, IconTable, IconPlus, IconX } from '@tabler/icons-react';
@@ -152,6 +152,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [selectedOrganismos, setSelectedOrganismos] = useState<string[]>([]);
     const [selectedProvincias, setSelectedProvincias] = useState<string[]>([]);
     const [matricula, setMatricula] = useState('');
+    const [matriculaTags, setMatriculaTags] = useState<string[]>([]);
+    const [currentMatriculaInput, setCurrentMatriculaInput] = useState('');
     const [minPasos, setMinPasos] = useState<number | null>(null);
     const [maxPasos, setMaxPasos] = useState<number | null>(null);
     const [lectoresList, setLectoresList] = useState<SelectOption[]>([]);
@@ -166,7 +168,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [results, setResults] = useState<ExtendedLectura[]>([]);
     const [selectedRecords, setSelectedRecords] = useState<(number | string)[]>([]);
     const [page, setPage] = useState(1);
-    const PAGE_SIZE = 25;
+    const [pageSize, setPageSize] = useState(25);
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<ExtendedLectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
     const [casosSeleccionados, setCasosSeleccionados] = useState<number[]>([]);
     const [organismosList, setOrganismosList] = useState<SelectOption[]>([]);
@@ -321,10 +323,10 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         });
         
         // Aplicar paginación
-        const start = (page - 1) * PAGE_SIZE;
-        const end = start + PAGE_SIZE;
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize;
         return data.slice(start, end);
-    }, [processedResults, sortStatus, page]);
+    }, [processedResults, sortStatus, page, pageSize]);
 
     // --- Cargar datos iniciales ---
     useEffect(() => {
@@ -398,6 +400,23 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         fetchSugerencias();
     }, []);
 
+    // --- Handler para el campo de matrícula ---
+    const handleMatriculaKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === ' ' && currentMatriculaInput.trim()) {
+            event.preventDefault();
+            setMatriculaTags(prev => [...prev, currentMatriculaInput.trim()]);
+            setCurrentMatriculaInput('');
+        }
+    }, [currentMatriculaInput]);
+
+    const handleMatriculaChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        setCurrentMatriculaInput(event.target.value);
+    }, []);
+
+    const removeMatriculaTag = useCallback((tagToRemove: string) => {
+        setMatriculaTags(prev => prev.filter(tag => tag !== tagToRemove));
+    }, []);
+
     // --- NUEVA: Función para Limpiar Filtros ---
     const handleClearFilters = useCallback(() => {
         setFechaInicio(null);
@@ -408,12 +427,10 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setSelectedCarreteras([]);
         setSelectedSentidos([]);
         setSelectedCasos([]);
-        setMatricula('');
+        setCurrentMatriculaInput('');
+        setMatriculaTags([]);
         setMinPasos(null);
         setMaxPasos(null);
-        setPage(1);
-        setSortStatus({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
-        setResults([]);
         setSelectedRecords([]);
         
         notifications.show({ 
@@ -458,13 +475,12 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         return true;
     }, [fechaInicio, fechaFin, timeFrom, timeTo, minPasos, maxPasos]);
 
-    // --- Modificar handleSearch para usar validación ---
+    // --- Modificar handleSearch para enviar cada matrícula como parámetro separado ---
     const handleSearch = async () => {
         if (!validateFilters()) return;
         
         setLoading(true);
         setResults([]);
-        setPage(1);
         setSelectedRecords([]);
         
         try {
@@ -486,8 +502,13 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 selectedCasos.forEach(id => params.append('caso_ids', id));
             }
             
-            // Añadir matrícula y tipo de fuente
-            if (matricula.trim()) params.append('matricula', matricula.trim());
+            // Añadir matrículas (cada una como parámetro separado)
+            if (matriculaTags.length > 0) {
+                matriculaTags.forEach(tag => params.append('matricula', tag));
+            } else if (currentMatriculaInput.trim()) {
+                params.append('matricula', currentMatriculaInput.trim());
+            }
+            
             if (tipoFuenteFijo) params.append('tipo_fuente', tipoFuenteFijo);
             
             // Procesar filtros de pasos
@@ -868,20 +889,9 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         }
     ] as DataTableColumn<ExtendedLectura>[], [isGroupedByVehicle, toggleGroupExpansion, expandedGroups]);
 
-    // --- Handler de cambio de página ---
-    const handlePageChange = useCallback((newPage: number) => {
-        setPage(newPage);
-        // Scroll al principio de la tabla
-        const tableContainer = document.querySelector('.mantine-DataTable-tableContainer');
-        if (tableContainer) {
-            tableContainer.scrollTop = 0;
-        }
-    }, []);
-
     // --- Handler de cambio de ordenamiento ---
     const handleSortStatusChange = useCallback((newSortStatus: DataTableSortStatus<ExtendedLectura>) => {
         setSortStatus(newSortStatus);
-        setPage(1); // Resetear a la primera página al cambiar el ordenamiento
     }, []);
 
     // Actualizar los handlers de cambio para los inputs de pasos
@@ -1116,6 +1126,24 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         });
     }, [selectedSearches, savedSearches, results]);
 
+    // --- Handler de cambio de página ---
+    const handlePageChange = useCallback((newPage: number) => {
+        setPage(newPage);
+        // Scroll al principio de la tabla
+        const tableContainer = document.querySelector('.mantine-DataTable-tableContainer');
+        if (tableContainer) {
+            tableContainer.scrollTop = 0;
+        }
+    }, []);
+
+    // --- Handler de cambio de tamaño de página ---
+    const handlePageSizeChange = useCallback((value: string | null) => {
+        if (value === null) return;
+        const newPageSize = parseInt(value, 10);
+        setPageSize(newPageSize);
+        setPage(1); // Resetear a la primera página al cambiar el tamaño
+    }, []);
+
     // --- Renderizado ---
     return (
         <Box style={{ position: 'relative' }}>
@@ -1249,13 +1277,35 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 />
                                 ) : null}
                             </Group>
-                            <TextInput
-                                label="Matrícula (parcial)"
-                                placeholder="Ej: ?98?C*"
-                                value={matricula}
-                                onChange={(event) => setMatricula(event.currentTarget.value)}
-                                leftSection={<IconLicense style={iconStyle} />}
-                            />
+                            <Box>
+                                <TextInput
+                                    label="Matrícula (Completa o parcial)"
+                                    placeholder="Ej: ?98?C* (Presiona espacio para agregar múltiples)"
+                                    value={currentMatriculaInput}
+                                    onChange={handleMatriculaChange}
+                                    onKeyDown={handleMatriculaKeyDown}
+                                    leftSection={<IconLicense style={iconStyle} />}
+                                />
+                                {matriculaTags.length > 0 && (
+                                    <Group mt="xs" gap="xs">
+                                        {matriculaTags.map((tag, index) => (
+                                            <Paper key={index} p="xs" withBorder>
+                                                <Group gap="xs">
+                                                    <Text size="sm">{tag}</Text>
+                                                    <ActionIcon 
+                                                        variant="subtle" 
+                                                        color="red" 
+                                                        size="xs"
+                                                        onClick={() => removeMatriculaTag(tag)}
+                                                    >
+                                                        <IconX size={14} />
+                                                    </ActionIcon>
+                                                </Group>
+                                            </Paper>
+                                        ))}
+                                    </Group>
+                                )}
+                            </Box>
                             <Group grow>
                                 <NumberInput
                                     label="Mín. Pasos"
@@ -1442,7 +1492,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 columns={columns}
                                 minHeight={200}
                                 totalRecords={processedResults.length}
-                                recordsPerPage={PAGE_SIZE}
+                                recordsPerPage={pageSize}
                                 page={page}
                                 onPageChange={handlePageChange}
                                 idAccessor="ID_Lectura"
@@ -1455,6 +1505,17 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 onSortStatusChange={handleSortStatusChange}
                                 style={{ tableLayout: 'fixed' }}
                             />
+                            <Group justify="space-between" mt="md">
+                                <Select
+                                    label="Filas por página"
+                                    data={['25', '50', '100']}
+                                    value={String(pageSize)}
+                                    onChange={handlePageSizeChange}
+                                    style={{ width: 150 }}
+                                    disabled={loading}
+                                />
+                                <Text size="sm">Total: {processedResults.length} lecturas</Text>
+                            </Group>
                         </Box>
                      </Paper>
                  </Grid.Col>
