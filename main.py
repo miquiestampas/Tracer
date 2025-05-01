@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request, Query
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request, Query, Body
 from fastapi.middleware.cors import CORSMiddleware # Importar middleware CORS
 from fastapi.exceptions import RequestValidationError # Importar excepción
 from fastapi.responses import JSONResponse, FileResponse # Importar para respuesta personalizada y FileResponse
@@ -26,6 +26,8 @@ from collections import defaultdict # Importar defaultdict
 from contextlib import asynccontextmanager
 from sqlalchemy import or_ # Importar or_ para OR en consultas
 from sqlalchemy import and_, not_ # Importar and_ y not_ para AND y NOT en consultas
+from pydantic import BaseModel
+from datetime import datetime, timedelta, date
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -149,13 +151,30 @@ def get_optional_float(value):
 def get_optional_str(value):
     return str(value).strip() if pd.notna(value) else None
 
-def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[datetime.datetime]:
-    if not dt_str: return None
-    try:
-        return parser.parse(dt_str)
-    except (ValueError, OverflowError, TypeError) as e:
-        logger.warning(f"No se pudo parsear la fecha/hora: '{dt_str}'. Error: {e}")
+def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[datetime]:
+    """
+    Parsea una cadena de fecha/hora en varios formatos comunes.
+    Retorna None si no se puede parsear.
+    """
+    if not dt_str:
         return None
+        
+    formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y"
+    ]
+    
+    for fmt in formats:
+        try:
+            return datetime.strptime(dt_str, fmt)
+        except ValueError:
+            continue
+            
+    return None
 
 def translate_plate_pattern(pattern: str) -> str:
     """
@@ -1373,280 +1392,7 @@ def delete_saved_search(search_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al eliminar búsqueda.")
 
 # === Endpoint para Detección de Vehículo Lanzadera ===
-@app.post("/casos/{caso_id}/lanzaderas/detectar", 
-             response_model=schemas.ConvoyDetectionResponse, # <-- NUEVO RESPONSE MODEL
-             summary="Detectar Convoyes de Vehículos",
-             description="Detecta vehículos que viajan juntos consistentemente en un caso.")
-async def detectar_vehiculos_lanzadera(
-    caso_id: int,
-    payload: schemas.LanzaderaDetectionPayload,
-    db: Session = Depends(get_db)
-):
-    logger.info(f"Detectando convoyes para caso {caso_id} con payload: {payload}")
-
-    # 1. Obtener y Filtrar Lecturas LPR
-    try:
-        lecturas_lpr_query = db.query(models.Lectura)\
-            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
-            .filter(models.ArchivoExcel.ID_Caso == caso_id, models.Lectura.Tipo_Fuente == 'LPR')
-        
-        # --- Aplicar Filtros de Fecha/Hora --- 
-        if payload.fecha_inicio:
-            try:
-                fecha_dt = datetime.datetime.strptime(payload.fecha_inicio, "%Y-%m-%d").date()
-                lecturas_lpr_query = lecturas_lpr_query.filter(models.Lectura.Fecha_y_Hora >= fecha_dt)
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Formato fecha_inicio inválido. Usar YYYY-MM-DD.")
-        if payload.fecha_fin:
-            try:
-                # Añadir 1 día para incluir el día completo
-                fecha_dt = datetime.datetime.strptime(payload.fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
-                lecturas_lpr_query = lecturas_lpr_query.filter(models.Lectura.Fecha_y_Hora < fecha_dt)
-            except ValueError:
-                 raise HTTPException(status_code=400, detail="Formato fecha_fin inválido. Usar YYYY-MM-DD.")
-        if payload.hora_inicio:
-            try:
-                hora_time = datetime.datetime.strptime(payload.hora_inicio, "%H:%M").time()
-                lecturas_lpr_query = lecturas_lpr_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_time.hour * 100 + hora_time.minute)
-            except ValueError:
-                 raise HTTPException(status_code=400, detail="Formato hora_inicio inválido. Usar HH:MM.")
-        if payload.hora_fin:
-            try:
-                hora_time = datetime.datetime.strptime(payload.hora_fin, "%H:%M").time()
-                lecturas_lpr_query = lecturas_lpr_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_time.hour * 100 + hora_time.minute)
-            except ValueError:
-                 raise HTTPException(status_code=400, detail="Formato hora_fin inválido. Usar HH:MM.")
-        # --- Fin Filtros Fecha/Hora ---
-
-        # Ordenar SIEMPRE por tiempo para la lógica de ventana
-        todas_las_lecturas_lpr = lecturas_lpr_query.order_by(models.Lectura.Fecha_y_Hora).all()
-        
-        if not todas_las_lecturas_lpr:
-            logger.info(f"No se encontraron lecturas LPR para el caso {caso_id} con los filtros aplicados.")
-            return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
-
-        # Filtrar por matrícula objetivo si se especifica
-        if payload.matricula_objetivo:
-            todas_las_lecturas_lpr = [
-                lectura for lectura in todas_las_lecturas_lpr 
-                if lectura.Matricula == payload.matricula_objetivo
-            ]
-            if not todas_las_lecturas_lpr:
-                logger.info(f"No se encontraron lecturas para la matrícula objetivo {payload.matricula_objetivo}")
-                return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
-
-        logger.info(f"Obtenidas {len(todas_las_lecturas_lpr)} lecturas LPR filtradas para procesar.")
-    except HTTPException as http_exc:
-        raise http_exc # Re-lanzar excepciones de formato
-    except Exception as e:
-        logger.error(f"Error obteniendo/filtrando lecturas LPR para caso {caso_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno al obtener lecturas del caso")
-    
-    # --- Lógica de detección de convoyes --- 
-    coincidencias_pares_detalle_temporal = defaultdict(list)
-    lecturas_verificadas = {}  # Diccionario para almacenar lecturas verificadas
-
-    # --- Encontrar todas las co-ocurrencias temporales (sobre lecturas filtradas) --- 
-    num_total_lecturas = len(todas_las_lecturas_lpr)
-    if num_total_lecturas < 2: 
-        return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
-
-    logger.info(f"Procesando {num_total_lecturas} lecturas filtradas para encontrar co-ocurrencias temporales...")
-    ventana = timedelta(seconds=payload.ventana_tiempo_segundos)
-    
-    # Pre-procesar y verificar todas las lecturas
-    for lectura in todas_las_lecturas_lpr:
-        key = (lectura.Matricula, lectura.Fecha_y_Hora, lectura.ID_Lector)
-        lecturas_verificadas[key] = {
-            'id_lectura': lectura.ID_Lectura,
-            'lectura': lectura
-        }
-
-    # Bucle principal para encontrar co-ocurrencias
-    for i in range(num_total_lecturas):
-        lectura_ref = todas_las_lecturas_lpr[i]
-        tiempo_inicio_ventana = lectura_ref.Fecha_y_Hora
-        tiempo_fin_ventana = tiempo_inicio_ventana + ventana
-        lector_id_ref = lectura_ref.ID_Lector
-        
-        # Si hay matrícula objetivo, solo procesar las lecturas que no sean de esa matrícula
-        # para encontrar los vehículos que viajan con ella
-        if payload.matricula_objetivo and lectura_ref.Matricula != payload.matricula_objetivo:
-            continue
-        
-        # Obtener el sentido del lector de referencia
-        lector_ref = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id_ref).first()
-        sentido_ref = lector_ref.Sentido if lector_ref else None
-        
-        # Verificar que la lectura de referencia existe y tiene sentido válido
-        key_ref = (lectura_ref.Matricula, lectura_ref.Fecha_y_Hora, lector_id_ref)
-        if key_ref not in lecturas_verificadas or not sentido_ref:
-            logger.warning(f"Lectura de referencia no verificada o sin sentido: {key_ref}")
-            continue
-
-        # Buscar lecturas dentro de la ventana de tiempo
-        lecturas_en_ventana = []
-        for j in range(i + 1, num_total_lecturas):
-            lectura_comp = todas_las_lecturas_lpr[j]
-            
-            if lectura_comp.Fecha_y_Hora >= tiempo_fin_ventana:
-                break
-                
-            # Obtener el sentido del lector de comparación
-            lector_comp = db.query(models.Lector).filter(models.Lector.ID_Lector == lectura_comp.ID_Lector).first()
-            sentido_comp = lector_comp.Sentido if lector_comp else None
-
-            # Verificar que la lectura de comparación existe y tiene sentido válido
-            key_comp = (lectura_comp.Matricula, lectura_comp.Fecha_y_Hora, lectura_comp.ID_Lector)
-            if key_comp not in lecturas_verificadas or not sentido_comp:
-                logger.warning(f"Lectura de comparación no verificada o sin sentido: {key_comp}")
-                continue
-
-            # Solo considerar lecturas de vehículos diferentes y en el mismo sentido
-            if (lectura_comp.Matricula != lectura_ref.Matricula and 
-                sentido_ref == sentido_comp):  # Mismo sentido de circulación
-                lecturas_en_ventana.append(lectura_comp)
-
-        # Procesar las lecturas encontradas en la ventana
-        for lectura_comp in lecturas_en_ventana:
-            key_comp = (lectura_comp.Matricula, lectura_comp.Fecha_y_Hora, lectura_comp.ID_Lector)
-            pair_key = frozenset({lectura_ref.Matricula, lectura_comp.Matricula})
-            
-            # Verificar que no sea un duplicado y que la diferencia de tiempo sea significativa
-            is_duplicate = False
-            tiempo_entre_lecturas = abs((lectura_comp.Fecha_y_Hora - lectura_ref.Fecha_y_Hora).total_seconds())
-            
-            # Si las lecturas están muy cercanas en tiempo (menos de 10 segundos), podrían ser erróneas
-            if tiempo_entre_lecturas < 10:
-                logger.warning(f"Lecturas demasiado cercanas en tiempo ({tiempo_entre_lecturas}s), posible error: {key_ref} - {key_comp}")
-                continue
-
-            for existing in coincidencias_pares_detalle_temporal[pair_key]:
-                if (existing[1] == lectura_ref.Fecha_y_Hora and 
-                    existing[2] == lectura_comp.Fecha_y_Hora):
-                    is_duplicate = True
-                    break
-            
-            if not is_duplicate:
-                coincidencias_pares_detalle_temporal[pair_key].append((
-                    lector_id_ref,
-                    lectura_ref.Fecha_y_Hora,
-                    lectura_comp.Fecha_y_Hora,
-                    lecturas_verificadas[key_ref]['id_lectura'],
-                    lecturas_verificadas[key_comp]['id_lectura']
-                ))
-
-    # --- Filtrar pares por patrón significativo y recopilar datos --- 
-    pares_significativos = set() 
-    todos_los_detalles_significativos_raw = [] 
-    vehiculos_en_convoy_set = set()
-
-    logger.info("Filtrando pares por patrón significativo...")
-    
-    for pair_key, ocurrencias in coincidencias_pares_detalle_temporal.items():
-        if not ocurrencias: 
-            continue
-        
-        # Comprobar patrón significativo (lectores/días distintos)
-        lectores_distintos = set(occ[0] for occ in ocurrencias if occ[0])
-        dias_distintos = set(occ[1].date() for occ in ocurrencias)
-        num_lectores_distintos = len(lectores_distintos)
-        num_dias_distintos = len(dias_distintos)
-
-        # Aumentar el umbral mínimo para considerar un patrón significativo
-        if ((num_lectores_distintos >= payload.min_coincidencias and num_lectores_distintos >= 3) or 
-            (num_dias_distintos >= payload.min_coincidencias and num_dias_distintos >= 2)):
-            
-            # Verificar que las lecturas siguen un patrón lógico en la carretera
-            lecturas_ordenadas = sorted(ocurrencias, key=lambda x: x[1])  # Ordenar por timestamp
-            patron_valido = True
-            
-            for idx in range(len(lecturas_ordenadas) - 1):
-                lector_actual = db.query(models.Lector).filter(models.Lector.ID_Lector == lecturas_ordenadas[idx][0]).first()
-                lector_siguiente = db.query(models.Lector).filter(models.Lector.ID_Lector == lecturas_ordenadas[idx + 1][0]).first()
-                
-                if lector_actual and lector_siguiente and lector_actual.Carretera == lector_siguiente.Carretera:
-                    # Si están en la misma carretera, verificar que el orden temporal tiene sentido
-                    tiempo_entre_lecturas = (lecturas_ordenadas[idx + 1][1] - lecturas_ordenadas[idx][1]).total_seconds()
-                    if tiempo_entre_lecturas < 0:  # Lecturas en orden temporal incorrecto
-                        patron_valido = False
-                        break
-
-            if patron_valido:
-                pares_significativos.add(pair_key)
-                vehiculos_en_convoy_set.update(pair_key)
-                
-                # Guardar todos los detalles de este par significativo
-                for lector_id, timestamp_ref, timestamp_comp, id_lectura_1, id_lectura_2 in ocurrencias:
-                    todos_los_detalles_significativos_raw.append((
-                        pair_key, 
-                        lector_id, 
-                        timestamp_ref, 
-                        timestamp_comp,
-                        id_lectura_1,
-                        id_lectura_2
-                    ))
-
-    # --- Si no hay pares significativos, devolver vacío --- 
-    if not pares_significativos:
-        logger.info("No se encontraron convoyes significativos tras el filtrado.")
-        return schemas.ConvoyDetectionResponse(vehiculos_en_convoy=[], detalles_coocurrencias=[])
-
-    logger.info(f"Se encontraron {len(pares_significativos)} convoyes significativos involucrando a {len(vehiculos_en_convoy_set)} vehículos. Obteniendo coordenadas...")
-    
-    # --- Obtener Coordenadas --- 
-    lector_ids_necesarios = set(det[1] for det in todos_los_detalles_significativos_raw if det[1])
-    
-    lector_data_map = {}
-    if lector_ids_necesarios:
-        lectores_data_db = db.query(
-            models.Lector.ID_Lector, 
-            models.Lector.Coordenada_Y, 
-            models.Lector.Coordenada_X,
-            models.Lector.Sentido,
-            models.Lector.Orientacion
-        ).filter(models.Lector.ID_Lector.in_(lector_ids_necesarios)).all()
-        
-        lector_data_map = { 
-            res.ID_Lector: {
-                "lat": res.Coordenada_Y, 
-                "lon": res.Coordenada_X, 
-                "sentido": res.Sentido, 
-                "orientacion": res.Orientacion
-            } for res in lectores_data_db
-        }
-        logger.info(f"Se obtuvieron datos para {len(lector_data_map)} de {len(lector_ids_necesarios)} lectores.")
-
-    # --- Construir la lista plana de detalles finales --- 
-    detalles_finales: List[schemas.CoincidenciaDetalleSchema] = []
-    
-    for pair_key, lector_id, timestamp_ref, timestamp_comp, id_lectura_1, id_lectura_2 in todos_los_detalles_significativos_raw:
-        data_lector = lector_data_map.get(lector_id)
-        detalles_finales.append(schemas.CoincidenciaDetalleSchema(
-            lector_id=lector_id,
-            lat=data_lector.get("lat") if data_lector else None,
-            lon=data_lector.get("lon") if data_lector else None,
-            sentido=data_lector.get("sentido") if data_lector else None,
-            orientacion=data_lector.get("orientacion") if data_lector else None,
-            matriculas_par=list(pair_key),
-            timestamp_vehiculo_1=timestamp_ref,
-            timestamp_vehiculo_2=timestamp_comp,
-            lectura_verificada=True,  # Todas las lecturas han sido verificadas
-            id_lectura_1=id_lectura_1,
-            id_lectura_2=id_lectura_2
-        ))
-
-    # Ordenar detalles por el primer timestamp
-    detalles_finales.sort(key=lambda x: x.timestamp_vehiculo_1)
-
-    # --- Construir y devolver la respuesta final --- 
-    respuesta = schemas.ConvoyDetectionResponse(
-        vehiculos_en_convoy=sorted(list(vehiculos_en_convoy_set)),
-        detalles_coocurrencias=detalles_finales
-    )
-    
-    logger.info(f"Detección de convoyes completada. Devolviendo {len(respuesta.vehiculos_en_convoy)} vehículos y {len(respuesta.detalles_coocurrencias)} detalles.")
-    return respuesta
+# Removed as part of cleanup
 
 # --- Fin Endpoint --- 
 
@@ -1749,76 +1495,82 @@ def get_lecturas_por_caso(
     hora_inicio: Optional[str] = None,
     hora_fin: Optional[str] = None,
     lector_id: Optional[str] = None,
+    tipo_fuente: Optional[str] = None,
     solo_relevantes: Optional[bool] = False,
     db: Session = Depends(get_db)
 ):
     """
-    Obtiene las lecturas de un caso específico con filtros opcionales.
+    Obtiene las lecturas de un caso con filtros opcionales.
     """
     logger.info(f"GET /casos/{caso_id}/lecturas - Obteniendo lecturas filtradas.")
-    
     try:
         # Construir la consulta base
         query = db.query(models.Lectura)\
             .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
             .filter(models.ArchivoExcel.ID_Caso == caso_id)
-            
-        # Aplicar filtros
+
+        # Aplicar filtros si se proporcionan
         if matricula:
-            query = query.filter(models.Lectura.Matricula.ilike(f"%{matricula}%"))
-            
+            query = query.filter(models.Lectura.Matricula.like(matricula))
+
         if fecha_inicio:
-            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
-            query = query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
-            
+            try:
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+                query = query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+            except ValueError as e:
+                logger.error(f"Error al parsear fecha_inicio: {e}")
+                raise HTTPException(status_code=400, detail=f"Formato de fecha_inicio inválido: {fecha_inicio}. Use YYYY-MM-DD")
+
         if fecha_fin:
-            fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
-            query = query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
-            
+            try:
+                # Añadir 1 día para incluir todo el día final
+                fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
+                query = query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
+            except ValueError as e:
+                logger.error(f"Error al parsear fecha_fin: {e}")
+                raise HTTPException(status_code=400, detail=f"Formato de fecha_fin inválido: {fecha_fin}. Use YYYY-MM-DD")
+
         if hora_inicio:
-            hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
-            query = query.filter(
-                extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
-                extract('minute', models.Lectura.Fecha_y_Hora) >= 
-                hora_inicio_time.hour * 100 + hora_inicio_time.minute
-            )
-            
+            try:
+                hora_time = datetime.strptime(hora_inicio, "%H:%M").time()
+                query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
+                                  extract('minute', models.Lectura.Fecha_y_Hora) >= 
+                                  hora_time.hour * 100 + hora_time.minute)
+            except ValueError as e:
+                logger.error(f"Error al parsear hora_inicio: {e}")
+                raise HTTPException(status_code=400, detail=f"Formato de hora_inicio inválido: {hora_inicio}. Use HH:MM")
+
         if hora_fin:
-            hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
-            query = query.filter(
-                extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
-                extract('minute', models.Lectura.Fecha_y_Hora) <= 
-                hora_fin_time.hour * 100 + hora_fin_time.minute
-            )
-            
+            try:
+                hora_time = datetime.strptime(hora_fin, "%H:%M").time()
+                query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
+                                  extract('minute', models.Lectura.Fecha_y_Hora) <= 
+                                  hora_time.hour * 100 + hora_time.minute)
+            except ValueError as e:
+                logger.error(f"Error al parsear hora_fin: {e}")
+                raise HTTPException(status_code=400, detail=f"Formato de hora_fin inválido: {hora_fin}. Use HH:MM")
+
         if lector_id:
             query = query.filter(models.Lectura.ID_Lector == lector_id)
-            
+
+        if tipo_fuente:
+            query = query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
+
         if solo_relevantes:
-            query = query.join(models.LecturaRelevante)
-            
-        # Cargar los datos del lector relacionado
-        query = query.options(joinedload(models.Lectura.lector))
-        
-        # Ordenar por fecha/hora
-        query = query.order_by(models.Lectura.Fecha_y_Hora.desc())
-        
+            query = query.join(models.LecturaRelevante, 
+                             models.Lectura.ID_Lectura == models.LecturaRelevante.ID_Lectura,
+                             isouter=False)
+
         # Ejecutar la consulta
         lecturas = query.all()
-        
+        logger.info(f"Encontradas {len(lecturas)} lecturas para el caso {caso_id}")
         return lecturas
-        
-    except ValueError as ve:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error en el formato de los parámetros: {str(ve)}"
-        )
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error al obtener lecturas para caso {caso_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno al obtener lecturas: {str(e)}"
-        )
+        logger.error(f"Error al obtener lecturas para caso {caso_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al obtener lecturas del caso")
 
 @app.get("/casos/{caso_id}/matriculas/sugerencias", response_model=List[str])
 def get_sugerencias_matriculas(
@@ -2053,3 +1805,9 @@ def read_lecturas_por_filtros(
 
     logger.info(f"POST /lecturas/por_filtros - Encontradas {len(lecturas)} lecturas tras aplicar filtros.")
     return lecturas
+
+# --- NUEVO ENDPOINT PARA LECTURAS POR PERIODO (LANZADERA) ---
+# Removed as part of cleanup
+
+# --- NUEVO ENDPOINT PARA LECTURAS POR PERIODO (LANZADERA) ---
+# Removed as part of cleanup

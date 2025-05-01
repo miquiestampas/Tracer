@@ -22,8 +22,9 @@ import AnalisisLecturasPanel from '../components/analisis/AnalisisLecturasPanel'
 import LprAvanzadoPanel from '../components/lpr_avanzado/LprAvanzadoPanel';
 import LecturasRelevantesPanel from '../components/caso/LecturasRelevantesPanel';
 import VehiculosPanel from '../components/vehiculos/VehiculosPanel';
-import LanzaderaPanel from '../components/lanzadera/LanzaderaPanel';
+import PatronesPanel from '../components/lanzadera/LanzaderaPanel';
 import MapPanel from '../components/maps/MapPanel';
+import HelpButton from '../components/common/HelpButton';
 
 // Definir estado inicial para filtros
 const initialFilterState: FilterState = {
@@ -54,7 +55,7 @@ type DataSourceType = 'LPR' | 'GPS';
 const caseSections = [
     { id: 'analisis-lpr', label: 'Lecturas LPR', icon: IconDeviceCctv, section: 'lecturas' },
     { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconBookmark, section: 'lecturas' },
-    { id: 'lanzadera', label: 'Vehículo Lanzadera', icon: IconArrowsJoin, section: 'lecturas' },
+    { id: 'lanzadera', label: 'Detección de Patrones', icon: IconArrowsJoin, section: 'lecturas' },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar, section: 'vehiculos' },
     { id: 'mapa', label: 'Mapa', icon: IconMap, section: 'vehiculos' },
     { id: 'archivos', label: 'Archivos Importados', icon: IconFiles, section: 'archivos' },
@@ -644,28 +645,14 @@ function CasoDetailPage() {
                     />
                 </Box>
 
-                {/* Pestaña Lanzadera */}
+                {/* Pestaña Detección de Patrones */}
                 <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none', position: 'relative' }}>
-                    {/* --- Icono de Ayuda para esta pestaña --- */}
-                    <Tooltip
+                    <HelpButton
                         label={helpTexts['lanzadera']}
-                        multiline withArrow position="bottom-start" offset={8}
-                        styles={{ tooltip: { maxWidth: '400px' } }} 
-                        zIndex={1001} 
-                    >
-                        <ActionIcon 
-                            variant="subtle" 
-                            color="blue" 
-                            size="lg" 
-                            aria-label="Ayuda Vehículo Lanzadera"
-                            style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
-                        >
-                            <IconHelpCircle size="1.8rem" stroke={1.5} />
-                        </ActionIcon>
-                    </Tooltip>
-                    {/* --- Fin Icono Ayuda --- */}
-                    
-                    <LanzaderaPanel casoId={idCasoNum!} />
+                        tooltip="Ayuda para Detección de Patrones"
+                        aria-label="Ayuda Detección de Patrones"
+                    />
+                    <PatronesPanel casoId={idCasoNum!} />
                 </Box>
 
                 {/* ... Resto de las pestañas ... */}
