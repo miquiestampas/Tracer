@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Title, Text, Paper, Group, Button, TextInput, NumberInput, Select, Table, Badge, LoadingOverlay, Alert } from '@mantine/core';
 import { IconSearch, IconAlertTriangle } from '@tabler/icons-react';
 import apiClient from '../../services/api';
@@ -8,15 +8,29 @@ interface PatronesPanelProps {
     casoId: number;
 }
 
+interface Lector {
+    ID_Lector?: string;
+    Nombre?: string;
+    Carretera?: string;
+    PK?: string;
+    Provincia?: string;
+    Localidad?: string;
+    Sentido?: string;
+    Orientacion?: string;
+}
+
 interface Lectura {
     ID_Lectura: number;
+    ID_Archivo: number;
     Matricula: string;
     Fecha_y_Hora: string;
-    ID_Lector: string;
-    PK: string;
-    Carretera: string;
-    Carril: string;
+    Carril?: string;
     Velocidad?: number;
+    ID_Lector?: string;
+    Coordenada_X?: number;
+    Coordenada_Y?: number;
+    Tipo_Fuente: string;
+    lector?: Lector;
 }
 
 interface VehiculoRapido {
@@ -36,7 +50,7 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
     const [error, setError] = useState<string | null>(null);
     const [vehiculosRapidos, setVehiculosRapidos] = useState<VehiculoRapido[]>([]);
     const [filtros, setFiltros] = useState({
-        velocidadMinima: 120,
+        velocidadMinima: 140,
         fechaInicio: '',
         fechaFin: '',
         horaInicio: '',
@@ -46,7 +60,7 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
 
     const limpiarFiltros = () => {
         setFiltros({
-            velocidadMinima: 120,
+            velocidadMinima: 140,
             fechaInicio: '',
             fechaFin: '',
             horaInicio: '',
@@ -57,78 +71,82 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
         setError(null);
     };
 
-    const parsePK = (pk: string): number => {
-        try {
-            // Intentar extraer números del formato PK045+600 o similar
-            const matches = pk.match(/PK?(\d+)(?:\+(\d+))?/i);
-            if (!matches) {
-                console.warn('No se pudo parsear PK:', pk);
-                return 0;
-            }
-            
-            const kilometers = parseInt(matches[1] || '0', 10);
-            const meters = parseInt(matches[2] || '0', 10);
-            
-            return kilometers + (meters / 1000);
-        } catch (err) {
-            console.error('Error parsing PK:', pk, err);
-            return 0;
-        }
+    // --- Funciones auxiliares para parseo flexible ---
+    const parsePKFlexible = (pkString: string): number => {
+        if (!pkString) return 0;
+        
+        // Normalizar el string: eliminar espacios, convertir a mayúsculas
+        const normalized = pkString.trim().toUpperCase();
+        
+        // Extraer números usando regex más flexible
+        const matches = normalized.match(/(?:PK|P\.K\.)?\s*(\d+)(?:[.,+](\d+))?/);
+        if (!matches) return 0;
+        
+        const kilometers = parseInt(matches[1] || '0', 10);
+        const meters = matches[2] ? parseInt(matches[2].padEnd(3, '0'), 10) : 0;
+        
+        return kilometers + (meters / 1000);
+    };
+
+    const parseCarreteraFlexible = (carreteraString: string): string => {
+        if (!carreteraString) return '';
+        
+        // Normalizar el string: eliminar espacios, convertir a mayúsculas
+        const normalized = carreteraString.trim().toUpperCase();
+        
+        // Extraer el identificador de carretera usando regex más flexible
+        const matches = normalized.match(/^([A-Z]+)[\s-]*(\d+)/);
+        if (!matches) return normalized;
+        
+        const tipo = matches[1];
+        const numero = matches[2];
+        
+        // Normalizar el formato (ej: "A1" -> "A-1")
+        return `${tipo}-${numero}`;
     };
 
     const calcularVelocidad = (lectura1: Lectura, lectura2: Lectura): number | null => {
         try {
-            const pk1 = parsePK(lectura1.PK);
-            const pk2 = parsePK(lectura2.PK);
+            // Extraer PKs de forma flexible
+            const pk1 = parsePKFlexible(lectura1.lector?.PK || '');
+            const pk2 = parsePKFlexible(lectura2.lector?.PK || '');
             
-            if (pk1 === 0 || pk2 === 0) {
-                console.warn('PKs inválidos:', { pk1, pk2, lectura1, lectura2 });
+            // Extraer carreteras de forma flexible
+            const carretera1 = parseCarreteraFlexible(lectura1.lector?.Carretera || '');
+            const carretera2 = parseCarreteraFlexible(lectura2.lector?.Carretera || '');
+            
+            // Si los PKs son inválidos o las carreteras no coinciden, retornar null
+            if (pk1 === 0 || pk2 === 0 || carretera1 !== carretera2) {
                 return null;
             }
             
-            const distancia = Math.abs(pk2 - pk1); // en kilómetros
+            // Calcular distancia en kilómetros
+            const distancia = Math.abs(pk2 - pk1);
             
-            const tiempo1 = new Date(lectura1.Fecha_y_Hora).getTime();
-            const tiempo2 = new Date(lectura2.Fecha_y_Hora).getTime();
-            const tiempoHoras = (tiempo2 - tiempo1) / (1000 * 60 * 60);
+            // Parsear fechas
+            const fecha1 = new Date(lectura1.Fecha_y_Hora);
+            const fecha2 = new Date(lectura2.Fecha_y_Hora);
             
-            if (tiempoHoras <= 0) {
-                console.warn('Tiempo inválido:', { tiempoHoras, lectura1, lectura2 });
-                return null;
-            }
-
-            if (distancia === 0) {
-                console.warn('Distancia 0:', { pk1, pk2, lectura1, lectura2 });
-                return null;
-            }
+            // Calcular tiempo en horas
+            const tiempo = Math.abs(fecha2.getTime() - fecha1.getTime()) / (1000 * 60 * 60);
             
-            const velocidad = distancia / tiempoHoras;
-            console.log('Cálculo de velocidad:', {
-                matricula: lectura1.Matricula,
-                distancia,
-                tiempoHoras,
-                velocidad,
-                pk1,
-                pk2,
-                fecha1: lectura1.Fecha_y_Hora,
-                fecha2: lectura2.Fecha_y_Hora
-            });
-            
-            return velocidad;
-        } catch (err) {
-            console.error('Error calculando velocidad:', err);
+            // Calcular velocidad en km/h
+            return distancia / tiempo;
+        } catch (error) {
+            console.error('Error calculando velocidad:', error);
             return null;
         }
     };
 
     const extraerDatosLector = (idLector: string): { pk?: string; carretera?: string } => {
         try {
-            const pkMatch = idLector.match(/PK\d+\+\d+/i);
-            const carreteraMatch = idLector.match(/M-\d+/);
-            
+            // Extraer carretera: primer bloque tipo letras+números (ej: M30, A1, AP7)
+            const carreteraMatch = idLector.match(/([A-Z]+\d+)/i);
+            // Extraer PK: PK seguido de número y decimales (ej: PK25.800, PK25,800, PK25+800)
+            const pkMatch = idLector.match(/PK\s*(\d+[.,+]?\d*)/i);
             return {
-                pk: pkMatch ? pkMatch[0] : undefined,
-                carretera: carreteraMatch ? carreteraMatch[0] : undefined
+                pk: pkMatch ? `PK${pkMatch[1].replace(',', '.').replace('+', '.')}` : undefined,
+                carretera: carreteraMatch ? carreteraMatch[1].toUpperCase() : undefined
             };
         } catch (err) {
             console.warn('Error extrayendo datos del lector:', idLector, err);
@@ -137,12 +155,15 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
     };
 
     const procesarLectura = (lectura: Lectura): Lectura => {
-        if (!lectura.PK || !lectura.Carretera) {
-            const datosExtraidos = extraerDatosLector(lectura.ID_Lector);
+        if (!lectura.lector?.PK || !lectura.lector?.Carretera) {
+            const datosExtraidos = extraerDatosLector(lectura.ID_Lector || '');
             return {
                 ...lectura,
-                PK: lectura.PK || datosExtraidos.pk || '',
-                Carretera: lectura.Carretera || datosExtraidos.carretera || ''
+                lector: {
+                    ...lectura.lector,
+                    PK: datosExtraidos.pk || '',
+                    Carretera: datosExtraidos.carretera || ''
+                }
             };
         }
         return lectura;
@@ -202,7 +223,7 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
                 // Procesar la lectura para extraer PK y Carretera si faltan
                 const lecturaCompleta = procesarLectura(lectura);
                 
-                if (!lecturaCompleta.PK || !lecturaCompleta.Carretera) {
+                if (!lecturaCompleta.lector?.PK || !lecturaCompleta.lector?.Carretera) {
                     console.warn('No se pudo completar la lectura con los datos del lector:', lectura);
                     return;
                 }
@@ -235,7 +256,7 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
                     const lectura2 = lecturasVehiculo[i + 1];
 
                     // Solo analizar si son de la misma carretera
-                    if (lectura1.Carretera !== lectura2.Carretera) continue;
+                    if (lectura1.lector?.Carretera !== lectura2.lector?.Carretera) continue;
 
                     const velocidad = calcularVelocidad(lectura1, lectura2);
                     
@@ -245,11 +266,11 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
                             velocidad: Math.round(velocidad),
                             fechaHoraInicio: lectura1.Fecha_y_Hora,
                             fechaHoraFin: lectura2.Fecha_y_Hora,
-                            lectorInicio: lectura1.ID_Lector,
-                            lectorFin: lectura2.ID_Lector,
-                            pkInicio: lectura1.PK,
-                            pkFin: lectura2.PK,
-                            carretera: lectura1.Carretera
+                            lectorInicio: lectura1.ID_Lector || '',
+                            lectorFin: lectura2.ID_Lector || '',
+                            pkInicio: lectura1.lector?.PK || '',
+                            pkFin: lectura2.lector?.PK || '',
+                            carretera: lectura1.lector?.Carretera || ''
                         });
                     }
                 }
@@ -286,6 +307,65 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
         }
     };
 
+    const testParseo = () => {
+        // Ejemplos de PKs
+        const ejemplosPK = [
+            'PK045+600',
+            'PK45.600',
+            '45,800',
+            'PK 25+800',
+            '25.800',
+            '25,800',
+            '25',
+            'PK25',
+            'P.K. 25+800',
+            '25+800',
+            '25.8',
+            '25,8',
+            'PK 25.800',
+            'PK 25,800',
+            'PK25+800',
+            'PK25.800',
+            'PK25,800'
+        ];
+
+        console.log('=== Pruebas de Parseo de PK ===');
+        ejemplosPK.forEach(pk => {
+            const resultado = parsePKFlexible(pk);
+            console.log(`PK: "${pk}" -> ${resultado} km`);
+        });
+
+        // Ejemplos de Carreteras
+        const ejemplosCarretera = [
+            'A-1',
+            'N340',
+            'AP7',
+            'C-31',
+            'A1',
+            'N 340',
+            'A 1',
+            'A-1 (Madrid)',
+            'A1, PK25+800',
+            'A-1 PK25+800',
+            'M-40',
+            'M40',
+            'M 40',
+            'M-40 (Madrid)',
+            'M40, PK25+800'
+        ];
+
+        console.log('\n=== Pruebas de Parseo de Carretera ===');
+        ejemplosCarretera.forEach(carretera => {
+            const resultado = parseCarreteraFlexible(carretera);
+            console.log(`Carretera: "${carretera}" -> "${resultado}"`);
+        });
+    };
+
+    // Llamar a la función de prueba al montar el componente
+    useEffect(() => {
+        testParseo();
+    }, []);
+
     return (
         <Box>
             <Paper shadow="sm" p="md" mb="md">
@@ -295,7 +375,7 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
                     <NumberInput
                         label="Velocidad Mínima (km/h)"
                         value={filtros.velocidadMinima}
-                        onChange={(value) => setFiltros({ ...filtros, velocidadMinima: typeof value === 'number' ? value : 120 })}
+                        onChange={(value) => setFiltros({ ...filtros, velocidadMinima: typeof value === 'number' ? value : 140 })}
                         min={0}
                         max={300}
                     />
