@@ -628,11 +628,12 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                         Buscar
                     </Button>
                 </Group>
-                <Title order={5} mt="md" mb="xs">Matrículas Lanzadera Detectadas</Title>
+                <Title order={5} mt="md" mb="xs">Lecturas Intercaladas (Objetivo y Lanzadera)</Title>
                 <Table striped highlightOnHover withColumnBorders>
                     <thead>
                         <tr>
                             <th style={{ minWidth: 120, textAlign: 'center' }}>Matrícula</th>
+                            <th style={{ minWidth: 100, textAlign: 'center' }}>Tipo</th>
                             <th style={{ minWidth: 120, textAlign: 'center' }}>Fecha</th>
                             <th style={{ minWidth: 80, textAlign: 'center' }}>Hora</th>
                             <th style={{ minWidth: 200, textAlign: 'center' }}>Lector</th>
@@ -640,18 +641,31 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                     </thead>
                     <tbody>
                         {lanzaderaDetalles && lanzaderaDetalles.length > 0 ? (
-                            lanzaderaDetalles.map((d, i) => (
-                                <tr key={i}>
-                                    <td style={{ fontWeight: 'bold', textAlign: 'center' }}>{d.matricula}</td>
-                                    <td style={{ textAlign: 'center' }}>{d.fecha}</td>
-                                    <td style={{ textAlign: 'center' }}>{d.hora}</td>
-                                    <td style={{ textAlign: 'center' }}>{d.lector}</td>
-                                </tr>
-                            ))
+                            [...lanzaderaDetalles]
+                                .sort((a, b) => {
+                                    // Ordenar por fecha y hora
+                                    const dateA = new Date(`${a.fecha}T${a.hora}`);
+                                    const dateB = new Date(`${b.fecha}T${b.hora}`);
+                                    return dateA.getTime() - dateB.getTime();
+                                })
+                                .map((d, i) => (
+                                    <tr
+                                        key={i}
+                                        style={{
+                                            backgroundColor: d.tipo === 'Objetivo' ? '#e8f4fd' : '#fffbe6'
+                                        }}
+                                    >
+                                        <td style={{ fontWeight: 'bold', textAlign: 'center' }}>{d.matricula}</td>
+                                        <td style={{ textAlign: 'center' }}>{d.tipo}</td>
+                                        <td style={{ textAlign: 'center' }}>{d.fecha}</td>
+                                        <td style={{ textAlign: 'center' }}>{d.hora.length === 5 ? d.hora + ':00' : d.hora}</td>
+                                        <td style={{ textAlign: 'center' }}>{d.lector}</td>
+                                    </tr>
+                                ))
                         ) : (
                             <tr>
-                                <td colSpan={4} style={{ textAlign: 'center', color: '#888' }}>
-                                    No se han detectado vehículos lanzadera.
+                                <td colSpan={5} style={{ textAlign: 'center', color: '#888' }}>
+                                    No se han detectado lecturas relevantes.
                                 </td>
                             </tr>
                         )}

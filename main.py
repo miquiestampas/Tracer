@@ -1887,6 +1887,16 @@ def detectar_vehiculos_lanzadera(
     # 3. Analizar los vehículos acompañantes según los criterios
     vehiculos_lanzadera = []
     detalles = []
+
+    # Añadir lecturas del objetivo al array detalles
+    for lectura in lecturas_objetivo:
+        detalles.append(schemas.LanzaderaDetalle(
+            matricula=lectura.Matricula,
+            fecha=lectura.Fecha_y_Hora.date().isoformat(),
+            hora=lectura.Fecha_y_Hora.time().strftime("%H:%M:%S"),
+            lector=lectura.ID_Lector,
+            tipo="Objetivo"
+        ))
     
     for matricula, coincidencias_por_dia in vehiculos_acompanantes.items():
         # Verificar criterio 1: Al menos 2 días distintos
@@ -1919,8 +1929,9 @@ def detectar_vehiculos_lanzadera(
                     detalles.append(schemas.LanzaderaDetalle(
                         matricula=matricula,
                         fecha=fecha,
-                        hora=hora,
-                        lector=lector
+                        hora=hora if len(hora) == 8 else (hora+':00' if len(hora)==5 else hora),
+                        lector=lector,
+                        tipo="Lanzadera"
                     ))
 
     return schemas.LanzaderaResponse(
