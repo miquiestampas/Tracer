@@ -316,10 +316,11 @@ class LanzaderaRequest(BaseModel):
     diferencia_minima: int = Field(5, description="Diferencia mínima en minutos entre lecturas para considerar repetición")
 
 class LanzaderaDetalle(BaseModel):
-    matricula: str = Field(..., description="Matrícula del vehículo lanzadera")
+    matricula: str = Field(..., description="Matrícula del vehículo lanzadera u objetivo")
     fecha: str = Field(..., description="Fecha de la lectura (YYYY-MM-DD)")
     hora: str = Field(..., description="Hora de la lectura (HH:MM)")
     lector: str = Field(..., description="ID del lector donde se detectó la coincidencia")
+    tipo: str = Field(..., description="Tipo de lectura: 'Objetivo' o 'Lanzadera'")
 
 class LanzaderaResponse(BaseModel):
     vehiculos_lanzadera: List[str] = Field(..., description="Lista de matrículas detectadas como lanzaderas")
