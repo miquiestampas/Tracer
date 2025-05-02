@@ -548,6 +548,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 );
             }
             
+            console.log('Lecturas recibidas:', data);
             setResults(data);
             notifications.show({
                 title: 'Búsqueda Completada',
