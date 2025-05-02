@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Box, LoadingOverlay, Title, Stack, Text, Button, Group, Modal, Textarea, Tooltip, ActionIcon, Checkbox, Paper } from '@mantine/core';
+import { Box, LoadingOverlay, Title, Stack, Text, Button, Group, Modal, Textarea, Tooltip, ActionIcon, Checkbox, Paper, Collapse, Alert } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { DataTable, type DataTableProps, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconStarOff, IconPencil, IconTrash, IconCar, IconX, IconRefresh } from '@tabler/icons-react';
@@ -53,6 +53,8 @@ function LecturasRelevantesPanel({
     // --- NUEVO: Destructuring ---
     onRefresh
 }: LecturasRelevantesPanelProps) {
+
+    const [ayudaAbierta, setAyudaAbierta] = useState(false);
 
     // --- Lógica de Selección (adaptada a props y con useCallback) ---
     const handleCheckboxChange = useCallback((id: number, checked: boolean) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal } from '@mantine/core';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal, Alert } from '@mantine/core';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -179,6 +179,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [mapKey, setMapKey] = useState(0);
 
   const [fullscreenMap, setFullscreenMap] = useState(false);
+
+  const [ayudaAbierta, setAyudaAbierta] = useState(false);
 
   // Manejar la tecla Escape
   useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
@@ -1102,216 +1104,250 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   }
 
   return (
-    <Grid gutter="md">
-      {/* Panel de Filtros y Capas a la izquierda */}
-      <Grid.Col span={{ base: 12, md: 4 }}>
-        <Stack>
-          {/* Panel de Filtros */}
-          <Paper p="md" withBorder>
-            <Title order={2} mb="md">Mapa de Lecturas</Title>
-            <Group grow mb="md">
-              <Select
-                label="Vehículo de Interés"
-                placeholder="Seleccionar vehículo..."
-                value={selectedMatricula}
-                onChange={(value) => {
-                  setSelectedMatricula(value);
-                  handleFilterChange({ matricula: value || '' });
-                }}
-                data={vehiculosOptions}
-                searchable
-                clearable
+    <Box>
+      <Group justify="flex-end" mb="xs">
+        <Button
+          variant="light"
+          color="blue"
+          size="xs"
+          onClick={() => setAyudaAbierta((v) => !v)}
+        >
+          {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+        </Button>
+      </Group>
+      <Collapse in={ayudaAbierta}>
+        <Alert color="blue" title="¿Cómo funciona el Mapa de Lecturas?" mb="md">
+          <Text size="sm">
+            <b>¿Qué es este panel?</b><br />
+            El Mapa de Lecturas te permite visualizar geográficamente las lecturas LPR y GPS asociadas a un caso. Puedes filtrar por vehículo, fechas, lectores y guardar resultados en capas personalizadas para análisis avanzados.<br /><br />
+            <b>Filtros y búsqueda:</b><br />
+            - Selecciona un vehículo de interés para ver sus pasos en el mapa.<br />
+            - Filtra por fechas, horas, lector o relevancia para acotar los resultados.<br />
+            - Los resultados se muestran como marcadores en el mapa, agrupados por lector o ubicación.<br /><br />
+            <b>Capas:</b><br />
+            - Guarda cualquier resultado de filtro como una "capa" para compararlo con otros vehículos o periodos.<br />
+            - Activa/desactiva capas para ver coincidencias espaciales y temporales.<br />
+            - Personaliza el nombre y color de cada capa.<br /><br />
+            <b>Controles del mapa:</b><br />
+            - Cambia el tipo de visualización (estándar, satélite, toner).<br />
+            - Muestra todos los lectores del sistema o solo los del caso.<br />
+            - Activa la detección de coincidencias para resaltar ubicaciones donde varios vehículos han coincidido.<br /><br />
+            <b>Consejos:</b><br />
+            - Haz zoom y mueve el mapa para explorar los datos.<br />
+            - Haz clic en los marcadores para ver detalles de cada lectura o lector.<br />
+            - Usa el botón "Limpiar Mapa" para reiniciar la visualización.<br />
+          </Text>
+        </Alert>
+      </Collapse>
+      <Grid gutter="md">
+        <Grid.Col span={{ base: 12, md: 4 }}>
+          <Stack>
+            {/* Panel de Filtros */}
+            <Paper p="md" withBorder>
+              <Title order={2} mb="md">Mapa de Lecturas</Title>
+              <Group grow mb="md">
+                <Select
+                  label="Vehículo de Interés"
+                  placeholder="Seleccionar vehículo..."
+                  value={selectedMatricula}
+                  onChange={(value) => {
+                    setSelectedMatricula(value);
+                    handleFilterChange({ matricula: value || '' });
+                  }}
+                  data={vehiculosOptions}
+                  searchable
+                  clearable
+                />
+              </Group>
+              <LecturaFilters
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                onFiltrar={handleFiltrar}
+                onLimpiar={handleLimpiar}
+                loading={loading}
+                hideMatricula={true}
+                lectorSuggestions={lectorSuggestions}
               />
-            </Group>
-            <LecturaFilters
-              filters={filters}
-              onFilterChange={handleFilterChange}
-              onFiltrar={handleFiltrar}
-              onLimpiar={handleLimpiar}
-              loading={loading}
-              hideMatricula={true}
-              lectorSuggestions={lectorSuggestions}
-            />
-            
-            {/* Botón para guardar resultados en capa */}
-            {resultadosFiltro.lecturas.length > 0 && (
-              <Collapse in={mostrarFormularioCapa}>
-                <Stack gap="sm" mt="md">
-                  <TextInput
-                    label="Nombre de la capa"
-                    value={nuevaCapa.nombre}
-                    onChange={(e) => setNuevaCapa(prev => ({ ...prev, nombre: e.target.value }))}
-                    placeholder="Ej: Lecturas GPS"
-                    description="Se recomienda incluir la matrícula y algún detalle adicional para identificar la capa"
-                  />
-                  <ColorInput
-                    label="Color de la capa"
-                    value={nuevaCapa.color}
-                    onChange={(color) => setNuevaCapa(prev => ({ ...prev, color }))}
-                    format="hex"
-                  />
-                  <Group justify="flex-end">
-                    <Button 
-                      variant="light" 
-                      color="gray" 
-                      onClick={() => setMostrarFormularioCapa(false)}
-                    >
-                      <IconX size={16} style={{ marginRight: 8 }} />
-                      Cancelar
-                    </Button>
-                    <Button 
-                      onClick={handleGuardarResultadosEnCapa}
-                      disabled={!nuevaCapa.nombre}
-                    >
-                      <IconCheck size={16} style={{ marginRight: 8 }} />
-                      Guardar en capa
-                    </Button>
-                  </Group>
-                </Stack>
-              </Collapse>
-            )}
-            {resultadosFiltro.lecturas.length > 0 && !mostrarFormularioCapa && (
-              <Button 
-                fullWidth 
-                variant="light" 
-                color="blue" 
-                mt="md"
-                onClick={() => setMostrarFormularioCapa(true)}
-              >
-                <IconPlus size={16} style={{ marginRight: 8 }} />
-                Guardar resultados en capa
-              </Button>
-            )}
-          </Paper>
-
-          {/* Panel de Gestión de Capas */}
-          <Paper p="md" withBorder>
-            <Group justify="space-between" mb="md">
-              <Title order={3}>Gestión de Capas</Title>
-            </Group>
-
-            {/* Lista de capas */}
-            <Stack gap="xs">
-              {capas.map((capa) => (
-                <Paper key={capa.id} p="xs" withBorder>
-                  <Group justify="space-between">
-                    <Group gap="xs">
-                      <Switch
-                        checked={capa.activa}
-                        onChange={() => handleToggleCapa(capa.id)}
-                        size="sm"
-                      />
-                      <Box 
-                        style={{ 
-                          width: 16, 
-                          height: 16, 
-                          backgroundColor: capa.color,
-                          borderRadius: '50%'
-                        }} 
-                      />
-                      <Text size="sm">{capa.nombre}</Text>
-                      <Tooltip label={formatFiltrosCapa(capa.filtros)}>
-                        <ActionIcon variant="subtle" size="sm">
-                          <IconInfoCircle size={14} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                    <Group gap={4}>
-                      <ActionIcon 
-                        variant="subtle" 
-                        color="blue"
-                        onClick={() => handleEditarCapa(capa.id)}
+              
+              {/* Botón para guardar resultados en capa */}
+              {resultadosFiltro.lecturas.length > 0 && (
+                <Collapse in={mostrarFormularioCapa}>
+                  <Stack gap="sm" mt="md">
+                    <TextInput
+                      label="Nombre de la capa"
+                      value={nuevaCapa.nombre}
+                      onChange={(e) => setNuevaCapa(prev => ({ ...prev, nombre: e.target.value }))}
+                      placeholder="Ej: Lecturas GPS"
+                      description="Se recomienda incluir la matrícula y algún detalle adicional para identificar la capa"
+                    />
+                    <ColorInput
+                      label="Color de la capa"
+                      value={nuevaCapa.color}
+                      onChange={(color) => setNuevaCapa(prev => ({ ...prev, color }))}
+                      format="hex"
+                    />
+                    <Group justify="flex-end">
+                      <Button 
+                        variant="light" 
+                        color="gray" 
+                        onClick={() => setMostrarFormularioCapa(false)}
                       >
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                      <ActionIcon 
-                        variant="subtle" 
-                        color="red"
-                        onClick={() => handleEliminarCapa(capa.id)}
+                        <IconX size={16} style={{ marginRight: 8 }} />
+                        Cancelar
+                      </Button>
+                      <Button 
+                        onClick={handleGuardarResultadosEnCapa}
+                        disabled={!nuevaCapa.nombre}
                       >
-                        <IconTrash size={16} />
-                      </ActionIcon>
+                        <IconCheck size={16} style={{ marginRight: 8 }} />
+                        Guardar en capa
+                      </Button>
                     </Group>
-                  </Group>
-                  <Text size="xs" c="dimmed" mt={4}>
-                    {capa.lecturas.length} lecturas | {capa.lectores.length} lectores
-                  </Text>
-                </Paper>
-              ))}
-              {capas.length === 0 && (
-                <Text size="sm" c="dimmed" ta="center" py="md">
-                  No hay capas creadas. Aplica un filtro y guárdalo en una capa.
-                </Text>
+                  </Stack>
+                </Collapse>
               )}
-            </Stack>
-          </Paper>
-
-          {/* Panel de Controles del Mapa */}
-          <Paper p="md" withBorder>
-            <Title order={3} mb="md">Controles del Mapa</Title>
-            <Stack gap="md">
-              <Select
-                label="Tipo de Visualización"
-                value={mapControls.visualizationType}
-                onChange={(value) => handleMapControlChange({ visualizationType: value as MapControls['visualizationType'] })}
-                data={[
-                  { value: 'toner', label: 'Toner Lite' },
-                  { value: 'standard', label: 'Estándar' },
-                  { value: 'satellite', label: 'Satélite' }
-                ]}
-              />
-              <Stack gap="xs">
-                <Switch
-                  label="Mostrar lectores del caso"
-                  checked={mapControls.showCaseReaders}
-                  onChange={(event) => handleMapControlChange({ showCaseReaders: event.currentTarget.checked })}
-                />
-                <Switch
-                  label="Mostrar todos los lectores del sistema"
-                  checked={mapControls.showAllReaders}
-                  onChange={(event) => handleMapControlChange({ showAllReaders: event.currentTarget.checked })}
-                />
-                <Divider my="xs" />
-                <Switch
-                  label={
-                    <Group gap="xs">
-                      <Text size="sm">Mostrar coincidencias</Text>
-                      <Badge color="red" variant="light" size="sm">
-                        {detectarCoincidencias.length}
-                      </Badge>
-                    </Group>
-                  }
-                  checked={mapControls.showCoincidencias}
-                  onChange={(event) => handleMapControlChange({ showCoincidencias: event.currentTarget.checked })}
-                />
-                <Divider my="xs" />
+              {resultadosFiltro.lecturas.length > 0 && !mostrarFormularioCapa && (
                 <Button 
+                  fullWidth 
                   variant="light" 
-                  color="red" 
-                  fullWidth
-                  onClick={handleLimpiarMapa}
+                  color="blue" 
+                  mt="md"
+                  onClick={() => setMostrarFormularioCapa(true)}
                 >
-                  Limpiar Mapa
+                  <IconPlus size={16} style={{ marginRight: 8 }} />
+                  Guardar resultados en capa
                 </Button>
-              </Stack>
-            </Stack>
-          </Paper>
-        </Stack>
-      </Grid.Col>
+              )}
+            </Paper>
 
-      {/* Mapa a la derecha */}
-      <Grid.Col span={{ base: 12, md: 8 }}>
-        <Paper p="md" withBorder style={{ height: 'calc(100vh - 200px)', position: 'relative' }}>
-          {lectores.length === 0 ? (
-            <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Text c="dimmed">No hay lectores con coordenadas válidas para mostrar en el mapa.</Text>
-            </Box>
-          ) : (
-            <MapComponent isFullscreen={false} />
-          )}
-        </Paper>
-      </Grid.Col>
-    </Grid>
+            {/* Panel de Gestión de Capas */}
+            <Paper p="md" withBorder>
+              <Group justify="space-between" mb="md">
+                <Title order={3}>Gestión de Capas</Title>
+              </Group>
+
+              {/* Lista de capas */}
+              <Stack gap="xs">
+                {capas.map((capa) => (
+                  <Paper key={capa.id} p="xs" withBorder>
+                    <Group justify="space-between">
+                      <Group gap="xs">
+                        <Switch
+                          checked={capa.activa}
+                          onChange={() => handleToggleCapa(capa.id)}
+                          size="sm"
+                        />
+                        <Box 
+                          style={{ 
+                            width: 16, 
+                            height: 16, 
+                            backgroundColor: capa.color,
+                            borderRadius: '50%'
+                          }} 
+                        />
+                        <Text size="sm">{capa.nombre}</Text>
+                        <Tooltip label={formatFiltrosCapa(capa.filtros)}>
+                          <ActionIcon variant="subtle" size="sm">
+                            <IconInfoCircle size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                      <Group gap={4}>
+                        <ActionIcon 
+                          variant="subtle" 
+                          color="blue"
+                          onClick={() => handleEditarCapa(capa.id)}
+                        >
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                        <ActionIcon 
+                          variant="subtle" 
+                          color="red"
+                          onClick={() => handleEliminarCapa(capa.id)}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Group>
+                    </Group>
+                    <Text size="xs" c="dimmed" mt={4}>
+                      {capa.lecturas.length} lecturas | {capa.lectores.length} lectores
+                    </Text>
+                  </Paper>
+                ))}
+                {capas.length === 0 && (
+                  <Text size="sm" c="dimmed" ta="center" py="md">
+                    No hay capas creadas. Aplica un filtro y guárdalo en una capa.
+                  </Text>
+                )}
+              </Stack>
+            </Paper>
+
+            {/* Panel de Controles del Mapa */}
+            <Paper p="md" withBorder>
+              <Title order={3} mb="md">Controles del Mapa</Title>
+              <Stack gap="md">
+                <Select
+                  label="Tipo de Visualización"
+                  value={mapControls.visualizationType}
+                  onChange={(value) => handleMapControlChange({ visualizationType: value as MapControls['visualizationType'] })}
+                  data={[
+                    { value: 'toner', label: 'Toner Lite' },
+                    { value: 'standard', label: 'Estándar' },
+                    { value: 'satellite', label: 'Satélite' }
+                  ]}
+                />
+                <Stack gap="xs">
+                  <Switch
+                    label="Mostrar lectores del caso"
+                    checked={mapControls.showCaseReaders}
+                    onChange={(event) => handleMapControlChange({ showCaseReaders: event.currentTarget.checked })}
+                  />
+                  <Switch
+                    label="Mostrar todos los lectores del sistema"
+                    checked={mapControls.showAllReaders}
+                    onChange={(event) => handleMapControlChange({ showAllReaders: event.currentTarget.checked })}
+                  />
+                  <Divider my="xs" />
+                  <Switch
+                    label={
+                      <Group gap="xs">
+                        <Text size="sm">Mostrar coincidencias</Text>
+                        <Badge color="red" variant="light" size="sm">
+                          {detectarCoincidencias.length}
+                        </Badge>
+                      </Group>
+                    }
+                    checked={mapControls.showCoincidencias}
+                    onChange={(event) => handleMapControlChange({ showCoincidencias: event.currentTarget.checked })}
+                  />
+                  <Divider my="xs" />
+                  <Button 
+                    variant="light" 
+                    color="red" 
+                    fullWidth
+                    onClick={handleLimpiarMapa}
+                  >
+                    Limpiar Mapa
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          </Stack>
+        </Grid.Col>
+
+        <Grid.Col span={{ base: 12, md: 8 }}>
+          <Paper p="md" withBorder style={{ height: 'calc(100vh - 200px)', position: 'relative' }}>
+            {lectores.length === 0 ? (
+              <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Text c="dimmed">No hay lectores con coordenadas válidas para mostrar en el mapa.</Text>
+              </Box>
+            ) : (
+              <MapComponent isFullscreen={false} />
+            )}
+          </Paper>
+        </Grid.Col>
+      </Grid>
+    </Box>
   );
 };
 

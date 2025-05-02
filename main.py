@@ -1036,16 +1036,16 @@ def read_lecturas(
     # Filtros de fecha y hora
     try:
         if fecha_inicio:
-            fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
             base_query = base_query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
         if fecha_fin:
-            fecha_fin_dt = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+            fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
             base_query = base_query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
         if hora_inicio:
-            hora_inicio_time = datetime.datetime.strptime(hora_inicio, "%H:%M").time()
+            hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
             base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
         if hora_fin:
-            hora_fin_time = datetime.datetime.strptime(hora_fin, "%H:%M").time()
+            hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
             base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
     except ValueError:
         logger.warning("Formato de fecha/hora inválido recibido.")
@@ -1088,16 +1088,16 @@ def read_lecturas(
         # Aplicar los mismos filtros de fecha/hora
         try:
             if fecha_inicio:
-                fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
                 pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
             if fecha_fin:
-                fecha_fin_dt = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
                 pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
             if hora_inicio:
-                hora_inicio_time = datetime.datetime.strptime(hora_inicio, "%H:%M").time()
+                hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
                 pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
             if hora_fin:
-                hora_fin_time = datetime.datetime.strptime(hora_fin, "%H:%M").time()
+                hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
                 pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
         except ValueError:
             logger.warning("Formato de fecha/hora inválido recibido en subconsulta de pasos.")
@@ -1742,16 +1742,16 @@ def read_lecturas_por_filtros(
     # Filtros de fecha y hora
     try:
         if fecha_inicio:
-            fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
             base_query = base_query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
         if fecha_fin:
-            fecha_fin_dt = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+            fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
             base_query = base_query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
         if hora_inicio:
-            hora_inicio_time = datetime.datetime.strptime(hora_inicio, "%H:%M").time()
+            hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
             base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
         if hora_fin:
-            hora_fin_time = datetime.datetime.strptime(hora_fin, "%H:%M").time()
+            hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
             base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
     except ValueError:
         logger.warning("Formato de fecha/hora inválido recibido.")
@@ -1787,16 +1787,16 @@ def read_lecturas_por_filtros(
         # Aplicar los mismos filtros de fecha/hora
         try:
             if fecha_inicio:
-                fecha_inicio_dt = datetime.datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+                fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
                 pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
             if fecha_fin:
-                fecha_fin_dt = datetime.datetime.strptime(fecha_fin, "%Y-%m-%d").date() + datetime.timedelta(days=1)
+                fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
                 pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
             if hora_inicio:
-                hora_inicio_time = datetime.datetime.strptime(hora_inicio, "%H:%M").time()
+                hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
                 pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
             if hora_fin:
-                hora_fin_time = datetime.datetime.strptime(hora_fin, "%H:%M").time()
+                hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
                 pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
         except ValueError:
             logger.warning("Formato de fecha/hora inválido recibido en subconsulta de pasos.")
