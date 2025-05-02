@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper } from '@mantine/core';
+import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper, Collapse } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconEye, IconPencil, IconTrash, IconCircleCheck, IconAlertTriangle, IconX, IconRefresh, IconCheck, IconBan } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -40,6 +40,8 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     const [page, setPage] = useState(1);
     const PAGE_SIZE = 15; // O el valor que prefieras
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Vehiculo>>({ columnAccessor: 'Matricula', direction: 'asc' });
+    // --- NUEVO: Estados para ayuda ---
+    const [ayudaAbierta, setAyudaAbierta] = useState(false);
 
     // Cargar vehículos del caso
     const fetchVehiculos = useCallback(async () => {
@@ -383,6 +385,35 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
 
     return (
         <Box style={{ position: 'relative' }}>
+            <Group justify="flex-end" mb="xs">
+                <Button
+                    variant="light"
+                    color="blue"
+                    size="xs"
+                    onClick={() => setAyudaAbierta((v) => !v)}
+                >
+                    {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                </Button>
+            </Group>
+            <Collapse in={ayudaAbierta}>
+                <Alert color="blue" title="¿Cómo funciona la pestaña Vehículos?" mb="md">
+                    <Text size="sm">
+                        <b>¿Qué es este panel?</b><br />
+                        Aquí puedes gestionar la lista de vehículos (matrículas) asociados a este caso. Un vehículo se añade automáticamente si aparece en las lecturas importadas o si lo guardas manualmente desde otras pestañas.<br /><br />
+                        <b>Funcionalidades:</b><br />
+                        - <b>Listado:</b> Muestra todos los vehículos vinculados al caso, con detalles como marca, modelo, color, etc. (si se han añadido).<br />
+                        - <b>Lecturas LPR:</b> Indica cuántas lecturas LPR tiene cada vehículo <i>dentro de este caso</i>.<br />
+                        - <b>Editar Detalles:</b> Modifica la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).<br />
+                        - <b>Ver Lecturas:</b> Accede a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.<br />
+                        - <b>Eliminar Vehículo:</b> Borra un vehículo de la lista del caso (Nota: Esto <i>no</i> elimina sus lecturas asociadas, solo el registro del vehículo).<br />
+                        - <b>Refrescar:</b> Actualiza la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).<br /><br />
+                        <b>Consejos:</b><br />
+                        - Utiliza la función de edición para mantener actualizada la información de cada vehículo.<br />
+                        - Marca los vehículos como comprobados o sospechosos según el avance de la investigación.<br />
+                        - Elimina solo aquellos vehículos que no sean relevantes para el caso, ya que sus lecturas seguirán estando disponibles en el sistema.<br />
+                    </Text>
+                </Alert>
+            </Collapse>
             <LoadingOverlay visible={loading} />
             <Paper shadow="sm" p="md" withBorder>
                 <Group justify="space-between" align="center" mb="md">

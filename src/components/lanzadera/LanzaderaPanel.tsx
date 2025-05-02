@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Title, Text, Paper, Group, Button, TextInput, NumberInput, Select, Table, Badge, LoadingOverlay, Alert } from '@mantine/core';
+import { Box, Title, Text, Paper, Group, Button, TextInput, NumberInput, Select, Table, Badge, LoadingOverlay, Alert, Collapse } from '@mantine/core';
 import { IconSearch, IconAlertTriangle } from '@tabler/icons-react';
 import apiClient from '../../services/api';
 import { notifications } from '@mantine/notifications';
@@ -57,6 +57,7 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
         horaFin: '',
         carretera: '',
     });
+    const [ayudaAbierta, setAyudaAbierta] = useState(false);
 
     const limpiarFiltros = () => {
         setFiltros({
@@ -369,7 +370,35 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
     return (
         <Box>
             <Paper shadow="sm" p="md" mb="md">
-                <Title order={4} mb="md">Vehículos Rápidos</Title>
+                <Group justify="space-between" mb="md">
+                    <Title order={4}>Vehículos Rápidos</Title>
+                    <Button
+                        variant="light"
+                        color="blue"
+                        size="xs"
+                        onClick={() => setAyudaAbierta((v) => !v)}
+                    >
+                        {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                    </Button>
+                </Group>
+                <Collapse in={ayudaAbierta}>
+                    <Alert color="blue" title="¿Cómo funciona este panel?" mb="md">
+                        <Text size="sm">
+                            <b>Este panel permite detectar automáticamente vehículos que han recorrido grandes distancias en tiempos muy reducidos, superando el umbral de velocidad que tú determines.</b><br /><br />
+                            <b>¿Cómo usarlo?</b><br />
+                            1. Selecciona el rango de fechas y horas que quieres analizar.<br />
+                            2. (Opcional) Filtra por carretera concreta.<br />
+                            3. Ajusta la velocidad mínima para considerar un vehículo como "rápido".<br />
+                            4. Pulsa <b>Buscar</b>.<br /><br />
+                            El sistema analizará todas las lecturas de matrículas, calculará la velocidad real entre puntos kilométricos y carreteras, y te mostrará solo los vehículos que superan el umbral.<br /><br />
+                            <b>¿Para qué sirve?</b><br />
+                            - Detectar vehículos a la fuga o con trayectorias sospechosas.<br />
+                            - Identificar patrones imposibles de ver manualmente.<br />
+                            - Ahorrar tiempo y mejorar la eficacia de la investigación.<br /><br />
+                            <b>Consejo:</b> Si no aparecen resultados, prueba a ampliar el rango de fechas/horas o bajar el umbral de velocidad.<br />
+                        </Text>
+                    </Alert>
+                </Collapse>
                 
                 <Group mb="md">
                     <NumberInput

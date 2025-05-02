@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme, Table, Select } from '@mantine/core';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme, Table, Select, Collapse, Alert } from '@mantine/core';
 import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
 import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff, IconChevronDown, IconChevronRight, IconBuildingCommunity, IconTableOptions, IconTable, IconPlus, IconX } from '@tabler/icons-react';
@@ -180,6 +180,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
     const [selectedSearches, setSelectedSearches] = useState<number[]>([]);
     const [showSavedSearches, setShowSavedSearches] = useState(false);
+    const [ayudaAbierta, setAyudaAbierta] = useState(false);
     
     // --- Procesar datos ---
     const getLectorBaseId = (nombreLector: string): string => {
@@ -1149,6 +1150,71 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     return (
         <Box style={{ position: 'relative' }}>
             <style>{customStyles}</style>
+            <Box>
+                <Group justify="flex-end" mb="xs">
+                    <Button
+                        variant="light"
+                        color="blue"
+                        size="xs"
+                        onClick={() => setAyudaAbierta((v) => !v)}
+                    >
+                        {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                    </Button>
+                </Group>
+                <Collapse in={ayudaAbierta}>
+                    <Alert color="blue" title="¿Cómo funciona la pestaña Lecturas LPR?" mb="md">
+                        <Text size="sm">
+                            <b>¿Qué es esta pestaña?</b><br />
+                            Aquí puedes consultar, filtrar y analizar todas las lecturas LPR (reconocimiento de matrículas) importadas para este caso.<br /><br />
+                            <b>¿Cómo usar los filtros?</b><br />
+                            <ul>
+                                <li>
+                                    <b>Matrícula:</b> Puedes buscar una matrícula exacta o usar <b>comodines</b> para búsquedas parciales:
+                                    <ul>
+                                        <li><code>?</code> equivale a un solo carácter cualquiera.</li>
+                                        <li><code>*</code> equivale a cero o más caracteres cualquiera.</li>
+                                    </ul>
+                                    <b>Ejemplos:</b>
+                                    <ul>
+                                        <li><code>??98M*</code> → Encuentra matrículas que tienen "98M" en las posiciones 3-5, con cualquier carácter en las posiciones 1-2 y cualquier cosa después.</li>
+                                        <li><code>98*</code> → Encuentra matrículas que empiezan por "98".</li>
+                                        <li><code>?98*</code> → Encuentra matrículas con "98" en la posición 2-3.</li>
+                                        <li><code>*98*</code> → Encuentra matrículas que contienen "98" en cualquier posición.</li>
+                                        <li><code>98??AB</code> → Encuentra matrículas que empiezan por "98", seguidas de dos caracteres cualquiera, y terminan en "AB".</li>
+                                    </ul>
+                                </li>
+                                <li>
+                                    <b>Fechas y Horas:</b> Puedes filtrar por un rango de fechas y horas de las lecturas.
+                                </li>
+                                <li>
+                                    <b>Lector:</b> Filtra por el punto de lectura (cámara o dispositivo LPR).
+                                </li>
+                                <li>
+                                    <b>Carretera, Provincia, Sentido:</b> Filtra por atributos del lector asociado a la lectura.
+                                </li>
+                                <li>
+                                    <b>Solo Relevantes:</b> Muestra solo las lecturas que has marcado como importantes.
+                                </li>
+                            </ul>
+                            <br />
+                            <b>¿Qué muestra la tabla?</b><br />
+                            La tabla muestra todas las lecturas que cumplen los filtros seleccionados. Puedes ordenar por cualquier columna haciendo clic en el encabezado.<br /><br />
+                            <b>Acciones rápidas:</b>
+                            <ul>
+                                <li><b>Marcar como relevante:</b> Guarda la lectura como importante para tu investigación.</li>
+                                <li><b>Guardar vehículo:</b> Añade la matrícula a la lista de vehículos del caso.</li>
+                            </ul>
+                            <br />
+                            <b>Consejos:</b>
+                            <ul>
+                                <li>Si no encuentras resultados, prueba a ampliar el rango de fechas/horas o a usar comodines en la matrícula.</li>
+                                <li>Puedes combinar varios filtros para afinar la búsqueda.</li>
+                                <li>Recuerda que los comodines <code>?</code> y <code>*</code> solo funcionan en el campo matrícula.</li>
+                            </ul>
+                        </Text>
+                    </Alert>
+                </Collapse>
+            </Box>
             <Grid>
                  <ProgressOverlay 
                     visible={initialLoading} 

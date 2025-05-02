@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Box, Text, Loader, Alert, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea, Title, Divider } from '@mantine/core';
+import { Box, Text, Loader, Alert, Breadcrumbs, Anchor, Button, Group, ActionIcon, Tooltip, TextInput, SimpleGrid, Select, LoadingOverlay, Container, Table, Modal, Stack, Textarea, Title, Divider, Collapse } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconAlertCircle, IconFiles, IconListDetails, IconMapPin, IconDownload, IconEye, IconTrash, IconSearch, IconClearAll, IconStar, IconStarOff, IconPencil, IconAnalyze, IconFileImport, IconCar, IconFlask, IconBook, IconTable, IconTarget, IconMap, IconRoute, IconDeviceCctv, IconArrowsJoin, IconBookmark, IconHelpCircle, IconRefresh } from '@tabler/icons-react';
 import { getCasoById } from '../services/casosApi';
@@ -186,7 +186,7 @@ const helpTexts: { [key: string]: React.ReactNode } = {
 
 function CasoDetailPage() {
   const { idCaso } = useParams<{ idCaso: string }>();
-    const idCasoNum = idCaso ? parseInt(idCaso, 10) : null;
+  const idCasoNum = idCaso ? parseInt(idCaso, 10) : null;
   const [caso, setCaso] = useState<Caso | null>(null);
   const [loadingCaso, setLoadingCaso] = useState(true);
   const [errorCaso, setErrorCaso] = useState<string | null>(null);
@@ -195,6 +195,8 @@ function CasoDetailPage() {
   const [errorArchivos, setErrorArchivos] = useState<string | null>(null);
   const [deletingArchivoId, setDeletingArchivoId] = useState<number | null>(null);
   const navigate = useNavigate();
+  // Estado para el panel de ayuda de archivos importados (mover aquí)
+  const [ayudaArchivosAbierta, setAyudaArchivosAbierta] = useState(false);
 
     // El estado activeMainTab se mantiene, pero controla la sección activa
     const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
@@ -220,6 +222,7 @@ function CasoDetailPage() {
     const [selectedRelevantRecordIds, setSelectedRelevantRecordIds] = useState<number[]>([]);
     const [editingRelevantNota, setEditingRelevantNota] = useState<Lectura | null>(null); // Estado para saber qué lectura se edita
     const [notaInputValue, setNotaInputValue] = useState(''); // Estado para el valor del input de nota
+    const [ayudaRelevantesAbierta, setAyudaRelevantesAbierta] = useState(false);
 
     // Función para cargar lecturas relevantes
     const fetchLecturasRelevantes = useCallback(async () => {
@@ -616,25 +619,6 @@ function CasoDetailPage() {
                 
                 {/* Pestaña Lecturas LPR */}
                 <Box style={{ display: activeMainTab === 'analisis-lpr' ? 'block' : 'none', position: 'relative' }}>
-                   {/* --- Icono de Ayuda para esta pestaña --- */}
-                   <Tooltip
-                        label={helpTexts['analisis-lpr']}
-                        multiline withArrow position="bottom-start" offset={8}
-                        styles={{ tooltip: { maxWidth: '400px' } }}
-                        zIndex={1001} 
-                    >
-                        <ActionIcon 
-                            variant="subtle" 
-                            color="blue" 
-                            size="lg" 
-                            aria-label="Ayuda Lecturas LPR"
-                            style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
-                        >
-                            <IconHelpCircle size="1.8rem" stroke={1.5} />
-                        </ActionIcon>
-                    </Tooltip>
-                    {/* --- Fin Icono Ayuda --- */}
-
                     <AnalisisLecturasPanel 
                         casoIdFijo={idCasoNum!}
                         permitirSeleccionCaso={false}
@@ -647,35 +631,40 @@ function CasoDetailPage() {
 
                 {/* Pestaña Detección de Patrones */}
                 <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none', position: 'relative' }}>
-                    <HelpButton
-                        label={helpTexts['lanzadera']}
-                        tooltip="Ayuda para Detección de Patrones"
-                        aria-label="Ayuda Detección de Patrones"
-                    />
                     <PatronesPanel casoId={idCasoNum!} />
                 </Box>
 
-                {/* ... Resto de las pestañas ... */}
-                 <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none', position: 'relative' }}>
-                     {/* --- Icono de Ayuda para esta pestaña --- */}
-                     <Tooltip
-                         label={helpTexts['lecturas-relevantes']}
-                         multiline withArrow position="bottom-start" offset={8}
-                         styles={{ tooltip: { maxWidth: '400px' } }} 
-                         zIndex={1001} 
-                     >
-                         <ActionIcon 
-                             variant="subtle" 
-                             color="blue" 
-                             size="lg" 
-                             aria-label="Ayuda Lecturas Relevantes"
-                             style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
-                         >
-                             <IconHelpCircle size="1.8rem" stroke={1.5} />
-                         </ActionIcon>
-                     </Tooltip>
-                     {/* --- Fin Icono Ayuda --- */} 
-                     
+                {/* Pestaña Lecturas Relevantes */}
+                <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none', position: 'relative' }}>
+                    <Group justify="flex-end" mb="xs">
+                        <Button
+                            variant="light"
+                            color="blue"
+                            size="xs"
+                            onClick={() => setAyudaRelevantesAbierta((v) => !v)}
+                        >
+                            {ayudaRelevantesAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                        </Button>
+                    </Group>
+                    <Collapse in={ayudaRelevantesAbierta}>
+                        <Alert color="blue" title="¿Cómo funciona el panel de Lecturas Relevantes?" mb="md">
+                            <Text size="sm">
+                                <b>¿Qué es este panel?</b><br />
+                                Aquí se recopilan todas las lecturas que has marcado como relevantes desde la pestaña "Lecturas LPR". Permite centrarse en los eventos clave de la investigación.<br /><br />
+                                <b>Funcionalidades:</b><br />
+                                - <b>Visualización:</b> Muestra la tabla de lecturas marcadas. Puedes ordenar y paginar como en otras tablas.<br />
+                                - <b>Notas:</b> Edita o añade notas específicas a cada lectura relevante para recordar por qué es importante.<br />
+                                - <b>Desmarcar:</b> Elimina la marca de relevancia si una lectura ya no es crucial. Puedes hacerlo individualmente o para una selección.<br />
+                                - <b>Guardar Vehículo:</b> Guarda rápidamente la matrícula de una lectura relevante como un vehículo para seguimiento posterior.<br />
+                                - <b>Selección Múltiple:</b> Usa las casillas para seleccionar varias lecturas y desmarcarlas o guardar sus vehículos en bloque.<br />
+                                - <b>Refrescar:</b> Actualiza la lista si has hecho cambios en otra pestaña.<br /><br />
+                                <b>Consejos:</b><br />
+                                - Usa las notas para documentar por qué una lectura es relevante para el caso.<br />
+                                - Marca como relevantes solo las lecturas que aporten valor a la investigación.<br />
+                                - Revisa periódicamente las lecturas relevantes para mantener el foco en lo importante.<br />
+                            </Text>
+                        </Alert>
+                    </Collapse>
                     <LecturasRelevantesPanel
                         lecturas={lecturasRelevantes}
                         loading={relevantLoading}
@@ -692,76 +681,83 @@ function CasoDetailPage() {
                         onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
                         onGuardarVehiculo={handleRelevantGuardarVehiculo}
                         onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
-                         onRefresh={fetchLecturasRelevantes}
+                        onRefresh={fetchLecturasRelevantes}
                     />
-                 </Box>
+                </Box>
 
-                 <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
-                     {/* --- Icono de Ayuda para esta pestaña --- */}
-                     <Tooltip
-                         label={helpTexts['vehiculos']}
-                         multiline withArrow position="bottom-start" offset={8}
-                         styles={{ tooltip: { maxWidth: '400px' } }} 
-                         zIndex={1001} 
-                     >
-                         <ActionIcon 
-                             variant="subtle" 
-                             color="blue" 
-                             size="lg" 
-                             aria-label="Ayuda Vehículos"
-                             style={{ position: 'absolute', top: '-35px', right: 0, zIndex: 10 }} 
-                         >
-                             <IconHelpCircle size="1.8rem" stroke={1.5} />
-                         </ActionIcon>
-                     </Tooltip>
-                     {/* --- Fin Icono Ayuda --- */} 
-                     
+                {/* Pestaña Vehículos */}
+                <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
                     <VehiculosPanel casoId={idCasoNum!} />
-                 </Box>
+                </Box>
 
-                 <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>
-                     {/* TODO: Añadir icono ayuda aquí */} 
-                     <Box style={{ position: 'relative', height: '500px' }}>
-                         <LoadingOverlay visible={loadingMapLecturas} />
-                         {errorMapLecturas && (
-                             <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
+                <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>
+                    <Box style={{ position: 'relative', height: '500px' }}>
+                        <LoadingOverlay visible={loadingMapLecturas} />
+                        {errorMapLecturas && (
+                            <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
                         )}
-                         {!loadingMapLecturas && !errorMapLecturas && (
-                             <MapPanel casoId={idCasoNum!} />
+                        {!loadingMapLecturas && !errorMapLecturas && (
+                            <MapPanel casoId={idCasoNum!} />
                         )}
                     </Box>
-                 </Box>
+                </Box>
 
-                 <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none', position: 'relative' }}>
-                    {/* TODO: Añadir icono ayuda aquí */} 
-                     <Group justify="space-between" mb="md">
-                       <Title order={4}>Archivos Importados</Title>
-                            <Button 
-                                leftSection={<IconFileImport size={16} />} 
-                           onClick={() => navigate('/importar', { state: { preselectedCasoId: idCasoNum } })}
-                           variant='light'
-                           size="sm"
-                            >
-                           Cargar Nuevos Archivos
-                            </Button>
-                        </Group>
+                <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none', position: 'relative' }}>
+                    <Group justify="flex-end" mb="xs">
+                        <Button
+                            variant="light"
+                            color="blue"
+                            size="xs"
+                            onClick={() => setAyudaArchivosAbierta((v) => !v)}
+                        >
+                            {ayudaArchivosAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                        </Button>
+                    </Group>
+                    <Collapse in={ayudaArchivosAbierta}>
+                        <Alert color="blue" title="¿Cómo funciona la pestaña Archivos Importados?" mb="md">
+                            <Text size="sm">
+                                <b>¿Qué es esta pestaña?</b><br />
+                                Aquí puedes importar archivos Excel con lecturas LPR o GPS y gestionarlos para su análisis en el caso.<br /><br />
+                                <b>¿Cómo importar?</b><br />
+                                1. Selecciona el caso al que quieres asociar los archivos.<br />
+                                2. Elige el tipo de archivo (LPR o GPS).<br />
+                                3. Sube el archivo Excel y mapea las columnas a los campos requeridos.<br />
+                                4. Confirma la importación y revisa los archivos ya cargados.<br /><br />
+                                <b>Consejos:</b><br />
+                                - Asegúrate de que tu archivo tenga cabeceras claras y todos los campos obligatorios.<br />
+                                - Puedes eliminar archivos importados si te has equivocado.<br />
+                                - El sistema intentará mapear automáticamente las columnas, pero revisa siempre el mapeo antes de confirmar.<br />
+                            </Text>
+                        </Alert>
+                    </Collapse>
+                    <Group justify="space-between" mb="md">
+                        <Title order={4}>Archivos Importados</Title>
+                        <Button 
+                            leftSection={<IconFileImport size={16} />} 
+                            onClick={() => navigate('/importar', { state: { preselectedCasoId: idCasoNum } })}
+                            variant='light'
+                            size="sm"
+                        >
+                            Cargar Nuevos Archivos
+                        </Button>
+                    </Group>
 
-                     <LoadingOverlay visible={loadingArchivos} />
-                     {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
-                     
-                     <DataTable<ArchivoExcel>
-                         records={archivos}
-                         columns={archivosColumns}
-                         minHeight={150}
-                         withTableBorder
-                         borderRadius="sm"
-                         striped
-                         highlightOnHover
-                         idAccessor="ID_Archivo"
-                         noRecordsText=""
-                         fetching={loadingArchivos}
-                     />
-                 </Box>
+                    <LoadingOverlay visible={loadingArchivos} />
+                    {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
+                    
+                    <DataTable<ArchivoExcel>
+                        records={archivos}
+                        columns={archivosColumns}
+                        minHeight={150}
+                        withTableBorder
+                        borderRadius="sm"
+                        striped
+                        highlightOnHover
+                        idAccessor="ID_Archivo"
+                        noRecordsText=""
+                        fetching={loadingArchivos}
+                    />
+                </Box>
             </Box>
 
             {/* Modales */}
