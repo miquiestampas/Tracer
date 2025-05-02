@@ -27,7 +27,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import or_ # Importar or_ para OR en consultas
 from sqlalchemy import and_, not_ # Importar and_ y not_ para AND y NOT en consultas
 from pydantic import BaseModel
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -418,22 +418,45 @@ async def upload_excel(
             valor_fecha_excel = row['Fecha']
             valor_hora_excel = row['Hora']
             fecha_hora_final = None
+            def parse_hora(hora_val):
+                if isinstance(hora_val, time):
+                    return hora_val
+                if isinstance(hora_val, datetime):
+                    return hora_val.time()
+                if isinstance(hora_val, float) and not pd.isna(hora_val):
+                    # Excel puede guardar horas como fracción de día
+                    total_seconds = int(hora_val * 24 * 60 * 60)
+                    h = total_seconds // 3600
+                    m = (total_seconds % 3600) // 60
+                    s = total_seconds % 60
+                    return time(hour=h, minute=m, second=s)
+                if isinstance(hora_val, str):
+                    # Aceptar formatos "HH:MM", "HH:MM:SS", "HH:MM:SS.sss" o "HH:MM:SS,sss"
+                    match = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2})([.,](\d{1,6}))?)?$", hora_val.strip())
+                    if match:
+                        h = int(match.group(1))
+                        m = int(match.group(2))
+                        s = int(match.group(3) or 0)
+                        ms = match.group(5)
+                        micro = int(float(f'0.{ms}') * 1_000_000) if ms else 0
+                        return time(hour=h, minute=m, second=s, microsecond=micro)
+                raise ValueError(f"Formato de hora no reconocido: {hora_val}")
             try:
-                if isinstance(valor_fecha_excel, datetime.datetime) and isinstance(valor_hora_excel, datetime.time):
-                     fecha_hora_final = datetime.datetime.combine(valor_fecha_excel.date(), valor_hora_excel)
-                elif isinstance(valor_fecha_excel, datetime.date) and isinstance(valor_hora_excel, datetime.time):
-                     fecha_hora_final = datetime.datetime.combine(valor_fecha_excel, valor_hora_excel)
-                else: 
-                    fecha_str = str(valor_fecha_excel).split()[0]
-                    hora_str = str(valor_hora_excel).split()[-1]
-                    try:
-                        fecha_hora_final = pd.to_datetime(f"{fecha_str} {hora_str}", errors='raise')
-                    except ValueError:
-                         raise ValueError("Formato de fecha/hora no reconocido")
-                if pd.isna(fecha_hora_final):
-                     raise ValueError("Fecha/Hora resultante es inválida")
+                # Normalizar hora
+                hora_obj = parse_hora(valor_hora_excel)
+                # Normalizar fecha
+                if isinstance(valor_fecha_excel, datetime):
+                    fecha_obj = valor_fecha_excel.date()
+                elif isinstance(valor_fecha_excel, date):
+                    fecha_obj = valor_fecha_excel
+                elif isinstance(valor_fecha_excel, float) and not pd.isna(valor_fecha_excel):
+                    # Excel puede guardar fechas como número de días desde 1899-12-30
+                    fecha_obj = pd.to_datetime(valor_fecha_excel, unit='d', origin='1899-12-30').date()
+                else:
+                    fecha_obj = pd.to_datetime(str(valor_fecha_excel)).date()
+                fecha_hora_final = datetime.combine(fecha_obj, hora_obj)
             except Exception as e_comb:
-                 raise ValueError(f"Error combinando/parseando Fecha/Hora: {e_comb}")
+                raise ValueError(f"Error combinando/parseando Fecha/Hora: {e_comb}")
 
             id_lector = None
             coord_x_final = get_optional_float(row.get('Coordenada_X'))
