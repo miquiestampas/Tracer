@@ -1834,3 +1834,96 @@ def read_lecturas_por_filtros(
 
 # --- NUEVO ENDPOINT PARA LECTURAS POR PERIODO (LANZADERA) ---
 # Removed as part of cleanup
+
+@app.post("/casos/{caso_id}/detectar-lanzaderas", response_model=schemas.LanzaderaResponse)
+def detectar_vehiculos_lanzadera(
+    caso_id: int,
+    request: schemas.LanzaderaRequest,
+    db: Session = Depends(get_db)
+):
+    # 1. Obtener todas las lecturas del vehículo objetivo en el rango de fechas
+    lecturas_objetivo = db.query(models.Lectura).filter(
+        models.Lectura.ID_Archivo.in_(
+            db.query(models.ArchivoExcel.ID_Archivo)
+            .filter(models.ArchivoExcel.ID_Caso == caso_id)
+        ),
+        models.Lectura.Matricula == request.matricula,
+        models.Lectura.Fecha_y_Hora >= request.fecha_inicio,
+        models.Lectura.Fecha_y_Hora <= f"{request.fecha_fin} 23:59:59"
+    ).order_by(models.Lectura.Fecha_y_Hora).all()
+
+    if not lecturas_objetivo:
+        return schemas.LanzaderaResponse(
+            vehiculos_lanzadera=[],
+            detalles=[]
+        )
+
+    # 2. Para cada lectura del objetivo, buscar vehículos acompañantes
+    vehiculos_acompanantes = defaultdict(lambda: defaultdict(list))  # {matricula: {fecha: [(hora, lector), ...]}}
+    
+    for lectura_objetivo in lecturas_objetivo:
+        # Calcular ventana temporal
+        ventana_inicio = lectura_objetivo.Fecha_y_Hora - timedelta(minutes=request.ventana_minutos)
+        ventana_fin = lectura_objetivo.Fecha_y_Hora + timedelta(minutes=request.ventana_minutos)
+        
+        # Buscar lecturas en la misma ventana temporal y lector
+        lecturas_acompanantes = db.query(models.Lectura).filter(
+            models.Lectura.ID_Archivo.in_(
+                db.query(models.ArchivoExcel.ID_Archivo)
+                .filter(models.ArchivoExcel.ID_Caso == caso_id)
+            ),
+            models.Lectura.ID_Lector == lectura_objetivo.ID_Lector,
+            models.Lectura.Fecha_y_Hora >= ventana_inicio,
+            models.Lectura.Fecha_y_Hora <= ventana_fin,
+            models.Lectura.Matricula != request.matricula
+        ).all()
+        
+        # Registrar las coincidencias
+        for lectura in lecturas_acompanantes:
+            fecha = lectura.Fecha_y_Hora.date().isoformat()
+            hora = lectura.Fecha_y_Hora.time().strftime("%H:%M")
+            vehiculos_acompanantes[lectura.Matricula][fecha].append((hora, lectura.ID_Lector))
+
+    # 3. Analizar los vehículos acompañantes según los criterios
+    vehiculos_lanzadera = []
+    detalles = []
+    
+    for matricula, coincidencias_por_dia in vehiculos_acompanantes.items():
+        # Verificar criterio 1: Al menos 2 días distintos
+        dias_distintos = len(coincidencias_por_dia)
+        
+        # Verificar criterio 2: Más de 2 lectores distintos el mismo día con lecturas distanciadas en el tiempo
+        cumple_criterio_2 = False
+        for fecha, lecturas in coincidencias_por_dia.items():
+            if len(set(lector for _, lector in lecturas)) > 2:
+                # Verificar que las lecturas estén distanciadas en el tiempo
+                horas = []
+                for hora_str, _ in lecturas:
+                    try:
+                        horas.append(datetime.strptime(hora_str, "%H:%M"))
+                    except Exception as e:
+                        logger.warning(f"Hora inválida '{hora_str}' para matrícula {matricula} en fecha {fecha}: {e}")
+                        continue
+                if any(abs((h2 - h1).total_seconds() / 60) >= request.diferencia_minima 
+                      for i, h1 in enumerate(horas) 
+                      for h2 in horas[i+1:]):
+                    cumple_criterio_2 = True
+                    break
+        
+        # Si cumple alguno de los criterios, es un vehículo lanzadera
+        if dias_distintos >= 2 or cumple_criterio_2:
+            vehiculos_lanzadera.append(matricula)
+            # Agregar todos los detalles de las coincidencias
+            for fecha, lecturas in coincidencias_por_dia.items():
+                for hora, lector in lecturas:
+                    detalles.append(schemas.LanzaderaDetalle(
+                        matricula=matricula,
+                        fecha=fecha,
+                        hora=hora,
+                        lector=lector
+                    ))
+
+    return schemas.LanzaderaResponse(
+        vehiculos_lanzadera=vehiculos_lanzadera,
+        detalles=detalles
+    )

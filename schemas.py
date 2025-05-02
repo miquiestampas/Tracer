@@ -308,7 +308,22 @@ class SavedSearch(SavedSearchBase):
 # LecturaRelevante.model_rebuild() 
 
 # --- Schemas para Detección de Vehículo Lanzadera ---
-# Removed as part of cleanup
+class LanzaderaRequest(BaseModel):
+    matricula: str = Field(..., description="Matrícula del vehículo objetivo a analizar")
+    fecha_inicio: str = Field(..., description="Fecha de inicio del análisis (YYYY-MM-DD)")
+    fecha_fin: str = Field(..., description="Fecha de fin del análisis (YYYY-MM-DD)")
+    ventana_minutos: int = Field(10, description="Ventana temporal en minutos para considerar vehículos acompañantes")
+    diferencia_minima: int = Field(5, description="Diferencia mínima en minutos entre lecturas para considerar repetición")
+
+class LanzaderaDetalle(BaseModel):
+    matricula: str = Field(..., description="Matrícula del vehículo lanzadera")
+    fecha: str = Field(..., description="Fecha de la lectura (YYYY-MM-DD)")
+    hora: str = Field(..., description="Hora de la lectura (HH:MM)")
+    lector: str = Field(..., description="ID del lector donde se detectó la coincidencia")
+
+class LanzaderaResponse(BaseModel):
+    vehiculos_lanzadera: List[str] = Field(..., description="Lista de matrículas detectadas como lanzaderas")
+    detalles: List[LanzaderaDetalle] = Field(..., description="Detalles de todas las coincidencias encontradas")
 
 # --- Schemas ANTIGUOS (Relacionados con ResultadoLanzadera...) --- 
 # Los comentamos o eliminamos ya que no se usarán con el nuevo enfoque

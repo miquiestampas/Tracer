@@ -58,6 +58,16 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
         carretera: '',
     });
     const [ayudaAbierta, setAyudaAbierta] = useState(false);
+    const [lanzaderaParams, setLanzaderaParams] = useState({
+        matricula: '',
+        ventanaMinutos: 10,
+        diferenciaMinima: 5,
+        fechaInicio: '',
+        fechaFin: '',
+    });
+    const [lanzaderaLoading, setLanzaderaLoading] = useState(false);
+    const [lanzaderaResultados, setLanzaderaResultados] = useState<string[]>([]);
+    const [lanzaderaDetalles, setLanzaderaDetalles] = useState<any[]>([]);
 
     const limpiarFiltros = () => {
         setFiltros({
@@ -120,10 +130,24 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
             if (pk1 === 0 || pk2 === 0 || carretera1 !== carretera2) {
                 return null;
             }
-            
-            // Calcular distancia en kilómetros
-            const distancia = Math.abs(pk2 - pk1);
-            
+
+            // Longitudes de carreteras circulares
+            const longitudesCirculares: Record<string, number> = {
+                'M-30': 32.5,
+                'M30': 32.5,
+                'M-40': 63.3,
+                'M40': 63.3
+            };
+            const longitud = longitudesCirculares[carretera1] || null;
+
+            let distancia = Math.abs(pk2 - pk1);
+            if (longitud) {
+                // Si la distancia es mayor que la mitad de la circunferencia, tomar el camino más corto
+                if (distancia > longitud / 2) {
+                    distancia = longitud - distancia;
+                }
+            }
+
             // Parsear fechas
             const fecha1 = new Date(lectura1.Fecha_y_Hora);
             const fecha2 = new Date(lectura2.Fecha_y_Hora);
@@ -367,6 +391,55 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
         testParseo();
     }, []);
 
+    // Placeholder para la función de búsqueda
+    const handleBuscarLanzadera = async () => {
+        if (!lanzaderaParams.matricula || !lanzaderaParams.fechaInicio || !lanzaderaParams.fechaFin) {
+            notifications.show({
+                title: 'Error',
+                message: 'Por favor, complete todos los campos obligatorios',
+                color: 'red'
+            });
+            return;
+        }
+
+        setLanzaderaLoading(true);
+        try {
+            const response = await apiClient.post(`/casos/${casoId}/detectar-lanzaderas`, {
+                matricula: lanzaderaParams.matricula,
+                fecha_inicio: lanzaderaParams.fechaInicio,
+                fecha_fin: lanzaderaParams.fechaFin,
+                ventana_minutos: lanzaderaParams.ventanaMinutos,
+                diferencia_minima: lanzaderaParams.diferenciaMinima
+            });
+
+            setLanzaderaResultados(response.data.vehiculos_lanzadera);
+            setLanzaderaDetalles(response.data.detalles);
+
+            if (response.data.vehiculos_lanzadera.length === 0) {
+                notifications.show({
+                    title: 'Sin resultados',
+                    message: 'No se han detectado vehículos lanzadera para los criterios especificados',
+                    color: 'blue'
+                });
+            } else {
+                notifications.show({
+                    title: 'Búsqueda completada',
+                    message: `Se han detectado ${response.data.vehiculos_lanzadera.length} vehículos lanzadera`,
+                    color: 'green'
+                });
+            }
+        } catch (error) {
+            console.error('Error al buscar vehículos lanzadera:', error);
+            notifications.show({
+                title: 'Error',
+                message: 'Ocurrió un error al buscar vehículos lanzadera',
+                color: 'red'
+            });
+        } finally {
+            setLanzaderaLoading(false);
+        }
+    };
+
     return (
         <Box>
             <Paper shadow="sm" p="md" mb="md">
@@ -478,38 +551,112 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                     <Table striped highlightOnHover>
                         <thead>
                             <tr>
-                                <th>Matrícula</th>
-                                <th>Velocidad (km/h)</th>
-                                <th>Fecha/Hora Inicio</th>
-                                <th>Fecha/Hora Fin</th>
-                                <th>Lector Inicio</th>
-                                <th>Lector Fin</th>
-                                <th>PK Inicio</th>
-                                <th>PK Fin</th>
-                                <th>Carretera</th>
+                                <th style={{ textAlign: 'center' }}>Matrícula</th>
+                                <th style={{ textAlign: 'center' }}>Velocidad (km/h)</th>
+                                <th style={{ textAlign: 'center' }}>Fecha/Hora Inicio</th>
+                                <th style={{ textAlign: 'center' }}>Fecha/Hora Fin</th>
+                                <th style={{ textAlign: 'center' }}>Lector Inicio</th>
+                                <th style={{ textAlign: 'center' }}>Lector Fin</th>
+                                <th style={{ textAlign: 'center' }}>PK Inicio</th>
+                                <th style={{ textAlign: 'center' }}>PK Fin</th>
+                                <th style={{ textAlign: 'center' }}>Carretera</th>
                             </tr>
                         </thead>
                         <tbody>
                             {vehiculosRapidos.map((vehiculo, index) => (
                                 <tr key={index}>
-                                    <td>{vehiculo.matricula}</td>
-                                    <td>
-                                        <Badge color="red" leftSection={<IconAlertTriangle size={12} />}>
-                                            {vehiculo.velocidad} km/h
-                                        </Badge>
+                                    <td style={{ textAlign: 'center' }}>{vehiculo.matricula}</td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <Badge color="red" leftSection={<IconAlertTriangle size={12} />}>{vehiculo.velocidad} km/h</Badge>
                                     </td>
-                                    <td>{new Date(vehiculo.fechaHoraInicio).toLocaleString()}</td>
-                                    <td>{new Date(vehiculo.fechaHoraFin).toLocaleString()}</td>
-                                    <td>{vehiculo.lectorInicio}</td>
-                                    <td>{vehiculo.lectorFin}</td>
-                                    <td>{vehiculo.pkInicio}</td>
-                                    <td>{vehiculo.pkFin}</td>
-                                    <td>{vehiculo.carretera}</td>
+                                    <td style={{ textAlign: 'center' }}>{new Date(vehiculo.fechaHoraInicio).toLocaleString()}</td>
+                                    <td style={{ textAlign: 'center' }}>{new Date(vehiculo.fechaHoraFin).toLocaleString()}</td>
+                                    <td style={{ textAlign: 'center' }}>{vehiculo.lectorInicio}</td>
+                                    <td style={{ textAlign: 'center' }}>{vehiculo.lectorFin}</td>
+                                    <td style={{ textAlign: 'center' }}>{vehiculo.pkInicio}</td>
+                                    <td style={{ textAlign: 'center' }}>{vehiculo.pkFin}</td>
+                                    <td style={{ textAlign: 'center' }}>{vehiculo.carretera}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </Table>
                 </Box>
+            </Paper>
+
+            {/* Submódulo: Detección de Vehículo Lanzadera */}
+            <Paper shadow="sm" p="md" mb="md">
+                <Group justify="space-between" mb="md">
+                    <Title order={4}>Detección de Vehículo Lanzadera</Title>
+                </Group>
+                <Group mb="md">
+                    <TextInput
+                        label="Matrícula objetivo"
+                        value={lanzaderaParams?.matricula || ''}
+                        onChange={e => setLanzaderaParams(p => ({ ...p, matricula: e.target.value }))}
+                        placeholder="Introduce matrícula"
+                        required
+                    />
+                    <TextInput
+                        type="date"
+                        label="Fecha Inicio"
+                        value={lanzaderaParams?.fechaInicio || ''}
+                        onChange={e => setLanzaderaParams(p => ({ ...p, fechaInicio: e.target.value }))}
+                        required
+                    />
+                    <TextInput
+                        type="date"
+                        label="Fecha Fin"
+                        value={lanzaderaParams?.fechaFin || ''}
+                        onChange={e => setLanzaderaParams(p => ({ ...p, fechaFin: e.target.value }))}
+                        required
+                    />
+                    <NumberInput
+                        label="Ventana temporal (minutos)"
+                        value={lanzaderaParams?.ventanaMinutos || 10}
+                        onChange={v => setLanzaderaParams(p => ({ ...p, ventanaMinutos: typeof v === 'number' ? v : 10 }))}
+                        min={1}
+                        max={120}
+                    />
+                    <NumberInput
+                        label="Diferencia mínima entre lecturas (min)"
+                        value={lanzaderaParams?.diferenciaMinima || 5}
+                        onChange={v => setLanzaderaParams(p => ({ ...p, diferenciaMinima: typeof v === 'number' ? v : 5 }))}
+                        min={1}
+                        max={60}
+                    />
+                    <Button onClick={handleBuscarLanzadera} loading={lanzaderaLoading}>
+                        Buscar
+                    </Button>
+                </Group>
+                <Title order={5} mt="md" mb="xs">Matrículas Lanzadera Detectadas</Title>
+                <Table striped highlightOnHover withColumnBorders>
+                    <thead>
+                        <tr>
+                            <th style={{ minWidth: 120, textAlign: 'center' }}>Matrícula</th>
+                            <th style={{ minWidth: 120, textAlign: 'center' }}>Fecha</th>
+                            <th style={{ minWidth: 80, textAlign: 'center' }}>Hora</th>
+                            <th style={{ minWidth: 200, textAlign: 'center' }}>Lector</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {lanzaderaDetalles && lanzaderaDetalles.length > 0 ? (
+                            lanzaderaDetalles.map((d, i) => (
+                                <tr key={i}>
+                                    <td style={{ fontWeight: 'bold', textAlign: 'center' }}>{d.matricula}</td>
+                                    <td style={{ textAlign: 'center' }}>{d.fecha}</td>
+                                    <td style={{ textAlign: 'center' }}>{d.hora}</td>
+                                    <td style={{ textAlign: 'center' }}>{d.lector}</td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={4} style={{ textAlign: 'center', color: '#888' }}>
+                                    No se han detectado vehículos lanzadera.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </Table>
             </Paper>
         </Box>
     );
