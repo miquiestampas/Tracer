@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Box, Title, Text, Paper, Group, Button, TextInput, NumberInput, Select, Table, Badge, LoadingOverlay, Alert, Collapse } from '@mantine/core';
-import { IconSearch, IconAlertTriangle } from '@tabler/icons-react';
+import { IconSearch, IconAlertTriangle, IconBookmark, IconCar } from '@tabler/icons-react';
 import apiClient from '../../services/api';
 import { notifications } from '@mantine/notifications';
+import { Checkbox } from '@mantine/core';
 
 interface PatronesPanelProps {
     casoId: number;
@@ -68,6 +69,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
     const [lanzaderaLoading, setLanzaderaLoading] = useState(false);
     const [lanzaderaResultados, setLanzaderaResultados] = useState<string[]>([]);
     const [lanzaderaDetalles, setLanzaderaDetalles] = useState<any[]>([]);
+    const [selectedRows, setSelectedRows] = useState<any[]>([]);
 
     const limpiarFiltros = () => {
         setFiltros({
@@ -440,8 +442,115 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
         }
     };
 
+    // Helpers para identificar filas únicas
+    const getVelocidadRowId = (vehiculo: VehiculoRapido) => `velocidad-${vehiculo.matricula}-${vehiculo.fechaHoraInicio}-${vehiculo.fechaHoraFin}`;
+    const getLanzaderaRowId = (detalle: any) => `lanzadera-${detalle.matricula}-${detalle.fecha}-${detalle.hora}-${detalle.lector}`;
+
+    // Helpers para saber si una fila está seleccionada
+    const isVelocidadRowSelected = (vehiculo: VehiculoRapido) => selectedRows.some(r => r._rowId === getVelocidadRowId(vehiculo));
+    const isLanzaderaRowSelected = (detalle: any) => selectedRows.some(r => r._rowId === getLanzaderaRowId(detalle));
+
+    // Select all helpers
+    const allVelocidadSelected = vehiculosRapidos.length > 0 && vehiculosRapidos.every(isVelocidadRowSelected);
+    const allLanzaderaSelected = lanzaderaDetalles.length > 0 && lanzaderaDetalles.every(isLanzaderaRowSelected);
+
+    // Handlers para selección
+    const handleSelectVelocidadRow = (vehiculo: VehiculoRapido, checked: boolean) => {
+        const rowObj = { ...vehiculo, tipo: 'velocidad', _rowId: getVelocidadRowId(vehiculo) };
+        setSelectedRows(prev => checked
+            ? [...prev, rowObj]
+            : prev.filter(r => r._rowId !== rowObj._rowId)
+        );
+    };
+    const handleSelectAllVelocidad = (checked: boolean) => {
+        if (checked) {
+            const toAdd = vehiculosRapidos
+                .filter(v => !isVelocidadRowSelected(v))
+                .map(v => ({ ...v, tipo: 'velocidad', _rowId: getVelocidadRowId(v) }));
+            setSelectedRows(prev => [...prev, ...toAdd]);
+        } else {
+            setSelectedRows(prev => prev.filter(r => !vehiculosRapidos.some(v => r._rowId === getVelocidadRowId(v))));
+        }
+    };
+    const handleSelectLanzaderaRow = (detalle: any, checked: boolean) => {
+        const rowObj = { ...detalle, tipo: 'lanzadera', _rowId: getLanzaderaRowId(detalle) };
+        setSelectedRows(prev => checked
+            ? [...prev, rowObj]
+            : prev.filter(r => r._rowId !== rowObj._rowId)
+        );
+    };
+    const handleSelectAllLanzadera = (checked: boolean) => {
+        if (checked) {
+            const toAdd = lanzaderaDetalles
+                .filter(d => !isLanzaderaRowSelected(d))
+                .map(d => ({ ...d, tipo: 'lanzadera', _rowId: getLanzaderaRowId(d) }));
+            setSelectedRows(prev => [...prev, ...toAdd]);
+        } else {
+            setSelectedRows(prev => prev.filter(r => !lanzaderaDetalles.some(d => r._rowId === getLanzaderaRowId(d))));
+        }
+    };
+
+    // Acciones
+    const handleMarcarRelevante = async () => {
+        const lecturasConId = selectedRows.filter(r => r.tipo === 'velocidad' && r.ID_Lectura);
+        if (lecturasConId.length === 0) {
+            notifications.show({ title: 'Sin lecturas seleccionadas', message: 'No hay lecturas con ID para marcar como relevante.', color: 'orange' });
+            return;
+        }
+        for (const row of lecturasConId) {
+            try {
+                await apiClient.post(`/lecturas/${row.ID_Lectura}/marcar_relevante`, { caso_id: casoId });
+            } catch (e) {
+                notifications.show({ title: 'Error', message: `No se pudo marcar la lectura ${row.ID_Lectura} como relevante.`, color: 'red' });
+            }
+        }
+        notifications.show({ title: 'Éxito', message: `Lecturas marcadas como relevantes.`, color: 'green' });
+        setSelectedRows([]);
+    };
+    const handleGuardarVehiculos = async () => {
+        const matriculasUnicas = Array.from(new Set(selectedRows.map(r => r.matricula || r.Matricula)));
+        if (matriculasUnicas.length === 0) {
+            notifications.show({ title: 'Sin matrículas', message: 'No hay matrículas seleccionadas.', color: 'orange' });
+            return;
+        }
+        for (const matricula of matriculasUnicas) {
+            try {
+                await apiClient.post('/vehiculos', { Matricula: matricula });
+            } catch (e: any) {
+                if (e.response?.status === 400 || e.response?.status === 409) {
+                    notifications.show({ title: 'Vehículo Existente', message: `El vehículo ${matricula} ya existe.`, color: 'blue' });
+                } else {
+                    notifications.show({ title: 'Error', message: `No se pudo guardar el vehículo ${matricula}.`, color: 'red' });
+                }
+            }
+        }
+        notifications.show({ title: 'Éxito', message: `Vehículos guardados.`, color: 'green' });
+        setSelectedRows([]);
+    };
+
     return (
         <Box>
+            <Group justify="flex-end" mb="xs">
+                <Button
+                    size="xs"
+                    variant="outline"
+                    leftSection={<IconBookmark size={16} />}
+                    onClick={handleMarcarRelevante}
+                    disabled={selectedRows.length === 0}
+                >
+                    Marcar Relevante ({selectedRows.length})
+                </Button>
+                <Button
+                    size="xs"
+                    variant="outline"
+                    color="green"
+                    leftSection={<IconCar size={16} />}
+                    onClick={handleGuardarVehiculos}
+                    disabled={selectedRows.length === 0}
+                >
+                    Guardar Vehículos ({selectedRows.length})
+                </Button>
+            </Group>
             <Paper shadow="sm" p="md" mb="md">
                 <Group justify="space-between" mb="md">
                     <Title order={4}>Detección de Vehículos Rápidos</Title>
@@ -551,6 +660,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                     <Table striped highlightOnHover>
                         <thead>
                             <tr>
+                                <th><Checkbox checked={allVelocidadSelected} onChange={e => handleSelectAllVelocidad(e.currentTarget.checked)} /></th>
                                 <th style={{ textAlign: 'center' }}>Matrícula</th>
                                 <th style={{ textAlign: 'center' }}>Velocidad (km/h)</th>
                                 <th style={{ textAlign: 'center' }}>Fecha/Hora Inicio</th>
@@ -565,6 +675,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                         <tbody>
                             {vehiculosRapidos.map((vehiculo, index) => (
                                 <tr key={index}>
+                                    <td><Checkbox checked={isVelocidadRowSelected(vehiculo)} onChange={e => handleSelectVelocidadRow(vehiculo, e.currentTarget.checked)} /></td>
                                     <td style={{ textAlign: 'center' }}>{vehiculo.matricula}</td>
                                     <td style={{ textAlign: 'center' }}>
                                         <Badge color="red" leftSection={<IconAlertTriangle size={12} />}>{vehiculo.velocidad} km/h</Badge>
@@ -632,6 +743,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                 <Table striped highlightOnHover withColumnBorders>
                     <thead>
                         <tr>
+                            <th><Checkbox checked={allLanzaderaSelected} onChange={e => handleSelectAllLanzadera(e.currentTarget.checked)} /></th>
                             <th style={{ minWidth: 120, textAlign: 'center' }}>Matrícula</th>
                             <th style={{ minWidth: 100, textAlign: 'center' }}>Tipo</th>
                             <th style={{ minWidth: 120, textAlign: 'center' }}>Fecha</th>
@@ -655,6 +767,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                                             backgroundColor: d.tipo === 'Objetivo' ? '#e8f4fd' : '#fffbe6'
                                         }}
                                     >
+                                        <td><Checkbox checked={isLanzaderaRowSelected(d)} onChange={e => handleSelectLanzaderaRow(d, e.currentTarget.checked)} /></td>
                                         <td style={{ fontWeight: 'bold', textAlign: 'center' }}>{d.matricula}</td>
                                         <td style={{ textAlign: 'center' }}>{d.tipo}</td>
                                         <td style={{ textAlign: 'center' }}>{d.fecha}</td>
@@ -664,7 +777,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                                 ))
                         ) : (
                             <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', color: '#888' }}>
+                                <td colSpan={6} style={{ textAlign: 'center', color: '#888' }}>
                                     No se han detectado lecturas relevantes.
                                 </td>
                             </tr>
