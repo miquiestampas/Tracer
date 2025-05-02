@@ -4,6 +4,7 @@ import { IconSearch, IconAlertTriangle, IconBookmark, IconCar } from '@tabler/ic
 import apiClient from '../../services/api';
 import { notifications } from '@mantine/notifications';
 import { Checkbox } from '@mantine/core';
+import MatriculasExtranjerasPanel from '../analisis/MatriculasExtranjerasPanel';
 
 interface PatronesPanelProps {
     casoId: number;
@@ -694,10 +695,10 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                 </Box>
             </Paper>
 
-            {/* Submódulo: Detección de Vehículo Lanzadera */}
+            {/* Submódulo: Detección de Vehículo Acompañante */}
             <Paper shadow="sm" p="md" mb="md">
                 <Group justify="space-between" mb="md">
-                    <Title order={4}>Detección de Vehículo Lanzadera</Title>
+                    <Title order={4}>Detección de Vehículo Acompañante</Title>
                 </Group>
                 <Group mb="md">
                     <TextInput
@@ -739,7 +740,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                         Buscar
                     </Button>
                 </Group>
-                <Title order={5} mt="md" mb="xs">Lecturas Intercaladas (Objetivo y Lanzadera)</Title>
+                <Title order={5} mt="md" mb="xs">Lecturas Intercaladas (Objetivo y Acompañante)</Title>
                 <Table striped highlightOnHover withColumnBorders>
                     <thead>
                         <tr>
@@ -784,6 +785,25 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                         )}
                     </tbody>
                 </Table>
+            </Paper>
+
+            {/* Submódulo: Búsqueda de Matrículas Extranjeras */}
+            <Paper shadow="sm" p="md" mb="md">
+                <MatriculasExtranjerasPanel
+                    lecturas={[
+                        ...vehiculosRapidos.map(v => ({
+                            Matricula: v.matricula,
+                            Fecha_y_Hora: v.fechaHoraInicio,
+                            ID_Lector: v.lectorInicio
+                        })),
+                        ...lanzaderaDetalles.map(d => ({
+                            Matricula: d.matricula,
+                            Fecha_y_Hora: `${d.fecha}T${d.hora}`,
+                            ID_Lector: d.lector
+                        }))
+                    ]}
+                    loading={loading || lanzaderaLoading}
+                />
             </Paper>
         </Box>
     );
