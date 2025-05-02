@@ -22,7 +22,7 @@ import AnalisisLecturasPanel from '../components/analisis/AnalisisLecturasPanel'
 import LprAvanzadoPanel from '../components/lpr_avanzado/LprAvanzadoPanel';
 import LecturasRelevantesPanel from '../components/caso/LecturasRelevantesPanel';
 import VehiculosPanel from '../components/vehiculos/VehiculosPanel';
-import PatronesPanel from '../components/lanzadera/LanzaderaPanel';
+import AnalisisAvanzadoPanel from '../components/lanzadera/LanzaderaPanel';
 import MapPanel from '../components/maps/MapPanel';
 import HelpButton from '../components/common/HelpButton';
 
@@ -55,7 +55,7 @@ type DataSourceType = 'LPR' | 'GPS';
 const caseSections = [
     { id: 'analisis-lpr', label: 'Lecturas LPR', icon: IconDeviceCctv, section: 'lecturas' },
     { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconBookmark, section: 'lecturas' },
-    { id: 'lanzadera', label: 'Detección de Patrones', icon: IconArrowsJoin, section: 'lecturas' },
+    { id: 'lanzadera', label: 'Análisis Avanzado', icon: IconFlask, section: 'lecturas' },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar, section: 'vehiculos' },
     { id: 'mapa', label: 'Mapa', icon: IconMap, section: 'vehiculos' },
     { id: 'archivos', label: 'Archivos Importados', icon: IconFiles, section: 'archivos' },
@@ -631,7 +631,7 @@ function CasoDetailPage() {
 
                 {/* Pestaña Detección de Patrones */}
                 <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none', position: 'relative' }}>
-                    <PatronesPanel casoId={idCasoNum!} />
+                    <AnalisisAvanzadoPanel casoId={idCasoNum!} />
                 </Box>
 
                 {/* Pestaña Lecturas Relevantes */}

@@ -45,7 +45,7 @@ interface VehiculoRapido {
     carretera: string;
 }
 
-function PatronesPanel({ casoId }: PatronesPanelProps) {
+function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [vehiculosRapidos, setVehiculosRapidos] = useState<VehiculoRapido[]>([]);
@@ -371,7 +371,7 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
         <Box>
             <Paper shadow="sm" p="md" mb="md">
                 <Group justify="space-between" mb="md">
-                    <Title order={4}>Vehículos Rápidos</Title>
+                    <Title order={4}>Detección de Vehículos Rápidos</Title>
                     <Button
                         variant="light"
                         color="blue"
@@ -515,4 +515,4 @@ function PatronesPanel({ casoId }: PatronesPanelProps) {
     );
 }
 
-export default PatronesPanel; 
+export default AnalisisAvanzadoPanel; 

@@ -1165,51 +1165,30 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                     <Alert color="blue" title="¿Cómo funciona la pestaña Lecturas LPR?" mb="md">
                         <Text size="sm">
                             <b>¿Qué es esta pestaña?</b><br />
-                            Aquí puedes consultar, filtrar y analizar todas las lecturas LPR (reconocimiento de matrículas) importadas para este caso.<br /><br />
-                            <b>¿Cómo usar los filtros?</b><br />
+                            Aquí puedes consultar y filtrar todas las lecturas LPR asociadas al caso. Utiliza los filtros avanzados para acotar por matrícula (con comodines), fechas, horas, lector, carretera, etc.<br /><br />
+                            <b>Guardar búsquedas y uso cruzado</b><br />
+                            Puedes guardar cualquier búsqueda que realices (con los filtros aplicados) para consultarla más adelante o cruzarla con otras búsquedas. Esta funcionalidad es especialmente útil para:<br />
                             <ul>
-                                <li>
-                                    <b>Matrícula:</b> Puedes buscar una matrícula exacta o usar <b>comodines</b> para búsquedas parciales:
-                                    <ul>
-                                        <li><code>?</code> equivale a un solo carácter cualquiera.</li>
-                                        <li><code>*</code> equivale a cero o más caracteres cualquiera.</li>
-                                    </ul>
-                                    <b>Ejemplos:</b>
-                                    <ul>
-                                        <li><code>??98M*</code> → Encuentra matrículas que tienen "98M" en las posiciones 3-5, con cualquier carácter en las posiciones 1-2 y cualquier cosa después.</li>
-                                        <li><code>98*</code> → Encuentra matrículas que empiezan por "98".</li>
-                                        <li><code>?98*</code> → Encuentra matrículas con "98" en la posición 2-3.</li>
-                                        <li><code>*98*</code> → Encuentra matrículas que contienen "98" en cualquier posición.</li>
-                                        <li><code>98??AB</code> → Encuentra matrículas que empiezan por "98", seguidas de dos caracteres cualquiera, y terminan en "AB".</li>
-                                    </ul>
-                                </li>
-                                <li>
-                                    <b>Fechas y Horas:</b> Puedes filtrar por un rango de fechas y horas de las lecturas.
-                                </li>
-                                <li>
-                                    <b>Lector:</b> Filtra por el punto de lectura (cámara o dispositivo LPR).
-                                </li>
-                                <li>
-                                    <b>Carretera, Provincia, Sentido:</b> Filtra por atributos del lector asociado a la lectura.
-                                </li>
-                                <li>
-                                    <b>Solo Relevantes:</b> Muestra solo las lecturas que has marcado como importantes.
-                                </li>
+                                <li><b>Comparar patrones de movimiento</b> de diferentes vehículos.</li>
+                                <li><b>Localizar coincidencias</b> entre vehículos en distintos puntos geográficos y temporales.</li>
+                                <li><b>Investigar vehículos lanzadera</b> que acompañan a un objetivo en diferentes momentos y ubicaciones.</li>
                             </ul>
-                            <br />
-                            <b>¿Qué muestra la tabla?</b><br />
-                            La tabla muestra todas las lecturas que cumplen los filtros seleccionados. Puedes ordenar por cualquier columna haciendo clic en el encabezado.<br /><br />
-                            <b>Acciones rápidas:</b>
+                            <b>¿Cómo guardar una búsqueda?</b><br />
+                            1. Aplica los filtros que te interesen (matrícula, fechas, lector, etc.).<br />
+                            2. Haz clic en el botón "Guardar búsqueda".<br />
+                            3. Asigna un nombre descriptivo para identificarla fácilmente.<br />
+                            4. Accede a tus búsquedas guardadas desde el panel correspondiente para consultarlas o cruzarlas con otras.<br /><br />
+                            <b>Ejemplos de uso avanzado:</b>
                             <ul>
-                                <li><b>Marcar como relevante:</b> Guarda la lectura como importante para tu investigación.</li>
-                                <li><b>Guardar vehículo:</b> Añade la matrícula a la lista de vehículos del caso.</li>
+                                <li><b>Localizar vehículos en varios puntos:</b> Filtra por una matrícula o patrón y guarda la búsqueda. Luego, filtra por otra ubicación o rango temporal y guarda esa búsqueda. Puedes comparar ambas para ver si hay vehículos que aparecen en ambos contextos.</li>
+                                <li><b>Buscar vehículos lanzadera:</b> Filtra por la matrícula del vehículo objetivo y guarda la búsqueda. Después, filtra por intervalos de tiempo y ubicaciones donde el objetivo fue detectado, y guarda esas búsquedas. Cruza los resultados para identificar matrículas que aparecen repetidamente junto al objetivo en diferentes lugares y momentos.</li>
+                                <li><b>Análisis de acompañamiento:</b> Guarda búsquedas de diferentes eventos (por ejemplo, entradas y salidas de una ciudad) y analiza qué vehículos coinciden en ambos eventos, lo que puede indicar acompañamiento o patrones sospechosos.</li>
                             </ul>
-                            <br />
                             <b>Consejos:</b>
                             <ul>
-                                <li>Si no encuentras resultados, prueba a ampliar el rango de fechas/horas o a usar comodines en la matrícula.</li>
-                                <li>Puedes combinar varios filtros para afinar la búsqueda.</li>
-                                <li>Recuerda que los comodines <code>?</code> y <code>*</code> solo funcionan en el campo matrícula.</li>
+                                <li>Usa nombres descriptivos al guardar búsquedas (ejemplo: "Matricula 1234ABC en Madrid 01/05/2024").</li>
+                                <li>Cruza búsquedas para descubrir relaciones ocultas entre vehículos y eventos.</li>
+                                <li>Aprovecha los filtros avanzados y los comodines para búsquedas flexibles y potentes.</li>
                             </ul>
                         </Text>
                     </Alert>
