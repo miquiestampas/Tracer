@@ -397,7 +397,12 @@ async def upload_excel(
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aplicar mapeo de columnas: {e}.")
 
     # --- Validar Columnas Obligatorias ---
-    columnas_obligatorias = ['Matricula', 'Fecha', 'Hora', 'ID_Lector']
+    if tipo_archivo == 'LPR':
+        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora', 'ID_Lector']
+    elif tipo_archivo == 'GPS':
+        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
+    else:
+        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
     columnas_obligatorias_faltantes = []
     for campo_interno in columnas_obligatorias:
         if campo_interno not in df.columns:

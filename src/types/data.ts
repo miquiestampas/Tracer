@@ -208,4 +208,40 @@ export interface Vehiculo {
     total_lecturas_lpr_caso?: number;
     // Podríamos añadir aquí el recuento de lecturas si la API lo devuelve en el futuro
     // totalLecturas?: number;
+}
+
+export interface GpsLectura {
+  ID_Lectura: number;
+  Matricula: string;
+  Fecha_y_Hora: string;
+  Coordenada_X: number;
+  Coordenada_Y: number;
+  Velocidad: number;
+  Direccion: number;
+  Altitud: number;
+  Precisión: number;
+  ID_Archivo: number;
+}
+
+export interface GpsCapa {
+  id: string;
+  nombre: string;
+  color: string;
+  activa: boolean;
+  lecturas: GpsLectura[];
+  filtros: {
+    fechaInicio: string;
+    horaInicio: string;
+    fechaFin: string;
+    horaFin: string;
+    velocidadMin: number | null;
+    velocidadMax: number | null;
+    duracionParada: number | null;
+    zonaSeleccionada: {
+      latMin: number;
+      latMax: number;
+      lonMin: number;
+      lonMax: number;
+    } | null;
+  };
 } 

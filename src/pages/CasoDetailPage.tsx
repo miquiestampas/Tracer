@@ -25,6 +25,7 @@ import AnalisisAvanzadoPanel from '../components/lanzadera/LanzaderaPanel';
 import MapPanel from '../components/maps/MapPanel';
 import HelpButton from '../components/common/HelpButton';
 import AnalisisLecturasPanel from '../components/analisis/AnalisisLecturasPanel';
+import GpsAnalysisPanel from '../components/gps/GpsAnalysisPanel';
 
 // Definir estado inicial para filtros
 const initialFilterState: FilterState = {
@@ -58,6 +59,7 @@ const caseSections = [
     { id: 'lanzadera', label: 'Análisis Avanzado', icon: IconFlask, section: 'lecturas' },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar, section: 'vehiculos' },
     { id: 'mapa', label: 'Mapa', icon: IconMap, section: 'vehiculos' },
+    { id: 'analisis-gps', label: 'Análisis GPS', icon: IconRoute, section: 'vehiculos' },
     { id: 'archivos', label: 'Archivos Importados', icon: IconFiles, section: 'archivos' },
 ];
 
@@ -572,13 +574,31 @@ const handleDeleteArchivo = async (archivoId: number) => {
                   <Box>
                       <Text fw={500} c="violet" mb="xs">Análisis sobre Vehículos</Text>
                       <Group gap="xs">
-                          {caseSections.filter(section => section.section === 'vehiculos').map((section) => (
+                          {caseSections.filter(section => section.section === 'vehiculos' && section.id !== 'analisis-gps').map((section) => (
                               <Button
                                   key={section.id}
                                   variant={activeMainTab === section.id ? 'filled' : 'light'}
                                   leftSection={<section.icon size={16} />}
                                   onClick={() => setActiveMainTab(section.id)}
                                   color="violet"
+                              >
+                                  {section.label}
+                              </Button>
+                          ))}
+                      </Group>
+                  </Box>
+                  <Divider orientation="vertical" mx="md" />
+                  {/* Nuevo apartado para Análisis GPS */}
+                  <Box>
+                      <Text fw={500} c="grape" mb="xs">Análisis GPS</Text>
+                      <Group gap="xs">
+                          {caseSections.filter(section => section.id === 'analisis-gps').map((section) => (
+                              <Button
+                                  key={section.id}
+                                  variant={activeMainTab === section.id ? 'filled' : 'light'}
+                                  leftSection={<section.icon size={16} />}
+                                  onClick={() => setActiveMainTab(section.id)}
+                                  color="grape"
                               >
                                   {section.label}
                               </Button>
@@ -681,6 +701,11 @@ const handleDeleteArchivo = async (archivoId: number) => {
               {/* Pestaña Vehículos */}
               <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
                   <VehiculosPanel casoId={idCasoNum!} />
+              </Box>
+
+              {/* Pestaña Análisis GPS */}
+              <Box style={{ display: activeMainTab === 'analisis-gps' ? 'block' : 'none', position: 'relative' }}>
+                  <GpsAnalysisPanel casoId={idCasoNum!} />
               </Box>
 
               <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>
