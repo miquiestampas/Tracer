@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
@@ -55,6 +55,10 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     showPoints: true
   });
 
+  const [vehiculosDisponibles, setVehiculosDisponibles] = useState<{ value: string; label: string }[]>([]);
+  const [vehiculoObjetivo, setVehiculoObjetivo] = useState<string | null>(null);
+  const [loadingVehiculos, setLoadingVehiculos] = useState(false);
+
   // Manejar la tecla Escape
   useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
 
@@ -77,6 +81,26 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     fetchLecturasGps();
   }, [fetchLecturasGps]);
 
+  // Cargar matrículas únicas al montar o cambiar casoId
+  useEffect(() => {
+    const cargarVehiculos = async () => {
+      if (!casoId) return;
+      setLoadingVehiculos(true);
+      try {
+        const data = await getLecturasGps(casoId);
+        const matriculas = [...new Set(data.map((l: any) => l.Matricula))]
+          .filter((matricula): matricula is string => matricula !== null && matricula !== undefined)
+          .sort();
+        setVehiculosDisponibles(matriculas.map(matricula => ({ value: matricula, label: matricula })));
+      } catch (error) {
+        setVehiculosDisponibles([]);
+      } finally {
+        setLoadingVehiculos(false);
+      }
+    };
+    cargarVehiculos();
+  }, [casoId]);
+
   // Función para manejar cambios en los filtros
   const handleFilterChange = useCallback((updates: Partial<typeof filters>) => {
     setFilters(prev => ({ ...prev, ...updates }));
@@ -94,7 +118,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         velocidad_min: filters.velocidadMin || undefined,
         velocidad_max: filters.velocidadMax || undefined,
         duracion_parada: filters.duracionParada || undefined,
-        zona_seleccionada: filters.zonaSeleccionada || undefined
+        zona_seleccionada: filters.zonaSeleccionada || undefined,
+        matricula: vehiculoObjetivo || undefined,
       });
       setLecturas(data);
     } catch (error) {
@@ -102,7 +127,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     } finally {
       setLoading(false);
     }
-  }, [casoId, filters]);
+  }, [casoId, filters, vehiculoObjetivo]);
 
   // Función para limpiar filtros
   const handleLimpiar = useCallback(() => {
@@ -264,6 +289,19 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
           <Paper p="md" withBorder>
             <Title order={3} mb="md">Filtros</Title>
             <Stack gap="md">
+              {/* Selector de vehículo objetivo */}
+              <Select
+                label="Vehículo Objetivo"
+                placeholder="Selecciona matrícula"
+                data={vehiculosDisponibles}
+                value={vehiculoObjetivo}
+                onChange={setVehiculoObjetivo}
+                searchable
+                clearable
+                disabled={loadingVehiculos}
+                leftSection={<IconCar size={18} />}
+              />
+              {/* Filtros existentes */}
               <Group grow>
                 <TextInput
                   label="Fecha Inicio"
