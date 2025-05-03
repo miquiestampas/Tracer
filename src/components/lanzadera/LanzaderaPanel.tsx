@@ -71,6 +71,8 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
     const [lanzaderaResultados, setLanzaderaResultados] = useState<string[]>([]);
     const [lanzaderaDetalles, setLanzaderaDetalles] = useState<any[]>([]);
     const [selectedRows, setSelectedRows] = useState<any[]>([]);
+    const [ayudaAcompananteAbierta, setAyudaAcompananteAbierta] = useState(false);
+    const [busquedaRealizada, setBusquedaRealizada] = useState(false);
 
     const limpiarFiltros = () => {
         setFiltros({
@@ -198,28 +200,19 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
     };
 
     const buscarVehiculosRapidos = async () => {
-        if (!filtros.fechaInicio || !filtros.fechaFin) {
-            notifications.show({
-                title: 'Error',
-                message: 'Por favor, seleccione un rango de fechas',
-                color: 'red'
-            });
-            return;
-        }
-
         setLoading(true);
         setError(null);
         try {
-            const response = await apiClient.get(`/casos/${casoId}/lecturas`, {
-                params: {
-                    fecha_inicio: filtros.fechaInicio,
-                    fecha_fin: filtros.fechaFin,
-                    hora_inicio: filtros.horaInicio || undefined,
-                    hora_fin: filtros.horaFin || undefined,
-                    carretera: filtros.carretera || undefined,
-                    tipo_fuente: 'LPR'
-                }
-            });
+            const params: any = {
+                tipo_fuente: 'LPR',
+            };
+            if (filtros.fechaInicio) params.fecha_inicio = filtros.fechaInicio;
+            if (filtros.fechaFin) params.fecha_fin = filtros.fechaFin;
+            if (filtros.horaInicio) params.hora_inicio = filtros.horaInicio;
+            if (filtros.horaFin) params.hora_fin = filtros.horaFin;
+            if (filtros.carretera) params.carretera = filtros.carretera;
+
+            const response = await apiClient.get(`/casos/${casoId}/lecturas`, { params });
             
             if (!response.data || !Array.isArray(response.data)) {
                 throw new Error('Formato de respuesta inválido');
@@ -396,21 +389,21 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
 
     // Placeholder para la función de búsqueda
     const handleBuscarLanzadera = async () => {
-        if (!lanzaderaParams.matricula || !lanzaderaParams.fechaInicio || !lanzaderaParams.fechaFin) {
+        if (!lanzaderaParams.matricula) {
             notifications.show({
                 title: 'Error',
-                message: 'Por favor, complete todos los campos obligatorios',
+                message: 'Por favor, introduce la matrícula objetivo',
                 color: 'red'
             });
             return;
         }
-
         setLanzaderaLoading(true);
+        setBusquedaRealizada(true);
         try {
             const response = await apiClient.post(`/casos/${casoId}/detectar-lanzaderas`, {
                 matricula: lanzaderaParams.matricula,
-                fecha_inicio: lanzaderaParams.fechaInicio,
-                fecha_fin: lanzaderaParams.fechaFin,
+                fecha_inicio: lanzaderaParams.fechaInicio || undefined,
+                fecha_fin: lanzaderaParams.fechaFin || undefined,
                 ventana_minutos: lanzaderaParams.ventanaMinutos,
                 diferencia_minima: lanzaderaParams.diferenciaMinima
             });
@@ -598,7 +591,6 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                                 type="date"
                                 value={filtros.fechaInicio}
                                 onChange={(e) => setFiltros({ ...filtros, fechaInicio: e.target.value })}
-                                required
                                 style={{ width: '160px' }}
                             />
                             <TextInput
@@ -616,7 +608,6 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                                 type="date"
                                 value={filtros.fechaFin}
                                 onChange={(e) => setFiltros({ ...filtros, fechaFin: e.target.value })}
-                                required
                                 style={{ width: '160px' }}
                             />
                             <TextInput
@@ -699,7 +690,36 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
             <Paper shadow="sm" p="md" mb="md">
                 <Group justify="space-between" mb="md">
                     <Title order={4}>Detección de Vehículo Acompañante</Title>
+                    <Button
+                        variant="light"
+                        color="blue"
+                        size="xs"
+                        onClick={() => setAyudaAcompananteAbierta((v) => !v)}
+                    >
+                        {ayudaAcompananteAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                    </Button>
                 </Group>
+                <Collapse in={ayudaAcompananteAbierta}>
+                    <Alert color="blue" title="¿Cómo funciona el panel de Vehículo Acompañante?" mb="md">
+                        <Text size="sm">
+                            <b>¿Qué es este panel?</b><br />
+                            Este panel permite detectar vehículos que han circulado junto al vehículo objetivo en ventanas temporales cercanas, utilizando las lecturas LPR del caso. El objetivo es identificar posibles acompañantes o "convoyes" que puedan estar relacionados con el vehículo investigado.<br /><br />
+                            <b>¿Cómo funciona?</b><br />
+                            1. <b>Matrícula objetivo:</b> Introduce la matrícula del vehículo que quieres analizar como objetivo.<br />
+                            2. <b>Fechas (opcional):</b> Selecciona el rango de fechas en el que quieres buscar coincidencias.<br />
+                            3. <b>Ventana temporal:</b> Indica el margen de minutos antes y después de cada lectura del objetivo en el que se buscarán otros vehículos que hayan pasado por el mismo lector.<br />
+                            4. <b>Diferencia mínima:</b> Especifica el tiempo mínimo (en minutos) que debe haber entre lecturas para considerar que se trata de coincidencias independientes y no de un mismo evento.<br />
+                            5. Pulsa <b>Buscar</b> para obtener los resultados.<br /><br />
+                            El sistema analizará todas las lecturas del caso y mostrará una tabla con las coincidencias encontradas, diferenciando entre el vehículo objetivo y los posibles acompañantes. Puedes seleccionar filas para marcar vehículos relevantes o guardar matrículas para su seguimiento.<br /><br />
+                            <b>¿Para qué sirve?</b><br />
+                            - Identificar vehículos que acompañan de forma reiterada al objetivo.<br />
+                            - Detectar patrones de convoy o escolta.<br />
+                            - Apoyar investigaciones sobre movimientos coordinados o sospechosos.<br /><br />
+                            <b>Nota importante:</b><br />
+                            Algunas lecturas pueden ser incorrectas y no corresponderse con la realidad, debido a errores de lectura automática o a la similitud entre matrículas de diferentes vehículos. Se recomienda revisar los resultados y, en caso de duda, contrastar con otras fuentes o análisis.
+                        </Text>
+                    </Alert>
+                </Collapse>
                 <Group mb="md">
                     <TextInput
                         label="Matrícula objetivo"
@@ -713,14 +733,12 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                         label="Fecha Inicio"
                         value={lanzaderaParams?.fechaInicio || ''}
                         onChange={e => setLanzaderaParams(p => ({ ...p, fechaInicio: e.target.value }))}
-                        required
                     />
                     <TextInput
                         type="date"
                         label="Fecha Fin"
                         value={lanzaderaParams?.fechaFin || ''}
                         onChange={e => setLanzaderaParams(p => ({ ...p, fechaFin: e.target.value }))}
-                        required
                     />
                     <NumberInput
                         label="Ventana temporal (minutos)"
@@ -736,9 +754,34 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                         min={1}
                         max={60}
                     />
-                    <Button onClick={handleBuscarLanzadera} loading={lanzaderaLoading}>
-                        Buscar
-                    </Button>
+                    <Group mt="md">
+                        <Button
+                            leftSection={<IconSearch size={16} />}
+                            onClick={handleBuscarLanzadera}
+                            loading={lanzaderaLoading}
+                        >
+                            Buscar
+                        </Button>
+                        <Button
+                            variant="light"
+                            color="gray"
+                            onClick={() => {
+                                setLanzaderaParams({
+                                    matricula: '',
+                                    ventanaMinutos: 10,
+                                    diferenciaMinima: 5,
+                                    fechaInicio: '',
+                                    fechaFin: ''
+                                });
+                                setLanzaderaDetalles([]);
+                                setLanzaderaResultados([]);
+                                setBusquedaRealizada(false);
+                                setSelectedRows([]);
+                            }}
+                        >
+                            Limpiar
+                        </Button>
+                    </Group>
                 </Group>
                 <Title order={5} mt="md" mb="xs">Lecturas Intercaladas (Objetivo y Acompañante)</Title>
                 <Table striped highlightOnHover withColumnBorders>
@@ -777,11 +820,13 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                                     </tr>
                                 ))
                         ) : (
-                            <tr>
-                                <td colSpan={6} style={{ textAlign: 'center', color: '#888' }}>
-                                    No se han detectado lecturas relevantes.
-                                </td>
-                            </tr>
+                            busquedaRealizada && (
+                                <tr>
+                                    <td colSpan={6} style={{ textAlign: 'center', color: '#888' }}>
+                                        No se han detectado lecturas relevantes.
+                                    </td>
+                                </tr>
+                            )
                         )}
                     </tbody>
                 </Table>

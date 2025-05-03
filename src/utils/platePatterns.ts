@@ -22,7 +22,6 @@ export const platePatterns = {
   RS: { name: 'Serbia', regex: /^[A-Z]{2} [0-9]{3}-[A-Z]{2}$/, example: 'BG 123-AB' },
   RO: { name: 'Rumanía', regex: /^[A-Z]{1,2}-[0-9]{2,3}-[A-Z]{3}$/, example: 'B-123-ABC' },
   BG: { name: 'Bulgaria', regex: /^[A-Z]{1,2} [0-9]{4} [A-Z]{1,2}$/, example: 'CA 1234 AB' },
-  MD: { name: 'Moldavia', regex: /^[A-Z]{2}[A-Z0-9]{3}$/, example: 'AB123' },
   UA: { name: 'Ucrania', regex: /^[A-Z]{2} [0-9]{4} [A-Z]{2}$/, example: 'AA 1234 BB' },
   BY: { name: 'Bielorrusia', regex: /^[0-9]{4} [A-Z]{2}-[1-7]$/, example: '1234 AB-7' },
 
@@ -58,6 +57,5 @@ export const platePatterns = {
   MA: { name: 'Marruecos', regex: /^[0-9]{1,5}-[A-Z]{1,2}-[0-9]{2}$/, example: '12345-A-12' },
   DZ: { name: 'Argelia', regex: /^[0-9]{5,6}-[0-9]{2}-[0-9]{2}$/, example: '123456-12-34' },
   TN: { name: 'Túnez', regex: /^[0-9]{1,4} تونس [0-9]{1,4}$/, example: '1234 تونس 5678' },
-  LY: { name: 'Libia', regex: /^[0-9]{1,7}$/, example: '1234567' },
-  EG: { name: 'Egipto', regex: /^[A-Z]{1,3} ?[0-9]{1,4}$/, example: 'ABC 1234' },
+  LY: { name: 'Libia', regex: /^[0-9]{1,7}$/, example: '1234567' }
 }; 
