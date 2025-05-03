@@ -342,3 +342,9 @@ class LanzaderaResponse(BaseModel):
 #     detalles: List[CoincidenciaDetalleSchema] = Field(default_factory=list, description="Lista de co-ocurrencias específicas (lector, timestamp, coords)")
 #     # Podríamos añadir un dict mapeando lector_id a coords si los detalles no las incluyen
 #     # coordenadas_lectores: Dict[str, Tuple[float, float]] = Field(default_factory=dict) 
+
+class EstadisticasGlobales(BaseModel):
+    total_casos: int
+    total_lecturas: int
+    total_vehiculos: int
+    tamanio_bd: str
