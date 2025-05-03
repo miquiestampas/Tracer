@@ -10,7 +10,6 @@ import { getLectores, updateLector, getLectoresParaMapa, deleteLector, importarL
 import type { Lector, LectorUpdateData, LectorCoordenadas, LectorSugerenciasResponse } from '../types/data';
 import EditLectorModal from '../components/modals/EditLectorModal';
 import ImportarLectoresModal from '../components/modals/ImportarLectoresModal';
-import AnalisisLecturasPanel, { AnalisisLecturasPanelHandle } from '../components/analisis/AnalisisLecturasPanel';
 import { DataTable, type DataTableSortStatus } from 'mantine-datatable';
 import _ from 'lodash';
 
@@ -72,6 +71,9 @@ import { useLocation } from 'react-router-dom';
 
 import BatchEditLectoresModal from '../components/modals/BatchEditLectoresModal';
 
+import * as XLSX from 'xlsx';
+import ExportarLectoresModal from '../components/modals/ExportarLectoresModal';
+
 function LectoresPage() {
   const [lectores, setLectores] = useState<Lector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,8 +103,6 @@ function LectoresPage() {
   const [filtroTextoLibre, setFiltroTextoLibre] = useState<string>('');
   const [filtroSentido, setFiltroSentido] = useState<string | null>(null);
 
-  const analisisPanelRef = useRef<AnalisisLecturasPanelHandle>(null);
-
   const [importModalOpened, { open: openImportModal, close: closeImportModal }] = useDisclosure(false);
 
   // *** NUEVO: Estado para la forma dibujada ***
@@ -116,6 +116,8 @@ function LectoresPage() {
   const [batchEditModalOpened, { open: openBatchEditModal, close: closeBatchEditModal }] = useDisclosure(false);
 
   const [sugerencias, setSugerencias] = useState<LectorSugerenciasResponse>({ provincias: [], localidades: [], carreteras: [], organismos: [], contactos: [] });
+
+  const [exportModalOpened, { open: openExportModal, close: closeExportModal }] = useDisclosure(false);
 
   // Función para cargar los lectores
   const fetchLectores = useCallback(async () => {
@@ -363,20 +365,46 @@ function LectoresPage() {
     }
   };
 
-  const handleExportarLectores = async () => {
+  const handleExportarLectores = async (filtros: any) => {
     try {
-      if (analisisPanelRef.current) {
-        await analisisPanelRef.current.exportarListaLectores();
-      } else {
-        throw new Error("No se pudo acceder a la función de exportación");
-      }
+      // Obtener todos los lectores con los filtros aplicados
+      const params = {
+        skip: 0,
+        limit: 100000, // Un número grande para obtener todos
+        ...(filtros.nombre && { texto_libre: filtros.nombre }),
+        ...(filtros.provincia.length > 0 && { provincia: filtros.provincia }),
+        ...(filtros.carretera.length > 0 && { carretera: filtros.carretera }),
+        ...(filtros.organismo.length > 0 && { organismo: filtros.organismo }),
+        ...(filtros.localidad.length > 0 && { localidad: filtros.localidad }),
+      };
+
+      const response = await getLectores(params);
+      const lectoresAExportar = response.lectores;
+
+      // Crear un array con los datos a exportar
+      const datosExportar = lectoresAExportar.map(lector => ({
+        'ID Lector': lector.ID_Lector,
+        'Nombre': lector.Nombre || '',
+        'Carretera': lector.Carretera || '',
+        'Provincia': lector.Provincia || '',
+        'Localidad': lector.Localidad || '',
+        'Latitud': lector.Coordenada_Y || '',
+        'Longitud': lector.Coordenada_X || '',
+        'Organismo': lector.Organismo_Regulador || '',
+        'Sentido': lector.Sentido || ''
+      }));
+
+      // Crear el archivo Excel
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(datosExportar);
+      XLSX.utils.book_append_sheet(wb, ws, 'Lectores');
+
+      // Generar el archivo y descargarlo
+      const fecha = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `lectores_${fecha}.xlsx`);
     } catch (error) {
       console.error("Error al exportar lista de lectores:", error);
-      notifications.show({
-        title: 'Error en la Exportación',
-        message: error instanceof Error ? error.message : 'Error desconocido al exportar',
-        color: 'red'
-      });
+      throw error;
     }
   };
 
@@ -611,6 +639,10 @@ function LectoresPage() {
     loadSugerencias();
   }, []);
 
+  const handleVerLecturas = (lector: Lector) => {
+    // Función vacía por ahora
+  };
+
   return (
     <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
       <Group justify="space-between" mb="xl">
@@ -654,12 +686,12 @@ function LectoresPage() {
           </Button>
           <Button 
             leftSection={<IconFileExport size={18} />}
-            onClick={handleExportarLectores}
+            onClick={openExportModal}
             variant="outline"
             color="blue"
             disabled={loading}
           >
-            Exportar Lista de Lectores
+            Exportar Lectores
           </Button>
         </Group>
       </Group>
@@ -1010,12 +1042,20 @@ function LectoresPage() {
         onSave={handleBatchEditSave}
       />
 
+      <ExportarLectoresModal
+        opened={exportModalOpened}
+        onClose={closeExportModal}
+        onExport={handleExportarLectores}
+        sugerencias={{
+          provincias: provinciasUnicas,
+          carreteras: carreterasUnicas.map(c => c.value),
+          organismos: organismosUnicos.map(o => o.value),
+          localidades: sugerencias.localidades
+        }}
+      />
+
       <Box style={{ display: 'none' }}>
-        <AnalisisLecturasPanel 
-          ref={analisisPanelRef}
-          interactedMatriculas={new Set()}
-          addInteractedMatricula={() => {}}
-        />
+        {/* Componente eliminado */}
       </Box>
     </Box>
   );
