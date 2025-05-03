@@ -92,6 +92,9 @@ function ImportarPage() {
   // Estados para la ayuda
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
 
+  // Estado para advertencia visual de importación
+  const [importWarning, setImportWarning] = useState<React.ReactNode | null>(null);
+
   // Cargar casos para el selector
   useEffect(() => {
     const fetchCasosForSelect = async () => {
@@ -317,11 +320,55 @@ function ImportarPage() {
             JSON.stringify(finalMapping)
         );
 
-        notifications.show({
-            title: 'Éxito',
-            message: `Archivo "${resultado.archivo.Nombre_del_Archivo}" importado. ID Archivo: ${resultado.archivo.ID_Archivo}`,
-            color: 'green'
-        });
+        // En handleImport, reemplazar notificación flotante por setImportWarning
+        if (resultado.total_registros === 0 && resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0) {
+          setImportWarning(
+            <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
+              <Text size="sm" fw={500} c="yellow.8">Todos los registros del archivo ya existían en el sistema y fueron ignorados como duplicados.</Text>
+              <Text size="sm" mt="xs">Ejemplos de duplicados:</Text>
+              <Text size="xs" component="ul" mt="xs">
+                {resultado.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
+                  <li key={index}>{duplicado}</li>
+                ))}
+                {resultado.lecturas_duplicadas.length > 5 && (
+                  <li>...y {resultado.lecturas_duplicadas.length - 5} más</li>
+                )}
+              </Text>
+            </Alert>
+          );
+        } else if (resultado.total_registros === 0) {
+          setImportWarning(
+            <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
+              No se importaron registros. Esto puede deberse a que el archivo está vacío, los datos no son válidos o todos los registros ya existían previamente (duplicados).
+            </Alert>
+          );
+        } else {
+          notifications.show({
+            title: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'Importación con Advertencias' : 'Éxito',
+            message: (
+              <Box>
+                <Text size="sm">Archivo "{resultado.archivo.Nombre_del_Archivo}" importado correctamente</Text>
+                <Text size="sm">Total de registros importados: {resultado.total_registros}</Text>
+                {resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 && (
+                  <Alert color="yellow" title="¡Atención! Se encontraron lecturas duplicadas" mt="xs" icon={<IconAlertCircle size={16} />}> 
+                    <Text size="sm" fw={500}>Se ignoraron {resultado.lecturas_duplicadas.length} lecturas duplicadas:</Text>
+                    <Text size="xs" component="ul" mt="xs">
+                      {resultado.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
+                        <li key={index}>{duplicado}</li>
+                      ))}
+                      {resultado.lecturas_duplicadas.length > 5 && (
+                        <li>...y {resultado.lecturas_duplicadas.length - 5} más</li>
+                      )}
+                    </Text>
+                    <Text size="xs" mt="xs" c="dimmed">Estas lecturas ya existían en el sistema y no fueron importadas.</Text>
+                  </Alert>
+                )}
+              </Box>
+            ),
+            color: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
+            autoClose: false
+          });
+        }
 
         // --- Notificación de Nuevos Lectores --- 
         if (resultado.nuevos_lectores_creados && resultado.nuevos_lectores_creados.length > 0) {
@@ -458,30 +505,90 @@ function ImportarPage() {
         mappingJson
       );
       
-      notifications.show({
-        title: 'Éxito',
-        message: `Archivo "${response.archivo.Nombre_del_Archivo}" importado correctamente`,
-        color: 'green'
-      });
-      
-      // Limpiar el formulario
-      setSelectedFile(null);
-      setExcelHeaders([]);
-      setColumnMapping({});
-      // Recargar la lista de archivos
-      fetchArchivos(selectedCasoId);
-    } catch (error) {
+      // Mostrar advertencia visual de importación (igual que en handleImport)
+      if (response.total_registros === 0 && response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0) {
+        setImportWarning(
+          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
+            <Text size="sm" fw={500} c="yellow.8">Todos los registros del archivo ya existían en el sistema y fueron ignorados como duplicados.</Text>
+            <Text size="sm" mt="xs">Ejemplos de duplicados:</Text>
+            <Text size="xs" component="ul" mt="xs">
+              {response.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
+                <li key={index}>{duplicado}</li>
+              ))}
+              {response.lecturas_duplicadas.length > 5 && (
+                <li>...y {response.lecturas_duplicadas.length - 5} más</li>
+              )}
+            </Text>
+          </Alert>
+        );
+      } else if (response.total_registros === 0) {
+        setImportWarning(
+          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
+            No se importaron registros. Esto puede deberse a que el archivo está vacío, los datos no son válidos o todos los registros ya existían previamente (duplicados).
+          </Alert>
+        );
+      } else {
+        setImportWarning(null);
+        notifications.show({
+          title: response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 ? 'Importación con Advertencias' : 'Éxito',
+          message: (
+            <Box>
+              <Text size="sm">Archivo "{response.archivo.Nombre_del_Archivo}" importado correctamente</Text>
+              <Text size="sm">Total de registros importados: {response.total_registros}</Text>
+              {response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 && (
+                <Alert color="yellow" title="¡Atención! Se encontraron lecturas duplicadas" mt="xs" icon={<IconAlertCircle size={16} />}> 
+                  <Text size="sm" fw={500}>Se ignoraron {response.lecturas_duplicadas.length} lecturas duplicadas:</Text>
+                  <Text size="xs" component="ul" mt="xs">
+                    {response.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
+                      <li key={index}>{duplicado}</li>
+                    ))}
+                    {response.lecturas_duplicadas.length > 5 && (
+                      <li>...y {response.lecturas_duplicadas.length - 5} más</li>
+                    )}
+                  </Text>
+                  <Text size="xs" mt="xs" c="dimmed">Estas lecturas ya existían en el sistema y no fueron importadas.</Text>
+                </Alert>
+              )}
+            </Box>
+          ),
+          color: response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
+          autoClose: false
+        });
+        // Limpiar el formulario solo si la importación fue exitosa
+        setSelectedFile(null);
+        setExcelHeaders([]);
+        setColumnMapping({});
+        // Recargar la lista de archivos
+        fetchArchivos(selectedCasoId);
+      }
+    } catch (error: any) {
       console.error('Error al subir el archivo:', error);
       setUploadError(error instanceof Error ? error.message : 'Error al subir el archivo');
-      notifications.show({
-        title: 'Error',
-        message: 'No se pudo subir el archivo. Por favor, intenta de nuevo.',
-        color: 'red'
-      });
+      
+      // Mostrar notificación de error específica para archivos duplicados
+      if (error.response?.data?.detail?.includes('Ya existe un archivo con el nombre')) {
+        notifications.show({
+          title: 'Archivo Duplicado',
+          message: error.response.data.detail,
+          color: 'red',
+          icon: <IconAlertCircle />
+        });
+      } else {
+        notifications.show({
+          title: 'Error',
+          message: 'No se pudo subir el archivo. Por favor, intenta de nuevo.',
+          color: 'red'
+        });
+      }
     } finally {
       setIsUploading(false);
     }
   };
+
+  // Limpiar advertencia al cambiar de archivo, caso o tipo
+  useEffect(() => {
+    setImportWarning(null);
+  }, [selectedFile, selectedCasoId, fileType]);
 
   // --- Renderizado del Componente ---
   return (
@@ -639,6 +746,9 @@ function ImportarPage() {
 
         {/* Alerta de error de subida */}
         {uploadError && <Alert title="Error de Importación" color="red" withCloseButton onClose={() => setUploadError(null)} icon={<IconAlertCircle />}>{uploadError}</Alert>}
+
+        {/* Alerta de advertencia de importación */}
+        {importWarning}
       </Stack>
 
       {/* Modal de Mapeo */}

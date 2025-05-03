@@ -353,6 +353,18 @@ async def upload_excel(
     if db_caso is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
 
+    # 2. Verificar si ya existe un archivo con el mismo nombre en el mismo caso
+    archivo_existente = db.query(models.ArchivoExcel).filter(
+        models.ArchivoExcel.ID_Caso == caso_id,
+        models.ArchivoExcel.Nombre_del_Archivo == excel_file.filename
+    ).first()
+    
+    if archivo_existente:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ya existe un archivo con el nombre '{excel_file.filename}' en este caso."
+        )
+
     # --- GUARDAR ARCHIVO ORIGINAL ---
     filename = excel_file.filename
     file_location = UPLOADS_DIR / filename
@@ -410,6 +422,7 @@ async def upload_excel(
     errores_lectura = []
     lectores_no_encontrados = set()
     nuevos_lectores_en_sesion = set()
+    lecturas_duplicadas = set()  # Para trackear lecturas duplicadas
 
     for index, row in df.iterrows():
         try:
@@ -504,24 +517,39 @@ async def upload_excel(
                 "Coordenada_X": coord_x_final, "Coordenada_Y": coord_y_final,
                 "Tipo_Fuente": tipo_archivo
             }
-            lecturas_a_insertar.append(models.Lectura(**lectura_data))
-        except Exception as e:
-            errores_lectura.append({"fila": index + 2, "error": str(e)})
 
-    # --- Insertar y Respuesta ---
-    if lecturas_a_insertar:
-        try:
-            db.add_all(lecturas_a_insertar)
-            db.commit()
+            # Verificar si ya existe una lectura duplicada
+            lectura_duplicada = db.query(models.Lectura).filter(
+                models.Lectura.ID_Caso == caso_id,
+                models.Lectura.Matricula == matricula,
+                models.Lectura.Fecha_Hora == fecha_hora_final,
+                models.Lectura.ID_Lector == id_lector
+            ).first()
+
+            if lectura_duplicada:
+                lecturas_duplicadas.add(f"Fila {index+1}: Matrícula {matricula} - {fecha_hora_final}")
+                continue  # Saltar esta lectura duplicada
+
+            # Crear nueva lectura
+            nueva_lectura = models.Lectura(**lectura_data)
+            lecturas_a_insertar.append(nueva_lectura)
+
         except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al guardar lecturas: {e}")
-    else:
+            errores_lectura.append(f"Fila {index+1}: {str(e)}")
+            continue
+
+    # Insertar todas las lecturas válidas
+    if lecturas_a_insertar:
+        db.add_all(lecturas_a_insertar)
         db.commit()
 
-    # Construir y devolver la respuesta completa
+    # Preparar respuesta con información sobre duplicados
     response_data = schemas.UploadResponse(
-        archivo=db_archivo, 
+        archivo=db_archivo,
+        total_registros=len(lecturas_a_insertar),
+        errores=errores_lectura if errores_lectura else None,
+        lectores_no_encontrados=list(lectores_no_encontrados) if lectores_no_encontrados else None,
+        lecturas_duplicadas=list(lecturas_duplicadas) if lecturas_duplicadas else None,
         nuevos_lectores_creados=list(nuevos_lectores_en_sesion) if nuevos_lectores_en_sesion else None
     )
     
@@ -529,7 +557,8 @@ async def upload_excel(
     logger.info(f"Importación completada. Devolviendo datos: {response_data}")
     if errores_lectura:
         logger.warning(f"Importación {filename} completada con {len(errores_lectura)} errores: {errores_lectura}")
-    # Ya no se loguea "Lectores no encontrados" aquí, se incluye en la respuesta si es relevante
+    if lecturas_duplicadas:
+        logger.warning(f"Importación {filename} completada con {len(lecturas_duplicadas)} lecturas duplicadas: {lecturas_duplicadas}")
 
     return response_data
 
