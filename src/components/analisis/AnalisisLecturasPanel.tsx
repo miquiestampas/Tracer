@@ -1129,17 +1129,22 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             return;
         }
 
-        const selectedResults = selectedSearches
-            .map(id => savedSearches.find(s => s.id === id)?.results || [])
-            .map(results => new Set(results.map(r => r.Matricula)));
+        // 1. Obtener los resultados de todas las búsquedas seleccionadas
+        const selectedResultsArrays = selectedSearches
+            .map(id => savedSearches.find(s => s.id === id)?.results || []);
 
-        // Encontrar matrículas comunes
-        const commonMatriculas = selectedResults.reduce((common, current) => {
+        // 2. Encontrar matrículas comunes
+        const matriculasPorBusqueda = selectedResultsArrays.map(results => new Set(results.map(r => r.Matricula)));
+        const commonMatriculas = matriculasPorBusqueda.reduce((common, current) => {
             return new Set([...common].filter(x => current.has(x)));
         });
 
-        // Filtrar resultados para mostrar solo las matrículas comunes
-        const crossedResults = results.filter(r => commonMatriculas.has(r.Matricula));
+        // 3. Unir todos los resultados de las búsquedas seleccionadas
+        const allResults = selectedResultsArrays.flat();
+
+        // 4. Filtrar solo los resultados con matrícula común
+        const crossedResults = allResults.filter(r => commonMatriculas.has(r.Matricula));
+
         setResults(crossedResults);
 
         notifications.show({
@@ -1147,7 +1152,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             message: `Se encontraron ${commonMatriculas.size} vehículos en común`,
             color: 'green'
         });
-    }, [selectedSearches, savedSearches, results]);
+    }, [selectedSearches, savedSearches]);
 
     // --- Handler de cambio de página ---
     const handlePageChange = useCallback((newPage: number) => {

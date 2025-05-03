@@ -17,7 +17,7 @@ import '@mantine/notifications/styles.css';
 import { theme } from './theme'; // Importar el tema personalizado
 
 // --- Lazy Loading de Páginas ---
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const HomePage = lazy(() => import('./pages/DashboardPage'));
 const CasosPage = lazy(() => import('./pages/CasosPage'));
 const ImportarPage = lazy(() => import('./pages/ImportarPage'));
 const CasoDetailPage = lazy(() => import('./pages/CasoDetailPage'));
@@ -39,7 +39,7 @@ function App() {
             <Suspense fallback={<div>Cargando página...</div>}> 
               <Routes>
                 <Route path="/" element={<Layout />}>
-                  <Route index element={<DashboardPage />} />
+                  <Route index element={<HomePage />} />
                   <Route path="casos" element={<CasosPage />} />
                   <Route path="casos/detalle/:idCaso" element={<CasoDetailPage />} />
                   <Route path="importar" element={<ImportarPage />} />
