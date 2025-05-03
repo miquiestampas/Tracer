@@ -18,7 +18,6 @@ import 'leaflet/dist/leaflet.css';
 import CasoMap from '../components/maps/CasoMap';
 import LecturaFilters, { FilterState } from '../components/filters/LecturaFilters';
 import EditNotaModal from '../components/modals/EditNotaModal';
-import AnalisisLecturasPanel from '../components/analisis/AnalisisLecturasPanel';
 import LprAvanzadoPanel from '../components/lpr_avanzado/LprAvanzadoPanel';
 import LecturasRelevantesPanel from '../components/caso/LecturasRelevantesPanel';
 import VehiculosPanel from '../components/vehiculos/VehiculosPanel';
@@ -53,7 +52,6 @@ type DataSourceType = 'LPR' | 'GPS';
 
 // --- NUEVO: Definir las secciones/botones (ACTUALIZADO) --- 
 const caseSections = [
-    { id: 'analisis-lpr', label: 'Lecturas LPR', icon: IconDeviceCctv, section: 'lecturas' },
     { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconBookmark, section: 'lecturas' },
     { id: 'lanzadera', label: 'Análisis Avanzado', icon: IconFlask, section: 'lecturas' },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar, section: 'vehiculos' },
@@ -195,574 +193,569 @@ function CasoDetailPage() {
   const [errorArchivos, setErrorArchivos] = useState<string | null>(null);
   const [deletingArchivoId, setDeletingArchivoId] = useState<number | null>(null);
   const navigate = useNavigate();
-  // Estado para el panel de ayuda de archivos importados (mover aquí)
   const [ayudaArchivosAbierta, setAyudaArchivosAbierta] = useState(false);
 
-    // El estado activeMainTab se mantiene, pero controla la sección activa
-    const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
+  // El estado activeMainTab se mantiene, pero controla la sección activa
+  const [activeMainTab, setActiveMainTab] = useState<string | null>('lecturas-relevantes');
 
-    // ---- NUEVO: Estado compartido para filas interactuadas ----
-    const [interactedMatriculas, setInteractedMatriculas] = useState<Set<string>>(new Set());
+  // ---- NUEVO: Estado compartido para filas interactuadas ----
+  const [interactedMatriculas, setInteractedMatriculas] = useState<Set<string>>(new Set());
 
-    // ---- NUEVO: Función para añadir matrículas interactuadas (CORREGIDA) ----
-    const addInteractedMatricula = useCallback((matriculas: string[]) => {
-        setInteractedMatriculas(prev => {
-            const newSet = new Set(prev);
-            matriculas.forEach(m => newSet.add(m));
-            return newSet;
-        });
-    }, []);
+  // ---- NUEVO: Función para añadir matrículas interactuadas (CORREGIDA) ----
+  const addInteractedMatricula = useCallback((matriculas: string[]) => {
+      setInteractedMatriculas(prev => {
+          const newSet = new Set(prev);
+          matriculas.forEach(m => newSet.add(m));
+          return newSet;
+      });
+  }, []);
 
-    // --- ESTADO Y LÓGICA PARA LECTURAS RELEVANTES (MOVIDO AQUÍ) ---
-    const [lecturasRelevantes, setLecturasRelevantes] = useState<Lectura[]>([]);
-    const [relevantLoading, setRelevantLoading] = useState(true);
-    const [relevantPage, setRelevantPage] = useState(1);
-    const RELEVANT_PAGE_SIZE = 15; // Definir tamaño de página
-    const [relevantSortStatus, setRelevantSortStatus] = useState<DataTableSortStatus<Lectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'asc' });
-    const [selectedRelevantRecordIds, setSelectedRelevantRecordIds] = useState<number[]>([]);
-    const [editingRelevantNota, setEditingRelevantNota] = useState<Lectura | null>(null); // Estado para saber qué lectura se edita
-    const [notaInputValue, setNotaInputValue] = useState(''); // Estado para el valor del input de nota
-    const [ayudaRelevantesAbierta, setAyudaRelevantesAbierta] = useState(false);
+  // --- ESTADO Y LÓGICA PARA LECTURAS RELEVANTES ---
+  const [lecturasRelevantes, setLecturasRelevantes] = useState<Lectura[]>([]);
+  const [relevantLoading, setRelevantLoading] = useState(true);
+  const [relevantPage, setRelevantPage] = useState(1);
+  const RELEVANT_PAGE_SIZE = 15;
+  const [relevantSortStatus, setRelevantSortStatus] = useState<DataTableSortStatus<Lectura>>({ 
+    columnAccessor: 'Fecha_y_Hora', 
+    direction: 'asc' 
+  });
+  const [selectedRelevantRecordIds, setSelectedRelevantRecordIds] = useState<number[]>([]);
+  const [editingRelevantNota, setEditingRelevantNota] = useState<Lectura | null>(null);
+  const [notaInputValue, setNotaInputValue] = useState('');
+  const [ayudaRelevantesAbierta, setAyudaRelevantesAbierta] = useState(false);
 
-    // Función para cargar lecturas relevantes
-    const fetchLecturasRelevantes = useCallback(async () => {
-        if (!idCasoNum) return;
-        setRelevantLoading(true);
-        try {
-            const response = await apiClient.get<Lectura[]>(`/casos/${idCasoNum}/lecturas_relevantes`);
-            setLecturasRelevantes(response.data || []);
-            console.log('[CasoDetailPage] Lecturas relevantes cargadas:', response.data?.length);
-        } catch (error) {
-            console.error("Error fetching relevant lecturas:", error);
-            notifications.show({ title: 'Error', message: 'No se pudieron cargar las lecturas relevantes.', color: 'red' });
-            setLecturasRelevantes([]);
-        } finally {
-            setRelevantLoading(false);
-        }
-    }, [idCasoNum]);
+  // Función para cargar lecturas relevantes
+  const fetchLecturasRelevantes = useCallback(async () => {
+      if (!idCasoNum) return;
+      setRelevantLoading(true);
+      try {
+          const response = await apiClient.get<Lectura[]>(`/casos/${idCasoNum}/lecturas_relevantes`);
+          setLecturasRelevantes(response.data || []);
+          console.log('[CasoDetailPage] Lecturas relevantes cargadas:', response.data?.length);
+      } catch (error) {
+          console.error("Error fetching relevant lecturas:", error);
+          notifications.show({ title: 'Error', message: 'No se pudieron cargar las lecturas relevantes.', color: 'red' });
+          setLecturasRelevantes([]);
+      } finally {
+          setRelevantLoading(false);
+      }
+  }, [idCasoNum]);
 
-    // Cargar inicialmente o cuando cambie la pestaña
-    useEffect(() => {
-        if (activeMainTab === 'lecturas-relevantes') {
-             fetchLecturasRelevantes();
-        }
-    }, [idCasoNum, activeMainTab, fetchLecturasRelevantes]);
-
-     // Handlers para LecturasRelevantesPanel (movidos aquí)
-     const handleRelevantPageChange = (page: number) => setRelevantPage(page);
-     const handleRelevantSortChange = (status: DataTableSortStatus<Lectura>) => setRelevantSortStatus(status);
-     const handleRelevantSelectionChange = (selectedIds: number[]) => setSelectedRelevantRecordIds(selectedIds);
-
-     const handleRelevantEditNota = (lectura: Lectura) => {
-         setEditingRelevantNota(lectura);
-         setNotaInputValue(lectura.relevancia?.Nota || '');
-     };
-
-     const handleRelevantCloseEditModal = () => {
-         setEditingRelevantNota(null);
-         setNotaInputValue('');
-     };
-
-     const handleRelevantGuardarNota = async () => {
-         if (!editingRelevantNota || !editingRelevantNota.relevancia) return;
-         const idRelevante = editingRelevantNota.relevancia.ID_Relevante;
-         setRelevantLoading(true); // Podrías usar un loading específico del modal
-         try {
-             await apiClient.put(`/lecturas_relevantes/${idRelevante}/nota`, { Nota: notaInputValue });
-             notifications.show({ title: 'Éxito', message: 'Nota actualizada.', color: 'green' });
-             handleRelevantCloseEditModal();
-             fetchLecturasRelevantes(); // Recargar
-         } catch (error: any) {
-             notifications.show({ title: 'Error', message: error.response?.data?.detail || 'No se pudo guardar la nota.', color: 'red' });
-         } finally {
-             setRelevantLoading(false);
-         }
-     };
-
-     const handleRelevantDesmarcar = (idLectura: number) => {
-         openConfirmModal({
-             title: 'Confirmar Desmarcar',
-             centered: true,
-             children: <Text size="sm">¿Seguro que quieres desmarcar esta lectura ({idLectura}) como relevante?</Text>,
-             labels: { confirm: 'Desmarcar', cancel: 'Cancelar' },
-             confirmProps: { color: 'red' },
-             onConfirm: async () => {
-                 setRelevantLoading(true);
-                 try {
-                     await apiClient.delete(`/lecturas/${idLectura}/desmarcar_relevante`);
-                     notifications.show({ title: 'Éxito', message: `Lectura ${idLectura} desmarcada.`, color: 'green' });
-                     fetchLecturasRelevantes(); // Recargar
-                 } catch (error: any) {
-                     notifications.show({ title: 'Error', message: error.response?.data?.detail || 'No se pudo desmarcar.', color: 'red' });
-                 } finally {
-                     setRelevantLoading(false);
-                 }
-             },
-         });
-     };
-
-     const handleRelevantDesmarcarSeleccionados = () => {
-         const idsToUnmark = [...selectedRelevantRecordIds];
-         if (idsToUnmark.length === 0) return;
-         openConfirmModal({
-             title: 'Confirmar Desmarcar Selección',
-             centered: true,
-             children: <Text size="sm">¿Estás seguro de desmarcar {idsToUnmark.length} lecturas seleccionadas?</Text>,
-             labels: { confirm: 'Desmarcar Seleccionadas', cancel: 'Cancelar' },
-             confirmProps: { color: 'red' },
-             onConfirm: async () => {
-                 setRelevantLoading(true);
-                 const results = await Promise.allSettled(
-                     idsToUnmark.map(id => apiClient.delete(`/lecturas/${id}/desmarcar_relevante`))
-                 );
-                 let successes = 0;
-                 let errors = 0;
-                 results.forEach((result, index) => {
-                     if (result.status === 'fulfilled') successes++;
-                     else {
-                         errors++;
-                         console.error(`Error desmarcando ID ${idsToUnmark[index]}:`, result.reason);
-                     }
-                 });
-                 if (successes > 0) {
-                     notifications.show({ title: 'Desmarcado Completado', message: `${successes} lecturas desmarcadas.` + (errors > 0 ? ` ${errors} fallaron.` : ''), color: errors > 0 ? 'orange' : 'green' });
-                 }
-                 setSelectedRelevantRecordIds([]);
-                 fetchLecturasRelevantes(); // Recargar
-                 setRelevantLoading(false);
-             },
-         });
-     };
-
-     const handleRelevantGuardarVehiculo = (lectura: Lectura) => {
-        if (!lectura.Matricula) {
-            notifications.show({ title: 'Error', message: 'La lectura no tiene matrícula.', color: 'red' }); return;
-        }
-         openConfirmModal({
-             title: 'Confirmar Guardar Vehículo', centered: true,
-             children: <Text size="sm">¿Guardar vehículo con matrícula {lectura.Matricula}?</Text>,
-             labels: { confirm: 'Guardar', cancel: 'Cancelar' }, confirmProps: { color: 'green' },
-             onConfirm: async () => {
-                 setRelevantLoading(true);
-                 try {
-                     await apiClient.post('/vehiculos', { Matricula: lectura.Matricula });
-                     notifications.show({ title: 'Éxito', message: `Vehículo ${lectura.Matricula} guardado.`, color: 'green' });
-                     appEventEmitter.emit('listaVehiculosCambiada');
-                 } catch (error: any) {
-                     if (error.response?.status === 400 || error.response?.status === 409) {
-                         notifications.show({ title: 'Vehículo Existente', message: `El vehículo ${lectura.Matricula} ya existe.`, color: 'blue' });
-                         appEventEmitter.emit('listaVehiculosCambiada');
-                     } else {
-                          notifications.show({ title: 'Error', message: error.response?.data?.detail || 'No se pudo guardar.', color: 'red' });
-                     }
-                 } finally {
-                     setRelevantLoading(false);
-                 }
-             },
-         });
-     };
-
-     const handleRelevantGuardarVehiculosSeleccionados = () => {
-         const lecturasSeleccionadas = lecturasRelevantes.filter(l => selectedRelevantRecordIds.includes(l.ID_Lectura));
-         const matriculasUnicas = Array.from(new Set(lecturasSeleccionadas.map(l => l.Matricula).filter(m => !!m)));
-         if (matriculasUnicas.length === 0) {
-             notifications.show({ title: 'Sin Matrículas', message: 'Ninguna lectura seleccionada tiene matrícula válida.', color: 'orange' }); return;
-         }
-         openConfirmModal({
-             title: 'Confirmar Guardar Vehículos', centered: true,
-             children: <Text size="sm">¿Guardar {matriculasUnicas.length} vehículo(s) único(s) ({matriculasUnicas.join(', ')})?</Text>,
-             labels: { confirm: 'Guardar Seleccionados', cancel: 'Cancelar' }, confirmProps: { color: 'green' },
-             onConfirm: async () => {
-                 setRelevantLoading(true);
-                 const results = await Promise.allSettled(
-                     matriculasUnicas.map(matricula => apiClient.post('/vehiculos', { Matricula: matricula }))
-                 );
-                 let creados = 0, existentes = 0, errores = 0;
-                 results.forEach(result => {
-                     if (result.status === 'fulfilled') { creados++; }
-                     else { 
-                         if (result.reason?.response?.status === 400 || result.reason?.response?.status === 409) existentes++;
-                         else {
-                             errores++;
-                             console.error("Error guardando vehículo:", result.reason);
-                         }
-                     }
-                 });
-                 let msg = '';
-                 if (creados > 0) msg += `${creados} guardados. `;
-                 if (existentes > 0) msg += `${existentes} ya existían. `;
-                 if (errores > 0) msg += `${errores} errores.`;
-                 notifications.show({ title: "Guardar Vehículos Completado", message: msg.trim(), color: errores > 0 ? 'orange' : 'green' });
-                 appEventEmitter.emit('listaVehiculosCambiada');
-                 setSelectedRelevantRecordIds([]);
-                 setRelevantLoading(false);
-             },
-         });
-     };
-    // --- FIN ESTADO Y LÓGICA PARA LECTURAS RELEVANTES ---
-
-    // Función para cargar archivos (necesaria para carga inicial y después de borrar)
-  const fetchArchivos = useCallback(async () => {
-        if (!idCasoNum || isNaN(idCasoNum)) return;
-        setLoadingArchivos(true);
-        setErrorArchivos(null);
-        try {
-           const data = await getArchivosPorCaso(idCasoNum.toString());
-          setArchivos(data);
-        } catch (err: any) {
-           setErrorArchivos(err.response?.data?.detail || err.message || 'Error al cargar los archivos.');
-        } finally {
-          setLoadingArchivos(false);
-        }
-   }, [idCasoNum]);
-
-    // Carga inicial
+  // Cargar inicialmente o cuando cambie la pestaña
   useEffect(() => {
-        if (idCasoNum && !isNaN(idCasoNum)) {
-      const fetchCasoDetalle = async () => {
-        setLoadingCaso(true);
-        setErrorCaso(null);
-        try {
-                    const data = await getCasoById(idCasoNum);
-          setCaso(data);
-        } catch (err: any) {
-                    setErrorCaso(err.response?.data?.detail || err.message || 'Error al cargar detalles del caso.');
-        } finally {
-          setLoadingCaso(false);
-        }
-      };
-      fetchCasoDetalle();
-      fetchArchivos();
-    } else {
-            // Resetear todo si no hay idCaso
-            setCaso(null); setArchivos([]); setErrorCaso('No se proporcionó ID de caso.'); setErrorArchivos(null);
-            setLoadingCaso(false); setLoadingArchivos(false);
-        }
-    }, [idCasoNum, fetchArchivos]);
+      if (activeMainTab === 'lecturas-relevantes') {
+           fetchLecturasRelevantes();
+      }
+  }, [idCasoNum, activeMainTab, fetchLecturasRelevantes]);
 
-    // Handler para borrar archivo (ahora usa fetchArchivos)
-  const handleDeleteArchivo = async (archivoId: number) => {
-        if (!window.confirm(`¿Seguro de eliminar archivo ID ${archivoId} y sus lecturas?`)) return;
-    setDeletingArchivoId(archivoId);
-    try {
-      await deleteArchivo(archivoId);
-            notifications.show({ title: 'Archivo Eliminado', message: `Archivo ${archivoId} eliminado.`, color: 'teal' });
-      await fetchArchivos();
-    } catch (err: any) {
-            notifications.show({ title: 'Error al Eliminar', message: err.response?.data?.detail || 'No se pudo eliminar el archivo.', color: 'red' });
-    } finally {
-      setDeletingArchivoId(null);
-    }
-  };
+   // Handlers para LecturasRelevantesPanel (movidos aquí)
+   const handleRelevantPageChange = (page: number) => setRelevantPage(page);
+   const handleRelevantSortChange = (status: DataTableSortStatus<Lectura>) => setRelevantSortStatus(status);
+   const handleRelevantSelectionChange = (selectedIds: number[]) => setSelectedRelevantRecordIds(selectedIds);
 
-    // --- Estados para Lecturas del Mapa --- 
-    const [mapLecturas, setMapLecturas] = useState<LectorConCoordenadas[]>([]);
-    const [loadingMapLecturas, setLoadingMapLecturas] = useState(false);
-    const [errorMapLecturas, setErrorMapLecturas] = useState<string | null>(null);
+   const handleRelevantEditNota = (lectura: Lectura) => {
+       setEditingRelevantNota(lectura);
+       setNotaInputValue(lectura.relevancia?.Nota || '');
+   };
 
-    // --- NUEVO: Función para cargar lecturas para el mapa --- 
-    const fetchMapLecturas = useCallback(async () => {
-        if (!idCasoNum) return;
-        console.log("[CasoMap] Fetching lecturas para mapa del caso:", idCasoNum);
-        setLoadingMapLecturas(true);
-        setErrorMapLecturas(null);
-        try {
-            // Asumimos un endpoint que devuelve las lecturas (LPR/GPS) con coordenadas
-            // para un caso específico. Podría necesitar ajustes según tu API.
-            const response = await apiClient.get<LectorConCoordenadas[]>(`/casos/${idCasoNum}/lecturas_para_mapa`);
-            setMapLecturas(response.data || []);
-            console.log("[CasoMap] Lecturas cargadas:", response.data?.length);
-        } catch (err: any) {
-            console.error("Error fetching map lecturas:", err);
-            setErrorMapLecturas(err.response?.data?.detail || 'No se pudieron cargar los datos para el mapa.');
-            setMapLecturas([]);
-        } finally {
-            setLoadingMapLecturas(false);
-        }
-    }, [idCasoNum]);
+   const handleRelevantCloseEditModal = () => {
+       setEditingRelevantNota(null);
+       setNotaInputValue('');
+   };
 
-    // --- useEffect para cargar datos del mapa --- 
-    useEffect(() => {
-        // Cargar solo si la pestaña está activa Y no hay datos cargados
-        if (activeMainTab === 'mapa' && mapLecturas.length === 0 && !loadingMapLecturas) {
-            fetchMapLecturas();
-        }
-    }, [activeMainTab, mapLecturas.length, fetchMapLecturas]);
+   const handleRelevantGuardarNota = async () => {
+       if (!editingRelevantNota || !editingRelevantNota.relevancia) return;
+       const idRelevante = editingRelevantNota.relevancia.ID_Relevante;
+       setRelevantLoading(true); // Podrías usar un loading específico del modal
+       try {
+           await apiClient.put(`/lecturas_relevantes/${idRelevante}/nota`, { Nota: notaInputValue });
+           notifications.show({ title: 'Éxito', message: 'Nota actualizada.', color: 'green' });
+           handleRelevantCloseEditModal();
+           fetchLecturasRelevantes(); // Recargar
+       } catch (error: any) {
+           notifications.show({ title: 'Error', message: error.response?.data?.detail || 'No se pudo guardar la nota.', color: 'red' });
+       } finally {
+           setRelevantLoading(false);
+       }
+   };
 
-    // --- Columnas Tabla Archivos ---
-    const archivosColumns: DataTableColumn<ArchivoExcel>[] = [
-        { accessor: 'ID_Archivo', title: 'ID', width: 60, textAlign: 'right' },
-        { accessor: 'Nombre_del_Archivo', title: 'Nombre Archivo', render: (a) => <Text truncate="end">{a.Nombre_del_Archivo}</Text> },
-        { accessor: 'Tipo_de_Archivo', title: 'Tipo', width: 80 },
-        { accessor: 'Fecha_de_Importacion', title: 'Importado', render: (a) => dayjs(a.Fecha_de_Importacion).format('DD/MM/YYYY HH:mm'), width: 150 },
-        { accessor: 'Total_Registros', title: 'Registros', width: 100, textAlign: 'right' },
-        {
-            accessor: 'actions', title: 'Acciones', width: 80, textAlign: 'center',
-            render: (archivo) => (
-                <Tooltip label="Eliminar Archivo"> 
-                    <ActionIcon 
-                        color="red" 
-                        variant="subtle"
-                        onClick={() => handleDeleteArchivo(archivo.ID_Archivo)}
-                        loading={deletingArchivoId === archivo.ID_Archivo}
-                    >
-                        <IconTrash size={16} />
-                    </ActionIcon>
-                </Tooltip>
-            ),
-        },
-    ];
-
-    // --- Buscar la LecturaRelevante completa para el modal ---
-    const lecturaRelevanteParaModal = useMemo(() => {
-        if (!editingRelevantNota) return null;
-        // Asumiendo que lecturasRelevantes SÍ contiene objetos Lectura con un campo .relevancia
-        // o que fetchLecturasRelevantes devuelve objetos que incluyen ID_Lectura, ID_Relevante, Nota, Fecha_Marcada
-        // Necesitamos encontrar el objeto correcto basado en ID_Lectura o ID_Relevante.
-        // SI lecturasRelevantes CONTIENE objetos tipo Lectura:
-        return editingRelevantNota.relevancia // Esto sigue sin ser LecturaRelevante completo
-            ? { 
-                // Reconstruir un objeto parcial compatible si EditNotaModal SOLO necesita esto:
-                ID_Relevante: editingRelevantNota.relevancia.ID_Relevante, 
-                Nota: editingRelevantNota.relevancia.Nota, 
-                // Añadir campos dummy si el tipo lo exige estrictamente y no se usan?
-                // ID_Lectura: editingRelevantNota.ID_Lectura, 
-                // Fecha_Marcada: new Date().toISOString() // O algún valor placeholder
+   const handleRelevantDesmarcar = (idLectura: number) => {
+       openConfirmModal({
+           title: 'Confirmar Desmarcar',
+           centered: true,
+           children: <Text size="sm">¿Seguro que quieres desmarcar esta lectura ({idLectura}) como relevante?</Text>,
+           labels: { confirm: 'Desmarcar', cancel: 'Cancelar' },
+           confirmProps: { color: 'red' },
+           onConfirm: async () => {
+               setRelevantLoading(true);
+               try {
+                   await apiClient.delete(`/lecturas/${idLectura}/desmarcar_relevante`);
+                   notifications.show({ title: 'Éxito', message: `Lectura ${idLectura} desmarcada.`, color: 'green' });
+                   fetchLecturasRelevantes(); // Recargar
+               } catch (error: any) {
+                   notifications.show({ title: 'Error', message: error.response?.data?.detail || 'No se pudo desmarcar.', color: 'red' });
+               } finally {
+                   setRelevantLoading(false);
                }
-            : null;
-        // SI lecturasRelevantes CONTIENE objetos tipo LecturaRelevante:
-        /*
-        return lecturasRelevantes.find(
-            lr => lr.ID_Lectura === editingRelevantNota.ID_Lectura && lr.ID_Relevante === editingRelevantNota.relevancia?.ID_Relevante
-        ) ?? null;
-        */
-    }, [editingRelevantNota, lecturasRelevantes]);
+           },
+       });
+   };
 
-    // --- Renderizado --- 
-    if (loadingCaso) return <Loader />; 
-    if (errorCaso) return <Alert color="red" title="Error al cargar el caso">{errorCaso}</Alert>;
-    if (!caso) return <Alert color="orange">Caso no encontrado.</Alert>;
+   const handleRelevantDesmarcarSeleccionados = () => {
+       const idsToUnmark = [...selectedRelevantRecordIds];
+       if (idsToUnmark.length === 0) return;
+       openConfirmModal({
+           title: 'Confirmar Desmarcar Selección',
+           centered: true,
+           children: <Text size="sm">¿Estás seguro de desmarcar {idsToUnmark.length} lecturas seleccionadas?</Text>,
+           labels: { confirm: 'Desmarcar Seleccionadas', cancel: 'Cancelar' },
+           confirmProps: { color: 'red' },
+           onConfirm: async () => {
+               setRelevantLoading(true);
+               const results = await Promise.allSettled(
+                   idsToUnmark.map(id => apiClient.delete(`/lecturas/${id}/desmarcar_relevante`))
+               );
+               let successes = 0;
+               let errors = 0;
+               results.forEach((result, index) => {
+                   if (result.status === 'fulfilled') successes++;
+                   else {
+                       errors++;
+                       console.error(`Error desmarcando ID ${idsToUnmark[index]}:`, result.reason);
+                   }
+               });
+               if (successes > 0) {
+                   notifications.show({ title: 'Desmarcado Completado', message: `${successes} lecturas desmarcadas.` + (errors > 0 ? ` ${errors} fallaron.` : ''), color: errors > 0 ? 'orange' : 'green' });
+               }
+               setSelectedRelevantRecordIds([]);
+               fetchLecturasRelevantes(); // Recargar
+               setRelevantLoading(false);
+           },
+       });
+   };
 
-    return (
-        <Container fluid style={{ paddingLeft: 32, paddingRight: 32 }}>
-            <Text size="xl" fw={700} mt="md" mb="lg">Detalles del Caso: {caso.Nombre_del_Caso} ({caso.Año})</Text>
+   const handleRelevantGuardarVehiculo = (lectura: Lectura) => {
+      if (!lectura.Matricula) {
+          notifications.show({ title: 'Error', message: 'La lectura no tiene matrícula.', color: 'red' }); return;
+      }
+       openConfirmModal({
+           title: 'Confirmar Guardar Vehículo', centered: true,
+           children: <Text size="sm">¿Guardar vehículo con matrícula {lectura.Matricula}?</Text>,
+           labels: { confirm: 'Guardar', cancel: 'Cancelar' }, confirmProps: { color: 'green' },
+           onConfirm: async () => {
+               setRelevantLoading(true);
+               try {
+                   await apiClient.post('/vehiculos', { Matricula: lectura.Matricula });
+                   notifications.show({ title: 'Éxito', message: `Vehículo ${lectura.Matricula} guardado.`, color: 'green' });
+                   appEventEmitter.emit('listaVehiculosCambiada');
+               } catch (error: any) {
+                   if (error.response?.status === 400 || error.response?.status === 409) {
+                       notifications.show({ title: 'Vehículo Existente', message: `El vehículo ${lectura.Matricula} ya existe.`, color: 'blue' });
+                       appEventEmitter.emit('listaVehiculosCambiada');
+                   } else {
+                        notifications.show({ title: 'Error', message: error.response?.data?.detail || 'No se pudo guardar.', color: 'red' });
+                   }
+               } finally {
+                   setRelevantLoading(false);
+               }
+           },
+       });
+   };
 
-            {/* --- NUEVO: Grupo de Botones de Navegación --- */}
-            <Stack gap="xs" mb="md">
-                <Group gap={0} align="flex-start">
-                    <Box>
-                        <Text fw={500} c="blue" mb="xs">Análisis sobre Lecturas</Text>
-                        <Group gap="xs">
-                            {caseSections.filter(section => section.section === 'lecturas').map((section) => (
-                                <Button
-                                    key={section.id}
-                                    variant={activeMainTab === section.id ? 'filled' : 'light'}
-                                    leftSection={<section.icon size={16} />}
-                                    onClick={() => setActiveMainTab(section.id)}
-                                    color="blue"
-                                >
-                                    {section.label}
-                                </Button>
-                            ))}
-                        </Group>
-                    </Box>
-                    <Divider orientation="vertical" mx="md" />
-                    <Box>
-                        <Text fw={500} c="violet" mb="xs">Análisis sobre Vehículos</Text>
-                        <Group gap="xs">
-                            {caseSections.filter(section => section.section === 'vehiculos').map((section) => (
-                                <Button
-                                    key={section.id}
-                                    variant={activeMainTab === section.id ? 'filled' : 'light'}
-                                    leftSection={<section.icon size={16} />}
-                                    onClick={() => setActiveMainTab(section.id)}
-                                    color="violet"
-                                >
-                                    {section.label}
-                                </Button>
-                            ))}
-                        </Group>
-                    </Box>
-                    <Divider orientation="vertical" mx="md" />
-                    <Box>
-                        <Text fw={500} c="gray" mb="xs">Archivos</Text>
-                        <Group gap="xs">
-                            {caseSections.filter(section => section.section === 'archivos').map((section) => (
-                                <Button
-                                    key={section.id}
-                                    variant={activeMainTab === section.id ? 'filled' : 'light'}
-                                    leftSection={<section.icon size={16} />}
-                                    onClick={() => setActiveMainTab(section.id)}
-                                    color="gray"
-                                >
-                                    {section.label}
-                                </Button>
-                            ))}
-                        </Group>
-                    </Box>
-                </Group>
-            </Stack>
-            {/* --- FIN Grupo de Botones --- */}
+   const handleRelevantGuardarVehiculosSeleccionados = () => {
+       const lecturasSeleccionadas = lecturasRelevantes.filter(l => selectedRelevantRecordIds.includes(l.ID_Lectura));
+       const matriculasUnicas = Array.from(new Set(lecturasSeleccionadas.map(l => l.Matricula).filter(m => !!m)));
+       if (matriculasUnicas.length === 0) {
+           notifications.show({ title: 'Sin Matrículas', message: 'Ninguna lectura seleccionada tiene matrícula válida.', color: 'orange' }); return;
+       }
+       openConfirmModal({
+           title: 'Confirmar Guardar Vehículos', centered: true,
+           children: <Text size="sm">¿Guardar {matriculasUnicas.length} vehículo(s) único(s) ({matriculasUnicas.join(', ')})?</Text>,
+           labels: { confirm: 'Guardar Seleccionados', cancel: 'Cancelar' }, confirmProps: { color: 'green' },
+           onConfirm: async () => {
+               setRelevantLoading(true);
+               const results = await Promise.allSettled(
+                   matriculasUnicas.map(matricula => apiClient.post('/vehiculos', { Matricula: matricula }))
+               );
+               let creados = 0, existentes = 0, errores = 0;
+               results.forEach(result => {
+                   if (result.status === 'fulfilled') { creados++; }
+                   else { 
+                       if (result.reason?.response?.status === 400 || result.reason?.response?.status === 409) existentes++;
+                       else {
+                           errores++;
+                           console.error("Error guardando vehículo:", result.reason);
+                       }
+                   }
+               });
+               let msg = '';
+               if (creados > 0) msg += `${creados} guardados. `;
+               if (existentes > 0) msg += `${existentes} ya existían. `;
+               if (errores > 0) msg += `${errores} errores.`;
+               notifications.show({ title: "Guardar Vehículos Completado", message: msg.trim(), color: errores > 0 ? 'orange' : 'green' });
+               appEventEmitter.emit('listaVehiculosCambiada');
+               setSelectedRelevantRecordIds([]);
+               setRelevantLoading(false);
+           },
+       });
+   };
+  // --- FIN ESTADO Y LÓGICA PARA LECTURAS RELEVANTES ---
 
-            <Box mt="lg" style={{ position: 'relative' }}> {/* Añadir position relative al contenedor padre */} 
-            {/* --- Renderizado Condicional del Contenido --- */}
-                {/* --- Paneles siempre renderizados, pero ocultos/mostrados con CSS --- */}
-                
-                {/* Pestaña Lecturas LPR */}
-                <Box style={{ display: activeMainTab === 'analisis-lpr' ? 'block' : 'none', position: 'relative' }}>
-                    <AnalisisLecturasPanel 
-                        casoIdFijo={idCasoNum!}
-                        permitirSeleccionCaso={false}
-                        mostrarTitulo={false}
-                        tipoFuenteFijo='LPR'
-                        interactedMatriculas={interactedMatriculas}
-                        addInteractedMatricula={addInteractedMatricula}
-                    />
-                </Box>
+  // Función para cargar archivos (necesaria para carga inicial y después de borrar)
+const fetchArchivos = useCallback(async () => {
+      if (!idCasoNum || isNaN(idCasoNum)) return;
+      setLoadingArchivos(true);
+      setErrorArchivos(null);
+      try {
+         const data = await getArchivosPorCaso(idCasoNum.toString());
+        setArchivos(data);
+      } catch (err: any) {
+         setErrorArchivos(err.response?.data?.detail || err.message || 'Error al cargar los archivos.');
+      } finally {
+        setLoadingArchivos(false);
+      }
+ }, [idCasoNum]);
 
-                {/* Pestaña Detección de Patrones */}
-                <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none', position: 'relative' }}>
-                    <AnalisisAvanzadoPanel casoId={idCasoNum!} />
-                </Box>
+  // Carga inicial
+useEffect(() => {
+      if (idCasoNum && !isNaN(idCasoNum)) {
+    const fetchCasoDetalle = async () => {
+      setLoadingCaso(true);
+      setErrorCaso(null);
+      try {
+                  const data = await getCasoById(idCasoNum);
+        setCaso(data);
+      } catch (err: any) {
+                  setErrorCaso(err.response?.data?.detail || err.message || 'Error al cargar detalles del caso.');
+      } finally {
+        setLoadingCaso(false);
+      }
+    };
+    fetchCasoDetalle();
+    fetchArchivos();
+  } else {
+          // Resetear todo si no hay idCaso
+          setCaso(null); setArchivos([]); setErrorCaso('No se proporcionó ID de caso.'); setErrorArchivos(null);
+          setLoadingCaso(false); setLoadingArchivos(false);
+      }
+  }, [idCasoNum, fetchArchivos]);
 
-                {/* Pestaña Lecturas Relevantes */}
-                <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none', position: 'relative' }}>
-                    <Group justify="flex-end" mb="xs">
-                        <Button
-                            variant="light"
-                            color="blue"
-                            size="xs"
-                            onClick={() => setAyudaRelevantesAbierta((v) => !v)}
-                        >
-                            {ayudaRelevantesAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                        </Button>
-                    </Group>
-                    <Collapse in={ayudaRelevantesAbierta}>
-                        <Alert color="blue" title="¿Cómo funciona el panel de Lecturas Relevantes?" mb="md">
-                            <Text size="sm">
-                                <b>¿Qué es este panel?</b><br />
-                                Aquí se recopilan todas las lecturas que has marcado como relevantes desde la pestaña "Lecturas LPR". Permite centrarse en los eventos clave de la investigación.<br /><br />
-                                <b>Funcionalidades:</b><br />
-                                - <b>Visualización:</b> Muestra la tabla de lecturas marcadas. Puedes ordenar y paginar como en otras tablas.<br />
-                                - <b>Notas:</b> Edita o añade notas específicas a cada lectura relevante para recordar por qué es importante.<br />
-                                - <b>Desmarcar:</b> Elimina la marca de relevancia si una lectura ya no es crucial. Puedes hacerlo individualmente o para una selección.<br />
-                                - <b>Guardar Vehículo:</b> Guarda rápidamente la matrícula de una lectura relevante como un vehículo para seguimiento posterior.<br />
-                                - <b>Selección Múltiple:</b> Usa las casillas para seleccionar varias lecturas y desmarcarlas o guardar sus vehículos en bloque.<br />
-                                - <b>Refrescar:</b> Actualiza la lista si has hecho cambios en otra pestaña.<br /><br />
-                                <b>Consejos:</b><br />
-                                - Usa las notas para documentar por qué una lectura es relevante para el caso.<br />
-                                - Marca como relevantes solo las lecturas que aporten valor a la investigación.<br />
-                                - Revisa periódicamente las lecturas relevantes para mantener el foco en lo importante.<br />
-                            </Text>
-                        </Alert>
-                    </Collapse>
-                    <LecturasRelevantesPanel
-                        lecturas={lecturasRelevantes}
-                        loading={relevantLoading}
-                        totalRecords={Array.isArray(lecturasRelevantes) ? lecturasRelevantes.length : 0}
-                        page={relevantPage}
-                        onPageChange={handleRelevantPageChange}
-                        pageSize={RELEVANT_PAGE_SIZE}
-                        sortStatus={relevantSortStatus}
-                        onSortStatusChange={handleRelevantSortChange}
-                        selectedRecordIds={selectedRelevantRecordIds}
-                        onSelectionChange={handleRelevantSelectionChange}
-                        onEditNota={handleRelevantEditNota}
-                        onDesmarcar={handleRelevantDesmarcar}
-                        onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
-                        onGuardarVehiculo={handleRelevantGuardarVehiculo}
-                        onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
-                        onRefresh={fetchLecturasRelevantes}
-                    />
-                </Box>
+  // Handler para borrar archivo (ahora usa fetchArchivos)
+const handleDeleteArchivo = async (archivoId: number) => {
+      if (!window.confirm(`¿Seguro de eliminar archivo ID ${archivoId} y sus lecturas?`)) return;
+  setDeletingArchivoId(archivoId);
+  try {
+    await deleteArchivo(archivoId);
+        notifications.show({ title: 'Archivo Eliminado', message: `Archivo ${archivoId} eliminado.`, color: 'teal' });
+    await fetchArchivos();
+  } catch (err: any) {
+        notifications.show({ title: 'Error al Eliminar', message: err.response?.data?.detail || 'No se pudo eliminar el archivo.', color: 'red' });
+  } finally {
+    setDeletingArchivoId(null);
+  }
+};
 
-                {/* Pestaña Vehículos */}
-                <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
-                    <VehiculosPanel casoId={idCasoNum!} />
-                </Box>
+  // --- Estados para Lecturas del Mapa --- 
+  const [mapLecturas, setMapLecturas] = useState<LectorConCoordenadas[]>([]);
+  const [loadingMapLecturas, setLoadingMapLecturas] = useState(false);
+  const [errorMapLecturas, setErrorMapLecturas] = useState<string | null>(null);
 
-                <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>
-                    <Box style={{ position: 'relative', height: '500px' }}>
-                        <LoadingOverlay visible={loadingMapLecturas} />
-                        {errorMapLecturas && (
-                            <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
-                        )}
-                        {!loadingMapLecturas && !errorMapLecturas && (
-                            <MapPanel casoId={idCasoNum!} />
-                        )}
-                    </Box>
-                </Box>
+  // --- NUEVO: Función para cargar lecturas para el mapa --- 
+  const fetchMapLecturas = useCallback(async () => {
+      if (!idCasoNum) return;
+      console.log("[CasoMap] Fetching lecturas para mapa del caso:", idCasoNum);
+      setLoadingMapLecturas(true);
+      setErrorMapLecturas(null);
+      try {
+          // Asumimos un endpoint que devuelve las lecturas (LPR/GPS) con coordenadas
+          // para un caso específico. Podría necesitar ajustes según tu API.
+          const response = await apiClient.get<LectorConCoordenadas[]>(`/casos/${idCasoNum}/lecturas_para_mapa`);
+          setMapLecturas(response.data || []);
+          console.log("[CasoMap] Lecturas cargadas:", response.data?.length);
+      } catch (err: any) {
+          console.error("Error fetching map lecturas:", err);
+          setErrorMapLecturas(err.response?.data?.detail || 'No se pudieron cargar los datos para el mapa.');
+          setMapLecturas([]);
+      } finally {
+          setLoadingMapLecturas(false);
+      }
+  }, [idCasoNum]);
 
-                <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none', position: 'relative' }}>
-                    <Group justify="flex-end" mb="xs">
-                        <Button
-                            variant="light"
-                            color="blue"
-                            size="xs"
-                            onClick={() => setAyudaArchivosAbierta((v) => !v)}
-                        >
-                            {ayudaArchivosAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                        </Button>
-                    </Group>
-                    <Collapse in={ayudaArchivosAbierta}>
-                        <Alert color="blue" title="¿Cómo funciona la pestaña Archivos Importados?" mb="md">
-                            <Text size="sm">
-                                <b>¿Qué es esta pestaña?</b><br />
-                                Aquí puedes importar archivos Excel con lecturas LPR o GPS y gestionarlos para su análisis en el caso.<br /><br />
-                                <b>¿Cómo importar?</b><br />
-                                1. Selecciona el caso al que quieres asociar los archivos.<br />
-                                2. Elige el tipo de archivo (LPR o GPS).<br />
-                                3. Sube el archivo Excel y mapea las columnas a los campos requeridos.<br />
-                                4. Confirma la importación y revisa los archivos ya cargados.<br /><br />
-                                <b>Consejos:</b><br />
-                                - Asegúrate de que tu archivo tenga cabeceras claras y todos los campos obligatorios.<br />
-                                - Puedes eliminar archivos importados si te has equivocado.<br />
-                                - El sistema intentará mapear automáticamente las columnas, pero revisa siempre el mapeo antes de confirmar.<br />
-                            </Text>
-                        </Alert>
-                    </Collapse>
-                    <Group justify="space-between" mb="md">
-                        <Title order={4}>Archivos Importados</Title>
-                        <Button 
-                            leftSection={<IconFileImport size={16} />} 
-                            onClick={() => navigate('/importar', { state: { preselectedCasoId: idCasoNum } })}
-                            variant='light'
-                            size="sm"
-                        >
-                            Cargar Nuevos Archivos
-                        </Button>
-                    </Group>
+  // --- useEffect para cargar datos del mapa --- 
+  useEffect(() => {
+      // Cargar solo si la pestaña está activa Y no hay datos cargados
+      if (activeMainTab === 'mapa' && mapLecturas.length === 0 && !loadingMapLecturas) {
+          fetchMapLecturas();
+      }
+  }, [activeMainTab, mapLecturas.length, fetchMapLecturas]);
 
-                    <LoadingOverlay visible={loadingArchivos} />
-                    {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
-                    
-                    <DataTable<ArchivoExcel>
-                        records={archivos}
-                        columns={archivosColumns}
-                        minHeight={150}
-                        withTableBorder
-                        borderRadius="sm"
-                        striped
-                        highlightOnHover
-                        idAccessor="ID_Archivo"
-                        noRecordsText=""
-                        fetching={loadingArchivos}
-                    />
-                </Box>
-            </Box>
+  // --- Columnas Tabla Archivos ---
+  const archivosColumns: DataTableColumn<ArchivoExcel>[] = [
+      { accessor: 'ID_Archivo', title: 'ID', width: 60, textAlign: 'right' },
+      { accessor: 'Nombre_del_Archivo', title: 'Nombre Archivo', render: (a) => <Text truncate="end">{a.Nombre_del_Archivo}</Text> },
+      { accessor: 'Tipo_de_Archivo', title: 'Tipo', width: 80 },
+      { accessor: 'Fecha_de_Importacion', title: 'Importado', render: (a) => dayjs(a.Fecha_de_Importacion).format('DD/MM/YYYY HH:mm'), width: 150 },
+      { accessor: 'Total_Registros', title: 'Registros', width: 100, textAlign: 'right' },
+      {
+          accessor: 'actions', title: 'Acciones', width: 80, textAlign: 'center',
+          render: (archivo) => (
+              <Tooltip label="Eliminar Archivo"> 
+                  <ActionIcon 
+                      color="red" 
+                      variant="subtle"
+                      onClick={() => handleDeleteArchivo(archivo.ID_Archivo)}
+                      loading={deletingArchivoId === archivo.ID_Archivo}
+                  >
+                      <IconTrash size={16} />
+                  </ActionIcon>
+              </Tooltip>
+          ),
+      },
+  ];
 
-            {/* Modales */}
-            <EditNotaModal
-                opened={!!editingRelevantNota}
-                onClose={handleRelevantCloseEditModal}
-                lecturaRelevante={lecturaRelevanteParaModal as LecturaRelevante | null}
-                onSave={async (idRelevante, nuevaNota) => { 
-                    await handleRelevantGuardarNota(); 
-                }} 
-            />
+  // --- Buscar la LecturaRelevante completa para el modal ---
+  const lecturaRelevanteParaModal = useMemo(() => {
+      if (!editingRelevantNota) return null;
+      // Asumiendo que lecturasRelevantes SÍ contiene objetos Lectura con un campo .relevancia
+      // o que fetchLecturasRelevantes devuelve objetos que incluyen ID_Lectura, ID_Relevante, Nota, Fecha_Marcada
+      // Necesitamos encontrar el objeto correcto basado en ID_Lectura o ID_Relevante.
+      // SI lecturasRelevantes CONTIENE objetos tipo Lectura:
+      return editingRelevantNota.relevancia // Esto sigue sin ser LecturaRelevante completo
+          ? { 
+              // Reconstruir un objeto parcial compatible si EditNotaModal SOLO necesita esto:
+              ID_Relevante: editingRelevantNota.relevancia.ID_Relevante, 
+              Nota: editingRelevantNota.relevancia.Nota, 
+              // Añadir campos dummy si el tipo lo exige estrictamente y no se usan?
+              // ID_Lectura: editingRelevantNota.ID_Lectura, 
+              // Fecha_Marcada: new Date().toISOString() // O algún valor placeholder
+             }
+          : null;
+      // SI lecturasRelevantes CONTIENE objetos tipo LecturaRelevante:
+      /*
+      return lecturasRelevantes.find(
+          lr => lr.ID_Lectura === editingRelevantNota.ID_Lectura && lr.ID_Relevante === editingRelevantNota.relevancia?.ID_Relevante
+      ) ?? null;
+      */
+  }, [editingRelevantNota, lecturasRelevantes]);
 
-        </Container>
-  );
+  // --- Renderizado --- 
+  if (loadingCaso) return <Loader />; 
+  if (errorCaso) return <Alert color="red" title="Error al cargar el caso">{errorCaso}</Alert>;
+  if (!caso) return <Alert color="orange">Caso no encontrado.</Alert>;
+
+  return (
+      <Container fluid style={{ paddingLeft: 32, paddingRight: 32 }}>
+          <Text size="xl" fw={700} mt="md" mb="lg">Detalles del Caso: {caso.Nombre_del_Caso} ({caso.Año})</Text>
+
+          {/* --- NUEVO: Grupo de Botones de Navegación --- */}
+          <Stack gap="xs" mb="md">
+              <Group gap={0} align="flex-start">
+                  <Box>
+                      <Text fw={500} c="blue" mb="xs">Análisis sobre Lecturas</Text>
+                      <Group gap="xs">
+                          {caseSections.filter(section => section.section === 'lecturas').map((section) => (
+                              <Button
+                                  key={section.id}
+                                  variant={activeMainTab === section.id ? 'filled' : 'light'}
+                                  leftSection={<section.icon size={16} />}
+                                  onClick={() => setActiveMainTab(section.id)}
+                                  color="blue"
+                              >
+                                  {section.label}
+                              </Button>
+                          ))}
+                      </Group>
+                  </Box>
+                  <Divider orientation="vertical" mx="md" />
+                  <Box>
+                      <Text fw={500} c="violet" mb="xs">Análisis sobre Vehículos</Text>
+                      <Group gap="xs">
+                          {caseSections.filter(section => section.section === 'vehiculos').map((section) => (
+                              <Button
+                                  key={section.id}
+                                  variant={activeMainTab === section.id ? 'filled' : 'light'}
+                                  leftSection={<section.icon size={16} />}
+                                  onClick={() => setActiveMainTab(section.id)}
+                                  color="violet"
+                              >
+                                  {section.label}
+                              </Button>
+                          ))}
+                      </Group>
+                  </Box>
+                  <Divider orientation="vertical" mx="md" />
+                  <Box>
+                      <Text fw={500} c="gray" mb="xs">Archivos</Text>
+                      <Group gap="xs">
+                          {caseSections.filter(section => section.section === 'archivos').map((section) => (
+                              <Button
+                                  key={section.id}
+                                  variant={activeMainTab === section.id ? 'filled' : 'light'}
+                                  leftSection={<section.icon size={16} />}
+                                  onClick={() => setActiveMainTab(section.id)}
+                                  color="gray"
+                              >
+                                  {section.label}
+                              </Button>
+                          ))}
+                      </Group>
+                  </Box>
+              </Group>
+          </Stack>
+          {/* --- FIN Grupo de Botones --- */}
+
+          <Box mt="lg" style={{ position: 'relative' }}> {/* Añadir position relative al contenedor padre */} 
+          {/* --- Renderizado Condicional del Contenido --- */}
+              {/* --- Paneles siempre renderizados, pero ocultos/mostrados con CSS --- */}
+              
+              {/* Pestaña Lecturas LPR */}
+              <Box style={{ display: activeMainTab === 'analisis-lpr' ? 'block' : 'none', position: 'relative' }}>
+                  {/* Eliminar la sección de AnalisisLecturasPanel */}
+              </Box>
+
+              {/* Pestaña Detección de Patrones */}
+              <Box style={{ display: activeMainTab === 'lanzadera' ? 'block' : 'none', position: 'relative' }}>
+                  <AnalisisAvanzadoPanel casoId={idCasoNum!} />
+              </Box>
+
+              {/* Pestaña Lecturas Relevantes */}
+              <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none', position: 'relative' }}>
+                  <Group justify="flex-end" mb="xs">
+                      <Button
+                          variant="light"
+                          color="blue"
+                          size="xs"
+                          onClick={() => setAyudaRelevantesAbierta((v) => !v)}
+                      >
+                          {ayudaRelevantesAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                      </Button>
+                  </Group>
+                  <Collapse in={ayudaRelevantesAbierta}>
+                      <Alert color="blue" title="¿Cómo funciona el panel de Lecturas Relevantes?" mb="md">
+                          <Text size="sm">
+                              <b>¿Qué es este panel?</b><br />
+                              Aquí se recopilan todas las lecturas que has marcado como relevantes desde la pestaña "Lecturas LPR". Permite centrarse en los eventos clave de la investigación.<br /><br />
+                              <b>Funcionalidades:</b><br />
+                              - <b>Visualización:</b> Muestra la tabla de lecturas marcadas. Puedes ordenar y paginar como en otras tablas.<br />
+                              - <b>Notas:</b> Edita o añade notas específicas a cada lectura relevante para recordar por qué es importante.<br />
+                              - <b>Desmarcar:</b> Elimina la marca de relevancia si una lectura ya no es crucial. Puedes hacerlo individualmente o para una selección.<br />
+                              - <b>Guardar Vehículo:</b> Guarda rápidamente la matrícula de una lectura relevante como un vehículo para seguimiento posterior.<br />
+                              - <b>Selección Múltiple:</b> Usa las casillas para seleccionar varias lecturas y desmarcarlas o guardar sus vehículos en bloque.<br />
+                              - <b>Refrescar:</b> Actualiza la lista si has hecho cambios en otra pestaña.<br /><br />
+                              <b>Consejos:</b><br />
+                              - Usa las notas para documentar por qué una lectura es relevante para el caso.<br />
+                              - Marca como relevantes solo las lecturas que aporten valor a la investigación.<br />
+                              - Revisa periódicamente las lecturas relevantes para mantener el foco en lo importante.<br />
+                          </Text>
+                      </Alert>
+                  </Collapse>
+                  <LecturasRelevantesPanel
+                      lecturas={lecturasRelevantes}
+                      loading={relevantLoading}
+                      totalRecords={lecturasRelevantes.length}
+                      page={relevantPage}
+                      onPageChange={setRelevantPage}
+                      pageSize={RELEVANT_PAGE_SIZE}
+                      sortStatus={relevantSortStatus}
+                      onSortStatusChange={setRelevantSortStatus}
+                      selectedRecordIds={selectedRelevantRecordIds}
+                      onSelectionChange={setSelectedRelevantRecordIds}
+                      onEditNota={handleRelevantEditNota}
+                      onDesmarcar={handleRelevantDesmarcar}
+                      onDesmarcarSeleccionados={handleRelevantDesmarcarSeleccionados}
+                      onGuardarVehiculo={handleRelevantGuardarVehiculo}
+                      onGuardarVehiculosSeleccionados={handleRelevantGuardarVehiculosSeleccionados}
+                      onRefresh={fetchLecturasRelevantes}
+                  />
+              </Box>
+
+              {/* Pestaña Vehículos */}
+              <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
+                  <VehiculosPanel casoId={idCasoNum!} />
+              </Box>
+
+              <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>
+                  <Box style={{ position: 'relative', height: '500px' }}>
+                      <LoadingOverlay visible={loadingMapLecturas} />
+                      {errorMapLecturas && (
+                          <Alert color="red" title="Error en Mapa">{errorMapLecturas}</Alert>
+                      )}
+                      {!loadingMapLecturas && !errorMapLecturas && (
+                          <MapPanel casoId={idCasoNum!} />
+                      )}
+                  </Box>
+              </Box>
+
+              <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none', position: 'relative' }}>
+                  <Group justify="flex-end" mb="xs">
+                      <Button
+                          variant="light"
+                          color="blue"
+                          size="xs"
+                          onClick={() => setAyudaArchivosAbierta((v) => !v)}
+                      >
+                          {ayudaArchivosAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                      </Button>
+                  </Group>
+                  <Collapse in={ayudaArchivosAbierta}>
+                      <Alert color="blue" title="¿Cómo funciona la pestaña Archivos Importados?" mb="md">
+                          <Text size="sm">
+                              <b>¿Qué es esta pestaña?</b><br />
+                              Aquí puedes importar archivos Excel con lecturas LPR o GPS y gestionarlos para su análisis en el caso.<br /><br />
+                              <b>¿Cómo importar?</b><br />
+                              1. Selecciona el caso al que quieres asociar los archivos.<br />
+                              2. Elige el tipo de archivo (LPR o GPS).<br />
+                              3. Sube el archivo Excel y mapea las columnas a los campos requeridos.<br />
+                              4. Confirma la importación y revisa los archivos ya cargados.<br /><br />
+                              <b>Consejos:</b><br />
+                              - Asegúrate de que tu archivo tenga cabeceras claras y todos los campos obligatorios.<br />
+                              - Puedes eliminar archivos importados si te has equivocado.<br />
+                              - El sistema intentará mapear automáticamente las columnas, pero revisa siempre el mapeo antes de confirmar.<br />
+                          </Text>
+                      </Alert>
+                  </Collapse>
+                  <Group justify="space-between" mb="md">
+                      <Title order={4}>Archivos Importados</Title>
+                      <Button 
+                          leftSection={<IconFileImport size={16} />} 
+                          onClick={() => navigate('/importar', { state: { preselectedCasoId: idCasoNum } })}
+                          variant='light'
+                          size="sm"
+                      >
+                          Cargar Nuevos Archivos
+                      </Button>
+                  </Group>
+
+                  <LoadingOverlay visible={loadingArchivos} />
+                  {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
+                  
+                  <DataTable<ArchivoExcel>
+                      records={archivos}
+                      columns={archivosColumns}
+                      minHeight={150}
+                      withTableBorder
+                      borderRadius="sm"
+                      striped
+                      highlightOnHover
+                      idAccessor="ID_Archivo"
+                      noRecordsText=""
+                      fetching={loadingArchivos}
+                  />
+              </Box>
+          </Box>
+
+          {/* Modales */}
+          <EditNotaModal
+              opened={!!editingRelevantNota}
+              onClose={handleRelevantCloseEditModal}
+              lecturaRelevante={lecturaRelevanteParaModal as LecturaRelevante | null}
+              onSave={async (idRelevante, nuevaNota) => { 
+                  await handleRelevantGuardarNota(); 
+              }} 
+          />
+
+      </Container>
+);
 }
 
 export default CasoDetailPage; 

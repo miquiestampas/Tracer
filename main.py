@@ -519,12 +519,14 @@ async def upload_excel(
             }
 
             # Verificar si ya existe una lectura duplicada
-            lectura_duplicada = db.query(models.Lectura).filter(
-                models.Lectura.ID_Caso == caso_id,
-                models.Lectura.Matricula == matricula,
-                models.Lectura.Fecha_Hora == fecha_hora_final,
-                models.Lectura.ID_Lector == id_lector
-            ).first()
+            lectura_duplicada = db.query(models.Lectura)\
+                .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                .filter(
+                    models.ArchivoExcel.ID_Caso == caso_id,
+                    models.Lectura.Matricula == matricula,
+                    models.Lectura.Fecha_y_Hora == fecha_hora_final,
+                    models.Lectura.ID_Lector == id_lector
+                ).first()
 
             if lectura_duplicada:
                 lecturas_duplicadas.add(f"Fila {index+1}: Matrícula {matricula} - {fecha_hora_final}")
@@ -2025,3 +2027,63 @@ def get_estadisticas_globales(db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al obtener estadísticas"
         )
+
+# === Endpoint para Búsqueda Multicaso ===
+class BusquedaMulticasoRequest(BaseModel):
+    casos: list[int]
+
+@app.post("/busqueda/multicaso", response_model=List[Dict[str, Any]], tags=["Búsqueda"])
+def buscar_vehiculos_multicaso(request: BusquedaMulticasoRequest, db: Session = Depends(get_db)):
+    """
+    Busca vehículos que aparecen en múltiples casos.
+    Devuelve una lista de vehículos con sus lecturas en cada caso.
+    """
+    casos = request.casos
+    logger.info(f"POST /busqueda/multicaso - Buscando vehículos en casos: {casos}")
+    
+    # Verificar que todos los casos existen
+    casos_existentes = db.query(models.Caso).filter(models.Caso.ID_Caso.in_(casos)).all()
+    if len(casos_existentes) != len(casos):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Uno o más casos no existen"
+        )
+
+    # Obtener todas las lecturas de los casos seleccionados
+    lecturas = db.query(models.Lectura).join(models.ArchivoExcel).filter(
+        models.ArchivoExcel.ID_Caso.in_(casos)
+    ).all()
+
+    # Agrupar lecturas por matrícula
+    lecturas_por_matricula = defaultdict(lambda: defaultdict(list))
+    for lectura in lecturas:
+        lecturas_por_matricula[lectura.Matricula][lectura.archivo.ID_Caso].append(lectura)
+
+    # Filtrar solo las matrículas que aparecen en al menos 2 casos
+    coincidencias = []
+    for matricula, lecturas_en_casos in lecturas_por_matricula.items():
+        if len(lecturas_en_casos) >= 2:
+            casos_con_lecturas = []
+            for caso_id, lecturas in lecturas_en_casos.items():
+                caso = next(c for c in casos_existentes if c.ID_Caso == caso_id)
+                casos_con_lecturas.append({
+                    "id": caso_id,
+                    "nombre": caso.Nombre_del_Caso,
+                    "lecturas": [
+                        {
+                            "ID_Lectura": l.ID_Lectura,
+                            "Fecha_y_Hora": l.Fecha_y_Hora.isoformat(),
+                            "ID_Caso": l.archivo.ID_Caso,
+                            "Nombre_del_Caso": caso.Nombre_del_Caso
+                        }
+                        for l in lecturas
+                    ]
+                })
+            
+            coincidencias.append({
+                "matricula": matricula,
+                "casos": casos_con_lecturas
+            })
+
+    return coincidencias
+# --- Fin Endpoint ---
