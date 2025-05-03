@@ -343,7 +343,7 @@ function ImportarPage() {
             </Alert>
           );
         } else {
-          notifications.show({
+        notifications.show({
             title: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'Importación con Advertencias' : 'Éxito',
             message: (
               <Box>
@@ -367,7 +367,7 @@ function ImportarPage() {
             ),
             color: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
             autoClose: false
-          });
+        });
         }
 
         // --- Notificación de Nuevos Lectores --- 
@@ -529,37 +529,37 @@ function ImportarPage() {
         );
       } else {
         setImportWarning(null);
-        notifications.show({
+      notifications.show({
           title: response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 ? 'Importación con Advertencias' : 'Éxito',
-          message: (
-            <Box>
-              <Text size="sm">Archivo "{response.archivo.Nombre_del_Archivo}" importado correctamente</Text>
-              <Text size="sm">Total de registros importados: {response.total_registros}</Text>
-              {response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 && (
+        message: (
+          <Box>
+            <Text size="sm">Archivo "{response.archivo.Nombre_del_Archivo}" importado correctamente</Text>
+            <Text size="sm">Total de registros importados: {response.total_registros}</Text>
+            {response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 && (
                 <Alert color="yellow" title="¡Atención! Se encontraron lecturas duplicadas" mt="xs" icon={<IconAlertCircle size={16} />}> 
                   <Text size="sm" fw={500}>Se ignoraron {response.lecturas_duplicadas.length} lecturas duplicadas:</Text>
-                  <Text size="xs" component="ul" mt="xs">
+                <Text size="xs" component="ul" mt="xs">
                     {response.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
-                      <li key={index}>{duplicado}</li>
-                    ))}
+                    <li key={index}>{duplicado}</li>
+                  ))}
                     {response.lecturas_duplicadas.length > 5 && (
                       <li>...y {response.lecturas_duplicadas.length - 5} más</li>
                     )}
-                  </Text>
+                </Text>
                   <Text size="xs" mt="xs" c="dimmed">Estas lecturas ya existían en el sistema y no fueron importadas.</Text>
-                </Alert>
-              )}
-            </Box>
-          ),
+              </Alert>
+            )}
+          </Box>
+        ),
           color: response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
-          autoClose: false
-        });
+        autoClose: false
+      });
         // Limpiar el formulario solo si la importación fue exitosa
-        setSelectedFile(null);
-        setExcelHeaders([]);
-        setColumnMapping({});
-        // Recargar la lista de archivos
-        fetchArchivos(selectedCasoId);
+      setSelectedFile(null);
+      setExcelHeaders([]);
+      setColumnMapping({});
+      // Recargar la lista de archivos
+      fetchArchivos(selectedCasoId);
       }
     } catch (error: any) {
       console.error('Error al subir el archivo:', error);
