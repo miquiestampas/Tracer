@@ -19,9 +19,9 @@ function Layout() {
     <Box style={{ display: 'flex', minHeight: '100vh', width: '100vw', background: theme.colors.gray[0] }}>
       <Box
         style={{
-          width: 180,
+          width: 280,
           padding: 16,
-          background: 'rgba(33, 60, 180, 0.85)',
+          background: 'rgba(20, 40, 120, 0.95)',
           borderRight: `1px solid ${theme.colors.tracerBlue?.[2] || '#223'}`,
           display: 'flex',
           flexDirection: 'column',
@@ -44,7 +44,7 @@ function Layout() {
                   gap: 12,
                   fontSize: 18,
                   fontWeight: 500,
-                  color: location.pathname === item.path ? theme.colors.tracerBlue?.[7] || '#223' : '#fff',
+                  color: location.pathname === item.path ? '#000' : '#fff',
                   background: location.pathname === item.path ? '#fff' : 'transparent',
                   borderRadius: 8,
                   padding: '12px 10px',
@@ -53,7 +53,7 @@ function Layout() {
                   marginBottom: 2,
                 }}
               >
-                <item.icon size="1.3rem" stroke={1.5} style={{ color: location.pathname === item.path ? theme.colors.tracerBlue?.[7] || '#223' : '#fff' }} />
+                <item.icon size="1.3rem" stroke={1.5} style={{ color: location.pathname === item.path ? '#000' : '#fff' }} />
                 <span>{item.label}</span>
               </UnstyledButton>
             ))}
@@ -75,6 +75,7 @@ function Layout() {
             >
               <Text size="md" style={{ color: '#fff' }}>Cerrar Sesión</Text>
             </UnstyledButton>
+            <Text size="sm" style={{ color: '#fff', background: 'rgba(128, 128, 128, 0.5)', padding: '8px 16px', borderRadius: theme.radius.sm, textAlign: 'center' }}>JSP Madrid - Brigada Provincial de Policía Judicial</Text>
           </Stack>
         </Stack>
       </Box>
