@@ -1,14 +1,14 @@
 import React from 'react';
 import { Stack, Text, UnstyledButton, useMantineTheme, Box } from '@mantine/core';
-import { IconHome2, IconFolder, IconUsers, IconFileImport, IconSearch } from '@tabler/icons-react';
+import { IconHome2, IconFolder, IconUsers, IconFileImport, IconSearch, IconDeviceCctv, IconArrowsExchange } from '@tabler/icons-react';
 import { useLocation, Outlet } from 'react-router-dom';
 
 const navItems = [
   { icon: IconHome2, label: 'Home', path: '/' },
   { icon: IconFolder, label: 'Investigaciones', path: '/casos' },
-  { icon: IconUsers, label: 'Gestión de Lectores', path: '/lectores' },
   { icon: IconFileImport, label: 'Importar Datos', path: '/importar' },
-  { icon: IconSearch, label: 'Búsqueda Multi-Caso', path: '/busqueda' },
+  { icon: IconArrowsExchange, label: 'Búsqueda Multi-Caso', path: '/busqueda' },
+  { icon: IconDeviceCctv, label: 'Gestión de Lectores', path: '/lectores' },
 ];
 
 function Layout() {
