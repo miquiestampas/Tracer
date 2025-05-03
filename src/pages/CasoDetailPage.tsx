@@ -543,17 +543,8 @@ function CasoDetailPage() {
     if (errorCaso) return <Alert color="red" title="Error al cargar el caso">{errorCaso}</Alert>;
     if (!caso) return <Alert color="orange">Caso no encontrado.</Alert>;
 
-  const breadcrumbs = (
-        <Breadcrumbs>
-            <Anchor component={Link} to="/">Dashboard</Anchor>
-      <Anchor component={Link} to="/casos">Gestión de Casos</Anchor>
-            <Text>{caso.Nombre_del_Caso} ({caso.Año})</Text>
-    </Breadcrumbs>
-  );
-
     return (
-        <Container fluid>
-        {breadcrumbs}
+        <Container fluid style={{ paddingLeft: 32, paddingRight: 32 }}>
             <Text size="xl" fw={700} mt="md" mb="lg">Detalles del Caso: {caso.Nombre_del_Caso} ({caso.Año})</Text>
 
             {/* --- NUEVO: Grupo de Botones de Navegación --- */}

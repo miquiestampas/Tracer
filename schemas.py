@@ -310,8 +310,8 @@ class SavedSearch(SavedSearchBase):
 # --- Schemas para Detección de Vehículo Lanzadera ---
 class LanzaderaRequest(BaseModel):
     matricula: str = Field(..., description="Matrícula del vehículo objetivo a analizar")
-    fecha_inicio: str = Field(..., description="Fecha de inicio del análisis (YYYY-MM-DD)")
-    fecha_fin: str = Field(..., description="Fecha de fin del análisis (YYYY-MM-DD)")
+    fecha_inicio: Optional[str] = Field(None, description="Fecha de inicio del análisis (YYYY-MM-DD)")
+    fecha_fin: Optional[str] = Field(None, description="Fecha de fin del análisis (YYYY-MM-DD)")
     ventana_minutos: int = Field(10, description="Ventana temporal en minutos para considerar vehículos acompañantes")
     diferencia_minima: int = Field(5, description="Diferencia mínima en minutos entre lecturas para considerar repetición")
 

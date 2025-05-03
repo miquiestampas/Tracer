@@ -485,7 +485,7 @@ function ImportarPage() {
 
   // --- Renderizado del Componente ---
   return (
-    <Box p="md">
+    <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
       <Group justify="flex-end" mb="xs">
         <Button
           variant="light"

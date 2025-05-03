@@ -612,7 +612,7 @@ function LectoresPage() {
   }, []);
 
   return (
-    <Box p="md">
+    <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
       <Group justify="space-between" mb="xl">
         <Title order={2}>Gestión de Lectores</Title>
         <Group>

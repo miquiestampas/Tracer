@@ -1842,15 +1842,18 @@ def detectar_vehiculos_lanzadera(
     db: Session = Depends(get_db)
 ):
     # 1. Obtener todas las lecturas del vehículo objetivo en el rango de fechas
-    lecturas_objetivo = db.query(models.Lectura).filter(
+    query = db.query(models.Lectura).filter(
         models.Lectura.ID_Archivo.in_(
             db.query(models.ArchivoExcel.ID_Archivo)
             .filter(models.ArchivoExcel.ID_Caso == caso_id)
         ),
-        models.Lectura.Matricula == request.matricula,
-        models.Lectura.Fecha_y_Hora >= request.fecha_inicio,
-        models.Lectura.Fecha_y_Hora <= f"{request.fecha_fin} 23:59:59"
-    ).order_by(models.Lectura.Fecha_y_Hora).all()
+        models.Lectura.Matricula == request.matricula
+    )
+    if request.fecha_inicio:
+        query = query.filter(models.Lectura.Fecha_y_Hora >= request.fecha_inicio)
+    if request.fecha_fin:
+        query = query.filter(models.Lectura.Fecha_y_Hora <= f"{request.fecha_fin} 23:59:59")
+    lecturas_objetivo = query.order_by(models.Lectura.Fecha_y_Hora).all()
 
     if not lecturas_objetivo:
         return schemas.LanzaderaResponse(
