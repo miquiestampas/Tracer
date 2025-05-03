@@ -144,11 +144,14 @@ function BusquedaMulticasoPanel() {
                     <Stack gap="xs" align="center">
                       {vehiculo.casos.map(caso => (
                         <Box key={caso.id}>
-                          {caso.lecturas.map(lectura => (
+                          {caso.lecturas.slice(0, 5).map(lectura => (
                             <Text key={lectura.ID_Lectura} size="sm">
                               {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
                             </Text>
                           ))}
+                          {caso.lecturas.length > 5 && (
+                            <Text size="xs" c="dimmed">...y {caso.lecturas.length - 5} más</Text>
+                          )}
                         </Box>
                       ))}
                     </Stack>
