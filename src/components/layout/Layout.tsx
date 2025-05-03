@@ -4,8 +4,8 @@ import { IconHome2, IconFolder, IconUsers, IconFileImport, IconSearch } from '@t
 import { useLocation, Outlet } from 'react-router-dom';
 
 const navItems = [
-  { icon: IconHome2, label: 'Dashboard', path: '/' },
-  { icon: IconFolder, label: 'Gestión de Casos', path: '/casos' },
+  { icon: IconHome2, label: 'Home', path: '/' },
+  { icon: IconFolder, label: 'Investigaciones', path: '/casos' },
   { icon: IconUsers, label: 'Gestión de Lectores', path: '/lectores' },
   { icon: IconFileImport, label: 'Importar Datos', path: '/importar' },
   { icon: IconSearch, label: 'Búsqueda Multi-Caso', path: '/busqueda' },

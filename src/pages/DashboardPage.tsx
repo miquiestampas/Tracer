@@ -81,7 +81,7 @@ const performanceData = {
   totalSize: '2.5 TB'
 };
 
-function DashboardPage() {
+function HomePage() {
   const [mapLectores, setMapLectores] = useState<LectorCoordenadas[]>([]);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -366,6 +366,6 @@ function DashboardPage() {
   );
 }
 
-export default function DashboardPageWrapper(props) {
-  return <DashboardPage {...props} style={{ paddingTop: 0 }} />;
+export default function HomePageWrapper(props) {
+  return <HomePage {...props} style={{ paddingTop: 0 }} />;
 } 

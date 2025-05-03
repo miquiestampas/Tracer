@@ -260,7 +260,7 @@ function CasosPage() {
   // --- Renderizado --- 
   return (
     <Box style={{ paddingLeft: 32, paddingRight: 32, paddingBottom: 0, marginBottom: 0 }}>
-      <Title order={2} mb="xl">Gestión de Casos</Title>
+      <Title order={2} mb="xl">Investigaciones</Title>
 
       {/* --- Barra de Filtro y Botón Crear --- */}
       <Group justify="space-between" mb="lg">
