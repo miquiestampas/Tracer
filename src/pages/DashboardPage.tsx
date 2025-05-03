@@ -6,6 +6,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaf
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { getLectoresParaMapa } from '../services/lectoresApi';
+import { getEstadisticasGlobales } from '../services/estadisticasApi';
 import type { LectorCoordenadas } from '../types/data';
 import { useDisclosure } from '@mantine/hooks';
 import DrawControl from '../components/map/DrawControl';
@@ -84,6 +85,9 @@ function DashboardPage() {
   const [mapLectores, setMapLectores] = useState<LectorCoordenadas[]>([]);
   const [mapLoading, setMapLoading] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [estadisticas, setEstadisticas] = useState<{ total_casos: number; total_lecturas: number; total_vehiculos: number; tamanio_bd: string } | null>(null);
+  const [estadisticasLoading, setEstadisticasLoading] = useState(true);
+  const [estadisticasError, setEstadisticasError] = useState<string | null>(null);
   const [filtroProvincia, setFiltroProvincia] = useState<string[]>([]);
   const [filtroCarretera, setFiltroCarretera] = useState<string[]>([]);
   const [filtroOrganismo, setFiltroOrganismo] = useState<string[]>([]);
@@ -91,6 +95,20 @@ function DashboardPage() {
   const [filtroSentido, setFiltroSentido] = useState<string | null>(null);
   const [drawnShape, setDrawnShape] = useState<L.Layer | null>(null);
   const [resultsListOpened, { toggle: toggleResultsList }] = useDisclosure(false);
+
+  const fetchEstadisticas = useCallback(async () => {
+    setEstadisticasLoading(true);
+    setEstadisticasError(null);
+    try {
+      const data = await getEstadisticasGlobales();
+      setEstadisticas(data);
+    } catch (err: any) {
+      setEstadisticasError(err.message || 'Error al cargar las estadísticas.');
+      setEstadisticas(null);
+    } finally {
+      setEstadisticasLoading(false);
+    }
+  }, []);
 
   const fetchMapData = useCallback(async () => {
     setMapLoading(true);
@@ -107,8 +125,9 @@ function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    fetchEstadisticas();
     fetchMapData();
-  }, [fetchMapData]);
+  }, [fetchEstadisticas, fetchMapData]);
 
   // Obtener sugerencias para los filtros
   const provinciasUnicas = useMemo(() => {
@@ -173,35 +192,35 @@ function DashboardPage() {
             mb="xl"
           >
             {actionCardsData.map((feature) => (
-              <Card
-                key={feature.title}
-                shadow="md"
-                radius="md"
-                p="xl"
-                component={Link}
-                to={feature.path}
+    <Card
+      key={feature.title}
+      shadow="md"
+      radius="md"
+      p="xl"
+      component={Link}
+      to={feature.path}
                 style={{ textDecoration: 'none' }}
                 withBorder
-              >
+    >
                 <Group align="flex-start">
-                  <ThemeIcon
-                    size="xl"
-                    radius="md"
+        <ThemeIcon
+            size="xl"
+            radius="md"
                     variant="light"
-                    color={feature.color}
-                  >
-                    <feature.icon style={{ width: rem(28), height: rem(28) }} stroke={1.5} />
-                  </ThemeIcon>
+            color={feature.color}
+        >
+            <feature.icon style={{ width: rem(28), height: rem(28) }} stroke={1.5} />
+        </ThemeIcon>
                   <div style={{ flex: 1 }}>
                     <Text size="lg" fw={500} mt={4}>
-                      {feature.title}
-                    </Text>
-                    <Text size="sm" c="dimmed" mt="sm">
-                      {feature.description}
-                    </Text>
-                  </div>
-                </Group>
-              </Card>
+                {feature.title}
+            </Text>
+            <Text size="sm" c="dimmed" mt="sm">
+                {feature.description}
+            </Text>
+        </div>
+       </Group>
+    </Card>
             ))}
           </SimpleGrid>
 
@@ -242,27 +261,59 @@ function DashboardPage() {
         <Grid.Col span={{ base: 12, md: 8 }} style={{ display: 'flex', flexDirection: 'column', minHeight: 'calc(100vh - 120px)' }}>
           {/* Widgets de resumen */}
           <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md" mb="xl">
-            {summaryData.map((stat) => (
-              <Card key={stat.title} shadow="sm" padding="lg" radius="md" withBorder>
-                <Group justify="space-between" mb="xs">
-                  <Text size="sm" c="dimmed">{stat.title}</Text>
-                  <ThemeIcon size="lg" radius="md" variant="light" color={stat.color}>
-                    <stat.icon size={rem(20)} />
-                  </ThemeIcon>
-                </Group>
-                <Text size="xl" fw={700}>{stat.value}</Text>
-                {stat.title === 'Base de Datos' && (
-                  <Box mt="sm">
-                    <Group justify="space-between" mb={5}>
-                      <Text size="xs" c="dimmed">Espacio utilizado</Text>
-                      <Text size="xs" c="dimmed">65%</Text>
-                    </Group>
-                    <Progress value={65} color="blue" size="sm" />
-                  </Box>
-                )}
+            {estadisticasLoading ? (
+              <Card shadow="sm" padding="lg" radius="md" withBorder>
+                <Center style={{ height: '100%' }}>
+                  <Loader />
+                </Center>
               </Card>
-            ))}
-          </SimpleGrid>
+            ) : estadisticasError ? (
+              <Card shadow="sm" padding="lg" radius="md" withBorder>
+                <Alert color="red" title="Error">
+                  {estadisticasError}
+                </Alert>
+              </Card>
+            ) : estadisticas ? (
+              <>
+                <Card shadow="sm" padding="lg" radius="md" withBorder>
+                  <Group justify="space-between" mb="xs">
+                    <Text size="sm" c="dimmed">Tamaño de Base de Datos</Text>
+                    <ThemeIcon size="lg" radius="md" variant="light" color="blue">
+                      <IconDatabase size={rem(20)} />
+                    </ThemeIcon>
+                  </Group>
+                  <Text size="xl" fw={700}>{estadisticas.tamanio_bd === 'N/A' ? 'No disponible' : estadisticas.tamanio_bd}</Text>
+                </Card>
+                <Card shadow="sm" padding="lg" radius="md" withBorder>
+                  <Group justify="space-between" mb="xs">
+                    <Text size="sm" c="dimmed">Casos Activos</Text>
+                    <ThemeIcon size="lg" radius="md" variant="light" color="green">
+                      <IconFolder size={rem(20)} />
+                    </ThemeIcon>
+                  </Group>
+                  <Text size="xl" fw={700}>{estadisticas.total_casos}</Text>
+                </Card>
+                <Card shadow="sm" padding="lg" radius="md" withBorder>
+                  <Group justify="space-between" mb="xs">
+                    <Text size="sm" c="dimmed">Lecturas Totales</Text>
+                    <ThemeIcon size="lg" radius="md" variant="light" color="violet">
+                      <IconDeviceCctv size={rem(20)} />
+                    </ThemeIcon>
+                  </Group>
+                  <Text size="xl" fw={700}>{estadisticas.total_lecturas.toLocaleString()}</Text>
+                </Card>
+                <Card shadow="sm" padding="lg" radius="md" withBorder>
+                  <Group justify="space-between" mb="xs">
+                    <Text size="sm" c="dimmed">Vehículos Registrados</Text>
+                    <ThemeIcon size="lg" radius="md" variant="light" color="orange">
+                      <IconSearch size={rem(20)} />
+                    </ThemeIcon>
+                  </Group>
+                  <Text size="xl" fw={700}>{estadisticas.total_vehiculos.toLocaleString()}</Text>
+                </Card>
+              </>
+            ) : null}
+      </SimpleGrid>
 
           {/* Mapa de Lectores */}
           <Card shadow="sm" padding="lg" radius="md" withBorder style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>

@@ -1941,3 +1941,58 @@ def detectar_vehiculos_lanzadera(
         vehiculos_lanzadera=vehiculos_lanzadera,
         detalles=detalles
     )
+
+@app.get("/estadisticas", response_model=schemas.EstadisticasGlobales)
+def get_estadisticas_globales(db: Session = Depends(get_db)):
+    """
+    Obtiene estadísticas globales del sistema:
+    - Total de casos activos
+    - Total de lecturas
+    - Total de vehículos únicos
+    - Tamaño total de la base de datos
+    """
+    import os
+    try:
+        # Contar casos activos
+        total_casos = db.query(func.count(models.Caso.ID_Caso)).scalar() or 0
+        # Contar total de lecturas
+        total_lecturas = db.query(func.count(models.Lectura.ID_Lectura)).scalar() or 0
+        # Contar vehículos únicos
+        total_vehiculos = db.query(func.count(func.distinct(models.Lectura.Matricula))).scalar() or 0
+        # Detectar si es SQLite y calcular tamaño del archivo
+        tamanio_bd = 'No disponible'
+        try:
+            if db.bind and 'sqlite' in str(db.bind.url):
+                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tracer.db')
+                if os.path.exists(db_path):
+                    size_bytes = os.path.getsize(db_path)
+                    if size_bytes < 1024 * 1024:
+                        tamanio_bd = f"{size_bytes / 1024:.2f} KB"
+                    elif size_bytes < 1024 * 1024 * 1024:
+                        tamanio_bd = f"{size_bytes / (1024 * 1024):.2f} MB"
+                    else:
+                        tamanio_bd = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+                else:
+                    tamanio_bd = 'No disponible'
+            else:
+                # Intentar consulta PostgreSQL
+                try:
+                    tamanio_bd = db.execute("SELECT pg_size_pretty(pg_database_size(current_database()))").scalar()
+                except Exception as e:
+                    logger.warning(f"No se pudo obtener el tamaño de la base de datos: {e}")
+                    tamanio_bd = 'No disponible'
+        except Exception as e:
+            logger.warning(f"Error al calcular tamaño de la base de datos: {e}")
+            tamanio_bd = 'No disponible'
+        return schemas.EstadisticasGlobales(
+            total_casos=total_casos,
+            total_lecturas=total_lecturas,
+            total_vehiculos=total_vehiculos,
+            tamanio_bd=tamanio_bd
+        )
+    except Exception as e:
+        logger.error(f"Error al obtener estadísticas globales: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al obtener estadísticas"
+        )
