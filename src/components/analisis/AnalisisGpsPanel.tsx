@@ -79,35 +79,57 @@ function AnalisisGpsPanel({
         setLoading(true);
         setResults([]);
         setSelectedRecords([]);
-        const params = new URLSearchParams();
-        if (fechaInicio) params.append('fecha_inicio', dayjs(fechaInicio).format('YYYY-MM-DD'));
-        if (fechaFin) params.append('fecha_fin', dayjs(fechaFin).format('YYYY-MM-DD'));
-        if (timeFrom) params.append('hora_inicio', timeFrom);
-        if (timeTo) params.append('hora_fin', timeTo);
-        if (casoIdFijo) {
-            params.append('caso_ids', String(casoIdFijo));
-        } else if (permitirSeleccionCaso) {
-            selectedCasos.forEach(id => params.append('caso_ids', id));
-        }
-        if (matricula.trim()) params.append('matricula', matricula.trim());
-        params.append('tipo_fuente', 'GPS'); // Fijar tipo fuente GPS
-
-        const queryString = params.toString();
-        const apiUrl = `http://localhost:8000/lecturas?${queryString}&limit=10000`; // Ajustar endpoint
-
-        console.log(`Buscando lecturas GPS: ${apiUrl}`);
+        
         try {
-             // ... (Llamada API y procesamiento de resultados) ...
-              const response = await fetch(apiUrl);
-              if (!response.ok) throw new Error(`Error ${response.status}`);
-              const data = await response.json();
-              setResults(data); // Asume que la API devuelve Lectura[] directamente
-              setPage(1);
-              notifications.show({ title: 'Búsqueda GPS completada', message: `Se encontraron ${data.length} puntos GPS.`, color: 'teal' });
+            if (!casoIdFijo) {
+                throw new Error('Se requiere un caso para buscar lecturas GPS');
+            }
+
+            const searchParams = new URLSearchParams();
+            if (fechaInicio) searchParams.append('fecha_inicio', dayjs(fechaInicio).format('YYYY-MM-DD'));
+            if (fechaFin) searchParams.append('fecha_fin', dayjs(fechaFin).format('YYYY-MM-DD'));
+            if (timeFrom) searchParams.append('hora_inicio', timeFrom);
+            if (timeTo) searchParams.append('hora_fin', timeTo);
+            if (matricula.trim()) searchParams.append('matricula', matricula.trim());
+            
+            // Asegurarnos de que el tipo_fuente se envía como 'GPS' exactamente
+            searchParams.append('tipo_fuente', 'GPS');
+
+            console.log(`Buscando lecturas GPS para caso ${casoIdFijo}:`, Object.fromEntries(searchParams));
+            
+            const response = await fetch(`http://localhost:8000/casos/${casoIdFijo}/lecturas?${searchParams.toString()}`);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Error en la respuesta:', errorText);
+                throw new Error(`Error ${response.status}: ${errorText}`);
+            }
+            
+            const data = await response.json();
+            console.log(`Se encontraron ${data.length} lecturas GPS`);
+            
+            // Verificar que las lecturas son realmente GPS
+            const lecturasGPS = data.filter((lectura: any) => lectura.Tipo_Fuente === 'GPS');
+            console.log(`De las cuales ${lecturasGPS.length} son realmente GPS`);
+            
+            setResults(lecturasGPS);
+            setPage(1);
+            notifications.show({ 
+                title: 'Búsqueda GPS completada', 
+                message: `Se encontraron ${lecturasGPS.length} puntos GPS.`, 
+                color: 'teal' 
+            });
 
         } catch (error) {
-            notifications.show({ title: 'Error en búsqueda GPS', message: String(error), color: 'red' });
-        } finally { setLoading(false); }
+            console.error('Error en búsqueda GPS:', error);
+            notifications.show({ 
+                title: 'Error en búsqueda GPS', 
+                message: error instanceof Error ? error.message : String(error), 
+                color: 'red' 
+            });
+        } finally { 
+            setLoading(false); 
+        }
     };
 
     // --- Procesar datos para la tabla (ordenación/paginación) ---

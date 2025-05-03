@@ -35,12 +35,12 @@ import { ProgressOverlay } from '../components/common/ProgressOverlay';
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
   LPR: ['Matricula', 'Fecha', 'Hora', 'ID_Lector'],
-  GPS: ['Matricula', 'Fecha', 'Hora', 'ID_Lector'],
+  GPS: ['Matricula', 'Fecha', 'Hora'],
 };
 // Campos opcionales
 const OPTIONAL_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
     LPR: ['Carril', 'Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
-    GPS: ['Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
+    GPS: ['ID_Lector', 'Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
 };
 
 // --- NUEVO: Diccionario de Términos para Auto-Mapeo ---

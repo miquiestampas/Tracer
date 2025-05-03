@@ -15,6 +15,9 @@ import * as XLSX from 'xlsx'; // Importación para la exportación a Excel
 import { ProgressOverlay } from '../common/ProgressOverlay';
 import { getLectorSugerencias } from '../../services/lectoresApi';
 import { Lectura as LecturaAPI } from '../../types/api.ts';
+import apiClient from './api';
+import type { GpsLectura } from '../types/data';
+import { getLecturasGps } from '../../services/gpsApi';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
