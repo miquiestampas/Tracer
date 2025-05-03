@@ -7,19 +7,19 @@ import {
     Group, 
     FileInput, 
     Button, 
-    Loader, 
     Alert, 
     Stack,
     Modal,
     Divider,
-    LoadingOverlay,
     rem,
     Table,
     Anchor,
     Title,
     ActionIcon,
     Tooltip,
-    Collapse
+    Collapse,
+    SimpleGrid,
+    LoadingOverlay
 } from '@mantine/core';
 import { IconUpload, IconAlertCircle, IconFileSpreadsheet, IconSettings, IconCheck, IconX, IconDownload, IconTrash } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
@@ -31,7 +31,6 @@ import type { Caso, ArchivoExcel, UploadResponse } from '../types/data';
 import * as XLSX from 'xlsx'; // Importar librería xlsx
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ProgressOverlay } from '../components/common/ProgressOverlay';
-import ProgressModal from '../components/modals/ProgressModal';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
@@ -516,15 +515,43 @@ function ImportarPage() {
       </Collapse>
       <Title order={2} mb="xl">Importar Datos desde Excel</Title>
       
-      <ProgressModal
-        open={isUploading || isReadingHeaders}
-        progress={isUploading ? 75 : isReadingHeaders ? 25 : 0}
-        onCancel={() => {
-          setIsUploading(false);
-          setIsReadingHeaders(false);
-        }}
-        message={isUploading ? "Subiendo archivo..." : isReadingHeaders ? "Leyendo encabezados..." : ""}
-      />
+      {/* Overlay global de carga */}
+      {(isUploading || isReadingHeaders) && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          background: 'rgba(0,0,0,0.35)',
+          zIndex: 9999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            marginTop: 32,
+            fontSize: 32,
+            color: '#fff',
+            fontWeight: 600,
+            textShadow: '0 2px 8px rgba(0,0,0,0.4)'
+          }}>
+            {isUploading ? 'Subiendo archivo...' : 'Leyendo encabezados...'}
+          </div>
+          <div style={{ width: 400, marginTop: 32 }}>
+            <div style={{ height: 16, background: '#e0e0e0', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{
+                width: isUploading ? '75%' : '25%',
+                height: '100%',
+                background: '#228be6',
+                transition: 'width 0.3s',
+              }} />
+            </div>
+            <div style={{ color: '#fff', marginTop: 8, fontSize: 18, textAlign: 'center' }}>{isUploading ? '75%' : '25%'}</div>
+          </div>
+        </div>
+      )}
 
       {/* Formulario de importación principal */}
       <Stack gap="lg">
@@ -626,12 +653,124 @@ function ImportarPage() {
             blur: 3,
         }}
       >
-        {/* ...contenido del modal... */}
+        <Stack>
+          <Text size="sm" mb="md">
+            Asocia las columnas de tu archivo Excel con los campos del sistema.
+            Los campos marcados con * son obligatorios.
+          </Text>
+
+          <SimpleGrid cols={2} spacing="xl">
+            {/* Columna Izquierda: Campos Requeridos */}
+            <Box>
+              <Text fw={500} mb="xs" c="red">Campos Requeridos *</Text>
+              {REQUIRED_FIELDS[fileType].map((field) => (
+                <Select
+                  key={field}
+                  label={field}
+                  placeholder="Seleccionar columna"
+                  data={excelHeaders}
+                  value={columnMapping[field] || null}
+                  onChange={(value) => handleMappingChange(field, value)}
+                  required
+                  mb="xs"
+                />
+              ))}
+            </Box>
+
+            {/* Columna Derecha: Campos Opcionales */}
+            <Box>
+              <Text fw={500} mb="xs" c="dimmed">Campos Opcionales</Text>
+              {OPTIONAL_FIELDS[fileType].map((field) => (
+                <Select
+                  key={field}
+                  label={field}
+                  placeholder="Seleccionar columna"
+                  data={excelHeaders}
+                  value={columnMapping[field] || null}
+                  onChange={(value) => handleMappingChange(field, value)}
+                  clearable
+                  mb="xs"
+                />
+              ))}
+            </Box>
+          </SimpleGrid>
+
+          {/* Vista previa de cabeceras */}
+          {excelHeaders.length > 0 && (
+            <Box mt="md">
+              <Text fw={500} mb="xs">Cabeceras del Excel</Text>
+              <Text size="sm" c="dimmed">
+                {excelHeaders.join(', ')}
+              </Text>
+            </Box>
+          )}
+
+          <Group justify="flex-end" mt="xl">
+            <Button variant="default" onClick={closeMappingModal}>
+              Cancelar
+            </Button>
+            <Button onClick={saveMapping} disabled={!isMappingComplete()}>
+              Guardar Mapeo
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
-      {/* --- NUEVA SECCIÓN: TABLA DE ARCHIVOS --- */}
+
+      {/* Tabla de Archivos Importados */}
       {selectedCasoId && (
         <Box mt="xl">
-          {/* ...contenido de la tabla de archivos... */}
+          <Title order={3} mb="md">Archivos Importados</Title>
+          
+          <LoadingOverlay visible={loadingArchivos} />
+          {errorArchivos && <Alert color="red" title="Error" mb="md">{errorArchivos}</Alert>}
+          
+          <Table striped highlightOnHover withTableBorder>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>ID</Table.Th>
+                <Table.Th>Nombre Archivo</Table.Th>
+                <Table.Th>Tipo</Table.Th>
+                <Table.Th>Importado</Table.Th>
+                <Table.Th>Registros</Table.Th>
+                <Table.Th>Acciones</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {archivosList.map((archivo) => (
+                <Table.Tr key={archivo.ID_Archivo}>
+                  <Table.Td>{archivo.ID_Archivo}</Table.Td>
+                  <Table.Td>
+                    <Text truncate="end" style={{ maxWidth: '300px' }}>
+                      {archivo.Nombre_del_Archivo}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>{archivo.Tipo_de_Archivo}</Table.Td>
+                  <Table.Td>
+                    {new Date(archivo.Fecha_de_Importacion).toLocaleString('es-ES', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Table.Td>
+                  <Table.Td>{archivo.Total_Registros}</Table.Td>
+                  <Table.Td>
+                    <Tooltip label="Eliminar Archivo">
+                      <ActionIcon
+                        color="red"
+                        variant="subtle"
+                        onClick={() => handleDeleteArchivo(archivo.ID_Archivo)}
+                        loading={deletingArchivoId === archivo.ID_Archivo}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
         </Box>
       )}
     </Box>

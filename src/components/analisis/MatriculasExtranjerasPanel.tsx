@@ -243,7 +243,7 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
         </div>
       )}
       <Box style={{ position: 'relative' }}>
-        <LoadingOverlay visible={isLoading} />
+        <LoadingOverlay visible={isLoading && !loadingLecturas} />
         <Table striped highlightOnHover withColumnBorders>
           <thead>
             <tr>
