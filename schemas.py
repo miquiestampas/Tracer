@@ -207,8 +207,12 @@ class LecturasResponse(BaseModel):
 
 # --- NUEVO: Schema para respuesta de subida de archivo ---
 class UploadResponse(BaseModel):
-    archivo: ArchivoExcel # Información del archivo creado en la BD
-    nuevos_lectores_creados: Optional[List[str]] = Field(None, description="Lista de IDs de lectores nuevos creados automáticamente durante la importación")
+    archivo: ArchivoExcel
+    total_registros: int
+    errores: Optional[List[str]] = None
+    lectores_no_encontrados: Optional[List[str]] = None
+    lecturas_duplicadas: Optional[List[str]] = None
+    nuevos_lectores_creados: Optional[List[str]] = None
 
 # --- NUEVO: Schema para respuesta paginada de lectores ---
 class LectoresResponse(BaseModel):

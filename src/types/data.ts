@@ -83,8 +83,12 @@ export interface LecturasResponse {
 
 // --- NUEVO: Interfaz para respuesta de subida de archivo ---
 export interface UploadResponse {
-  archivo: ArchivoExcel; // Información del archivo creado en la BD
-  nuevos_lectores_creados?: string[] | null; // Lista de IDs de lectores nuevos creados
+  archivo: ArchivoExcel;
+  total_registros: number;
+  errores?: string[];
+  lectores_no_encontrados?: string[];
+  lecturas_duplicadas?: string[];
+  nuevos_lectores_creados?: string[];
 }
 
 // --- NUEVO: Interfaz para Lector (respuesta GET) ---
