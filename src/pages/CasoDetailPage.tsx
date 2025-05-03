@@ -24,6 +24,7 @@ import VehiculosPanel from '../components/vehiculos/VehiculosPanel';
 import AnalisisAvanzadoPanel from '../components/lanzadera/LanzaderaPanel';
 import MapPanel from '../components/maps/MapPanel';
 import HelpButton from '../components/common/HelpButton';
+import AnalisisLecturasPanel from '../components/analisis/AnalisisLecturasPanel';
 
 // Definir estado inicial para filtros
 const initialFilterState: FilterState = {
@@ -52,6 +53,7 @@ type DataSourceType = 'LPR' | 'GPS';
 
 // --- NUEVO: Definir las secciones/botones (ACTUALIZADO) --- 
 const caseSections = [
+    { id: 'analisis-lpr', label: 'Lecturas LPR', icon: IconDeviceCctv, section: 'lecturas' },
     { id: 'lecturas-relevantes', label: 'Lecturas Relevantes', icon: IconBookmark, section: 'lecturas' },
     { id: 'lanzadera', label: 'Análisis Avanzado', icon: IconFlask, section: 'lecturas' },
     { id: 'vehiculos', label: 'Vehículos', icon: IconCar, section: 'vehiculos' },
@@ -196,7 +198,7 @@ function CasoDetailPage() {
   const [ayudaArchivosAbierta, setAyudaArchivosAbierta] = useState(false);
 
   // El estado activeMainTab se mantiene, pero controla la sección activa
-  const [activeMainTab, setActiveMainTab] = useState<string | null>('lecturas-relevantes');
+  const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
 
   // ---- NUEVO: Estado compartido para filas interactuadas ----
   const [interactedMatriculas, setInteractedMatriculas] = useState<Set<string>>(new Set());
@@ -610,7 +612,14 @@ const handleDeleteArchivo = async (archivoId: number) => {
               
               {/* Pestaña Lecturas LPR */}
               <Box style={{ display: activeMainTab === 'analisis-lpr' ? 'block' : 'none', position: 'relative' }}>
-                  {/* Eliminar la sección de AnalisisLecturasPanel */}
+                  <AnalisisLecturasPanel
+                    casoIdFijo={idCasoNum!}
+                    interactedMatriculas={interactedMatriculas}
+                    addInteractedMatricula={addInteractedMatricula}
+                    permitirSeleccionCaso={false}
+                    mostrarTitulo={false}
+                    tipoFuenteFijo="LPR"
+                  />
               </Box>
 
               {/* Pestaña Detección de Patrones */}
