@@ -25,11 +25,11 @@ L.Icon.Default.mergeOptions({
 // Datos de ejemplo para las tarjetas de acción
 const actionCardsData = [
   {
-    title: 'Gestión de Casos',
+    title: 'Investigaciones',
     icon: IconFolder,
     color: 'blue',
     path: '/casos',
-    description: 'Crea y gestiona casos para organizar investigaciones.'
+    description: 'Crea, gestiona y accede al panel principal de herramientas de investigación'
   },
   {
     title: 'Importar Datos',
