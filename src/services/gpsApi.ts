@@ -15,6 +15,7 @@ export const getLecturasGps = async (casoId: number, params?: {
         lonMin: number;
         lonMax: number;
     };
+    matricula?: string;
 }) => {
     // Asegurarnos de que el tipo_fuente está establecido
     const paramsWithType = {

@@ -64,22 +64,25 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
 
   // Función para cargar lecturas GPS
   const fetchLecturasGps = useCallback(async () => {
-    if (!casoId) return;
+    if (!casoId || !vehiculoObjetivo) return;
     setLoading(true);
     try {
-      const data = await getLecturasGps(casoId);
+      const data = await getLecturasGps(casoId, {
+        matricula: vehiculoObjetivo
+      });
       setLecturas(data);
     } catch (error) {
       console.error('Error al cargar lecturas GPS:', error);
     } finally {
       setLoading(false);
     }
-  }, [casoId]);
+  }, [casoId, vehiculoObjetivo]);
 
   // Cargar datos iniciales
   useEffect(() => {
-    fetchLecturasGps();
-  }, [fetchLecturasGps]);
+    // No cargamos datos iniciales, solo cuando se seleccione un vehículo
+    setLecturas([]);
+  }, [casoId]);
 
   // Cargar matrículas únicas al montar o cambiar casoId
   useEffect(() => {
@@ -108,6 +111,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
 
   // Función para aplicar filtros
   const handleFiltrar = useCallback(async () => {
+    if (!vehiculoObjetivo) return;
     setLoading(true);
     try {
       const data = await getLecturasGps(casoId, {
@@ -115,11 +119,11 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         hora_inicio: filters.horaInicio || undefined,
         fecha_fin: filters.fechaFin || undefined,
         hora_fin: filters.horaFin || undefined,
-        velocidad_min: filters.velocidadMin || undefined,
-        velocidad_max: filters.velocidadMax || undefined,
-        duracion_parada: filters.duracionParada || undefined,
+        velocidad_min: filters.velocidadMin !== null ? filters.velocidadMin : undefined,
+        velocidad_max: filters.velocidadMax !== null ? filters.velocidadMax : undefined,
+        duracion_parada: filters.duracionParada !== null ? filters.duracionParada : undefined,
         zona_seleccionada: filters.zonaSeleccionada || undefined,
-        matricula: vehiculoObjetivo || undefined,
+        matricula: vehiculoObjetivo
       });
       setLecturas(data);
     } catch (error) {
@@ -141,8 +145,12 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
       duracionParada: null,
       zonaSeleccionada: null
     });
-    fetchLecturasGps();
-  }, [fetchLecturasGps]);
+    if (vehiculoObjetivo) {
+      fetchLecturasGps();
+    } else {
+      setLecturas([]);
+    }
+  }, [fetchLecturasGps, vehiculoObjetivo]);
 
   // Componente del mapa
   const MapComponent = ({ isFullscreen = false }) => {
@@ -200,6 +208,9 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                   <Stack gap={4}>
                     <Text size="sm"><b>Matrícula:</b> {lectura.Matricula}</Text>
                     <Text size="sm"><b>Velocidad:</b> {lectura.Velocidad} km/h</Text>
+                    {lectura.duracion_parada_min !== undefined && (
+                      <Text size="sm" c="blue"><b>Duración parada:</b> {lectura.duracion_parada_min.toFixed(1)} min</Text>
+                    )}
                     <Text size="sm"><b>Dirección:</b> {lectura.Direccion}°</Text>
                     <Text size="sm"><b>Altitud:</b> {lectura.Altitud} m</Text>
                     <Text size="sm"><b>Precisión:</b> {lectura.Precisión} m</Text>

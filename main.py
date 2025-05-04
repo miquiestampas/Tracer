@@ -28,6 +28,12 @@ from sqlalchemy import or_ # Importar or_ para OR en consultas
 from sqlalchemy import and_, not_ # Importar and_ y not_ para AND y NOT en consultas
 from pydantic import BaseModel
 from datetime import datetime, timedelta, date, time
+from sqlalchemy import func, select, and_, literal_column
+from sqlalchemy.orm import aliased
+from sqlalchemy import over
+import math
+from math import radians, sin, cos, sqrt, asin
+from schemas import Lectura as LecturaSchema
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -145,8 +151,20 @@ def parsear_ubicacion(ubicacion_str: str) -> Optional[Tuple[float, float]]:
 
 # --- Helper functions para importación ---
 def get_optional_float(value):
-    try: return float(value) if pd.notna(value) else None
-    except (ValueError, TypeError): return None
+    if value is None or value == '' or pd.isna(value):
+        return None
+    try:
+        # Si es string, extraer el primer número (entero o decimal)
+        if isinstance(value, str):
+            import re
+            match = re.search(r"[-+]?[0-9]*\.?[0-9]+", value)
+            if match:
+                return float(match.group(0))
+            else:
+                return None
+        return float(value)
+    except (ValueError, TypeError):
+        return None
 
 def get_optional_str(value):
     return str(value).strip() if pd.notna(value) else None
@@ -1556,21 +1574,28 @@ def get_lecturas_por_caso(
     lector_id: Optional[str] = None,
     tipo_fuente: Optional[str] = None,
     solo_relevantes: Optional[bool] = False,
+    velocidad_min: Optional[float] = None,
+    velocidad_max: Optional[float] = None,
+    duracion_parada: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Obtiene las lecturas de un caso con filtros opcionales.
+    Obtiene las lecturas de un caso específico con filtros opcionales.
     """
-    logger.info(f"GET /casos/{caso_id}/lecturas - Obteniendo lecturas filtradas.")
     try:
+        # Verificar si el caso existe
+        db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+        if not db_caso:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+
         # Construir la consulta base
         query = db.query(models.Lectura)\
             .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
             .filter(models.ArchivoExcel.ID_Caso == caso_id)
 
-        # Aplicar filtros si se proporcionan
+        # Aplicar filtros
         if matricula:
-            query = query.filter(models.Lectura.Matricula.like(matricula))
+            query = query.filter(models.Lectura.Matricula == matricula)
 
         if fecha_inicio:
             try:
@@ -1582,7 +1607,6 @@ def get_lecturas_por_caso(
 
         if fecha_fin:
             try:
-                # Añadir 1 día para incluir todo el día final
                 fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
                 query = query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
             except ValueError as e:
@@ -1620,16 +1644,60 @@ def get_lecturas_por_caso(
                              models.Lectura.ID_Lectura == models.LecturaRelevante.ID_Lectura,
                              isouter=False)
 
-        # Ejecutar la consulta
-        lecturas = query.all()
+        # Nuevos filtros de velocidad
+        if velocidad_min is not None:
+            query = query.filter(models.Lectura.Velocidad >= velocidad_min)
+        if velocidad_max is not None:
+            query = query.filter(models.Lectura.Velocidad <= velocidad_max)
+
+        # Filtro de duración de parada
+        if duracion_parada is not None:
+            # Obtener todas las lecturas ordenadas por matrícula y fecha/hora
+            lecturas_all = query.order_by(models.Lectura.Matricula, models.Lectura.Fecha_y_Hora).all()
+            paradas = []
+            def haversine(lat1, lon1, lat2, lon2):
+                R = 6371000  # metros
+                dlat = radians(lat2 - lat1)
+                dlon = radians(lon2 - lon1)
+                a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+                c = 2 * asin(sqrt(a))
+                return R * c
+            for i in range(len(lecturas_all) - 1):
+                l1 = lecturas_all[i]
+                l2 = lecturas_all[i+1]
+                # Solo comparar si es la misma matrícula
+                if l1.Matricula != l2.Matricula:
+                    continue
+                # Comprobar datos válidos
+                if not (l1.Fecha_y_Hora and l2.Fecha_y_Hora and l1.Coordenada_X is not None and l1.Coordenada_Y is not None and l2.Coordenada_X is not None and l2.Coordenada_Y is not None):
+                    continue
+                # Tiempo en minutos
+                diff_min = (l2.Fecha_y_Hora - l1.Fecha_y_Hora).total_seconds() / 60
+                if diff_min < duracion_parada or diff_min <= 0:
+                    continue
+                # Velocidad permisiva
+                if l1.Velocidad is None or l1.Velocidad > 12:
+                    continue
+                # Distancia
+                dist = haversine(l1.Coordenada_Y, l1.Coordenada_X, l2.Coordenada_Y, l2.Coordenada_X)
+                if dist > 220:
+                    continue
+                # Crear dict y añadir duración
+                l1_dict = l1.__dict__.copy()
+                l1_dict['duracion_parada_min'] = diff_min
+                paradas.append(LecturaSchema(**l1_dict))
+            lecturas = paradas
+        else:
+            lecturas = query.all()
+
         logger.info(f"Encontradas {len(lecturas)} lecturas para el caso {caso_id}")
         return lecturas
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error al obtener lecturas para caso {caso_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno al obtener lecturas del caso")
+        logger.error(f"Error al obtener lecturas del caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno al obtener lecturas: {str(e)}")
 
 @app.get("/casos/{caso_id}/matriculas/sugerencias", response_model=List[str])
 def get_sugerencias_matriculas(

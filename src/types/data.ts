@@ -221,6 +221,7 @@ export interface GpsLectura {
   Altitud: number;
   Precisión: number;
   ID_Archivo: number;
+  duracion_parada_min?: number; // Duración de la parada en minutos, opcional
 }
 
 export interface GpsCapa {
