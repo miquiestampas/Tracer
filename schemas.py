@@ -168,6 +168,7 @@ class Lectura(LecturaBase):
     relevancia: Optional['LecturaRelevante'] = None # Usar string forward reference
     # Añadir el lector asociado para obtener Sentido/Orientacion
     lector: Optional[Lector] = None # Añadir lector opcional
+    duracion_parada_min: Optional[float] = None  # Duración de la parada en minutos
 
     class Config:
         from_attributes = True
