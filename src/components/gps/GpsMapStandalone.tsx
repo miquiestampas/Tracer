@@ -207,6 +207,16 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
     heatmapPoints = Object.values(agrupadas).map(p => [p.lat, p.lng, Math.max(0.1, p.tiempo / maxTiempo)]);
   }
 
+  // Filtra puntos válidos para el heatmap (más estricto)
+  const validHeatmapPoints = heatmapPoints.filter(
+    p =>
+      Array.isArray(p) &&
+      p.length === 3 &&
+      typeof p[0] === 'number' && !isNaN(p[0]) && p[0] >= -90 && p[0] <= 90 &&
+      typeof p[1] === 'number' && !isNaN(p[1]) && p[1] >= -180 && p[1] <= 180 &&
+      typeof p[2] === 'number' && !isNaN(p[2]) && p[2] > 0
+  );
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
@@ -221,8 +231,8 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
           url={tileLayerUrl}
         />
         {/* Renderizar heatmap si está activado */}
-        {mapControls.showHeatmap && heatmapPoints.length > 0 && (
-          <HeatmapLayer points={heatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
+        {mapControls.showHeatmap && validHeatmapPoints.length > 0 && (
+          <HeatmapLayer points={validHeatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
         )}
         {/* Renderizar puntos individuales */}
         {mapControls.showPoints && lecturas.map((lectura, idx) => {
@@ -231,22 +241,12 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
           const isSelected = infoBanner && !infoBanner.isLocalizacion && infoBanner.info?.ID_Lectura === lectura.ID_Lectura;
           const customIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: `<div style="
-              background: ${isSelected ? '#fff' : color};
-              width: ${isSelected ? 28 : 12}px;
-              height: ${isSelected ? 28 : 12}px;
-              border-radius: 50%;
-              border: ${isSelected ? '4px solid ' + color : '1px solid white'};
-              box-shadow: ${isSelected ? `0 0 16px ${color}` : 'none'};
-              outline: ${isSelected ? '3px solid ' + color + '80' : 'none'};
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              transition: all 0.15s cubic-bezier(.4,2,.6,1);
-              transform: ${isSelected ? 'scale(1.12)' : 'scale(1)'};
-            "></div>`,
-            iconSize: [isSelected ? 28 : 12, isSelected ? 28 : 12],
-            iconAnchor: [isSelected ? 14 : 6, isSelected ? 14 : 6]
+            html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
+              ${isSelected ? `<div style='position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>` : ''}
+              <div style="background: ${isSelected ? color : color}; width: ${isSelected ? 24 : 12}px; height: ${isSelected ? 24 : 12}px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${isSelected ? color : 'rgba(0,0,0,0.4)'}; outline: ${isSelected ? '3px solid ' + color : 'none'};"></div>
+            </div>`,
+            iconSize: [isSelected ? 44 : 12, isSelected ? 44 : 12],
+            iconAnchor: [isSelected ? 22 : 6, isSelected ? 22 : 6]
           });
           return (
             <Marker
