@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal, Alert } from '@mantine/core';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal, Alert, Card } from '@mantine/core';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import LecturaFilters from '../filters/LecturaFilters';
@@ -8,7 +8,7 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
 
 // Estilos CSS en línea para el contenedor del mapa
@@ -121,6 +121,111 @@ interface MapControls {
   showCoincidencias: boolean;
 }
 
+// --- InfoBanner (copiado de GpsMapStandalone) ---
+const InfoBanner = ({ info, onClose }: {
+  info: any;
+  onClose: () => void;
+}) => {
+  if (!info) return null;
+  return (
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      zIndex: 2001,
+      background: 'white',
+      boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+      borderBottom: '2px solid #228be6',
+      animation: 'slideDown 0.3s',
+      fontFamily: 'inherit',
+    }}>
+      <Card shadow="sm" padding="md" radius="md" withBorder style={{ width: '100%', boxSizing: 'border-box', position: 'relative' }}>
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
+          onClick={onClose}
+          aria-label="Cerrar info"
+        >
+          <IconX size={20} />
+        </ActionIcon>
+        <Card.Section withBorder inheritPadding py="sm">
+          <Group justify="space-between" style={{ minWidth: 0, width: '100%' }}>
+            <Text fw={700} size="sm" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {info.tipo === 'lector' ? 'Lector LPR' : 'Lectura LPR'}
+            </Text>
+            <Tooltip label={info.tipo === 'lector' ? info.ID_Lector : info.Matricula} withArrow>
+              <Badge
+                color="blue"
+                variant="light"
+                size="sm"
+                style={{
+                  maxWidth: 80,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  display: 'block',
+                  padding: '0 8px',
+                }}
+              >
+                {info.tipo === 'lector' ? info.ID_Lector : info.Matricula}
+              </Badge>
+            </Tooltip>
+          </Group>
+        </Card.Section>
+        <div style={{ width: '100%', marginTop: 8 }}>
+          {info.tipo === 'lector' ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
+                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
+              </div>
+              {info.Nombre && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Nombre:</b> {info.Nombre}</div>}
+              {info.Carretera && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Carretera:</b> {info.Carretera}</div>}
+              {info.Provincia && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Provincia:</b> {info.Provincia}</div>}
+              {info.Organismo_Regulador && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Organismo:</b> {info.Organismo_Regulador}</div>}
+              {info.lecturas && info.lecturas.length > 0 && (
+                <>
+                  <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>Pasos registrados:</div>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {info.lecturas.map((lectura: any, idx: number) => (
+                      <li key={idx} style={{ fontSize: 12 }}>
+                        {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')} - {lectura.Matricula} {lectura.Velocidad ? `(${lectura.Velocidad} km/h)` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'gray' }} /></span>
+                <span style={{ fontSize: 13, color: '#666', wordBreak: 'break-word' }}>{dayjs(info.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: 'gray' }} /></span>
+                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
+                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </Card>
+      <style>{`
+        @keyframes slideDown {
+          from { transform: translateY(-100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   // Añadir estilos base al componente
   useEffect(() => {
@@ -181,6 +286,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [fullscreenMap, setFullscreenMap] = useState(false);
 
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
+
+  const [infoBanner, setInfoBanner] = useState<any | null>(null);
 
   // Manejar la tecla Escape
   useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
@@ -447,61 +554,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
               icon={createMarkerIcon(lecturasEnLector.length, 'lector', '#228be6')}
               zIndexOffset={500}
-            >
-              <Popup>
-                <div className="lectura-popup">
-                  <Group justify="space-between" mb="xs">
-                    <Text fw={700} size="sm">Lector {lector.ID_Lector}</Text>
-                    <Badge color="blue" variant="light" size="sm">
-                      {lecturasEnLector.length} lecturas
-                    </Badge>
-                  </Group>
-                  <Stack gap={4}>
-                    {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
-                    {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
-                    {lector.Provincia && <Text size="sm"><b>Provincia:</b> {lector.Provincia}</Text>}
-                    {lector.Organismo_Regulador && <Text size="sm"><b>Organismo:</b> {lector.Organismo_Regulador}</Text>}
-                    <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
-                  </Stack>
-                  {lecturasEnLector.length > 0 && (
-                    <>
-                      <Divider my="xs" />
-                      <Text fw={700} size="sm" mb="xs">Pasos registrados</Text>
-                      <Stack gap={4}>
-                        {ordenarLecturasPorFecha(lecturasEnLector).map((lectura) => (
-                          <Paper key={lectura.ID_Lectura} p="xs" withBorder>
-                            <Group justify="space-between">
-                              <Badge 
-                                color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
-                                variant="light"
-                                size="sm"
-                              >
-                                {lectura.Tipo_Fuente}
-                              </Badge>
-                              <Text size="xs" c="dimmed">
-                                {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
-                              </Text>
-                            </Group>
-                            <Group gap="xs" mt={4}>
-                              {lectura.Velocidad && (
-                                <Badge color="gray" variant="light" size="xs">
-                                  {lectura.Velocidad} km/h
-                                </Badge>
-                              )}
-                              {lectura.Carril && (
-                                <Badge color="gray" variant="light" size="xs">
-                                  Carril {lectura.Carril}
-                                </Badge>
-                              )}
-                            </Group>
-                          </Paper>
-                        ))}
-                      </Stack>
-                    </>
-                  )}
-                </div>
-              </Popup>
-            </Marker>
+              eventHandlers={{
+                click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
+              }}
+            />
           );
         })}
 
@@ -512,28 +568,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
             icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', '#228be6')}
             zIndexOffset={600}
-          >
-            <Popup>
-              <div className="lectura-popup">
-                <Group justify="space-between" mb="xs">
-                  <Text fw={700} size="sm">Lectura {lectura.ID_Lectura}</Text>
-                  <Badge 
-                    color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
-                    variant="light"
-                    size="sm"
-                  >
-                    {lectura.Tipo_Fuente}
-                  </Badge>
-                </Group>
-                <Stack gap={4}>
-                  <Text size="sm"><b>Matrícula:</b> {lectura.Matricula}</Text>
-                  <Text size="sm"><b>Fecha y Hora:</b> {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                  {lectura.Carril && <Text size="sm"><b>Carril:</b> {lectura.Carril}</Text>}
-                  {lectura.Velocidad && <Text size="sm"><b>Velocidad:</b> {lectura.Velocidad} km/h</Text>}
-                </Stack>
-              </div>
-            </Popup>
-          </Marker>
+            eventHandlers={{
+              click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
+            }}
+          />
         ))}
       </>
     );
@@ -557,61 +595,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           position={[lector.Coordenada_Y, lector.Coordenada_X]}
           icon={createMarkerIcon(lecturasEnLector.length, 'lector', capa.color)}
           zIndexOffset={300}
-        >
-          <Popup>
-            <div className="lectura-popup">
-              <Group justify="space-between" mb="xs">
-                <Text fw={700} size="sm">Lector {lector.ID_Lector}</Text>
-                <Badge color="blue" variant="light" size="sm">
-                  {lecturasEnLector.length} lecturas
-                </Badge>
-              </Group>
-              <Stack gap={4}>
-                {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
-                {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
-                {lector.Provincia && <Text size="sm"><b>Provincia:</b> {lector.Provincia}</Text>}
-                {lector.Organismo_Regulador && <Text size="sm"><b>Organismo:</b> {lector.Organismo_Regulador}</Text>}
-                <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
-              </Stack>
-              {lecturasEnLector.length > 0 && (
-                <>
-                  <Divider my="xs" />
-                  <Text fw={700} size="sm" mb="xs">Pasos registrados</Text>
-                  <Stack gap={4}>
-                    {ordenarLecturasPorFecha(lecturasEnLector).map((lectura, idx) => (
-                      <Paper key={lectura.ID_Lectura} p="xs" withBorder>
-                        <Group justify="space-between">
-                          <Badge 
-                            color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
-                            variant="light"
-                            size="sm"
-                          >
-                            {lectura.Tipo_Fuente}
-                          </Badge>
-                          <Text size="xs" c="dimmed">
-                            {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
-                          </Text>
-                        </Group>
-                        <Group gap="xs" mt={4}>
-                          {lectura.Velocidad && (
-                            <Badge color="gray" variant="light" size="xs">
-                              {lectura.Velocidad} km/h
-                            </Badge>
-                          )}
-                          {lectura.Carril && (
-                            <Badge color="gray" variant="light" size="xs">
-                              Carril {lectura.Carril}
-                            </Badge>
-                          )}
-                        </Group>
-                      </Paper>
-                    ))}
-                  </Stack>
-                </>
-              )}
-            </div>
-          </Popup>
-        </Marker>
+          eventHandlers={{
+            click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
+          }}
+        />
       );
     });
 
@@ -625,28 +612,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
             icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', capa.color)}
             zIndexOffset={400}
-          >
-            <Popup>
-              <div className="lectura-popup">
-                <Group justify="space-between" mb="xs">
-                  <Text fw={700} size="sm">Lectura {lectura.ID_Lectura}</Text>
-                  <Badge 
-                    color={lectura.Tipo_Fuente === 'GPS' ? 'red' : 'blue'}
-                    variant="light"
-                    size="sm"
-                  >
-                    {lectura.Tipo_Fuente}
-                  </Badge>
-                </Group>
-                <Stack gap={4}>
-                  <Text size="sm"><b>Matrícula:</b> {lectura.Matricula}</Text>
-                  <Text size="sm"><b>Fecha y Hora:</b> {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                  {lectura.Carril && <Text size="sm"><b>Carril:</b> {lectura.Carril}</Text>}
-                  {lectura.Velocidad && <Text size="sm"><b>Velocidad:</b> {lectura.Velocidad} km/h</Text>}
-                </Stack>
-              </div>
-            </Popup>
-          </Marker>
+            eventHandlers={{
+              click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
+            }}
+          />
         );
       });
 
@@ -697,18 +666,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
             icon={createMarkerIcon(1, 'lector', '#228be6')}
             zIndexOffset={100}
-          >
-            <Popup>
-              <div className="lectura-popup">
-                <Text fw={700} size="sm">Lector del Sistema {lector.ID_Lector}</Text>
-                <Stack gap={4}>
-                  {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
-                  {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
-                  <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
-                </Stack>
-              </div>
-            </Popup>
-          </Marker>
+            eventHandlers={{
+              click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: [] })
+            }}
+          />
         ))}
 
         {/* Render case readers (middle layer) */}
@@ -744,18 +705,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               iconAnchor: [8, 8]
             })}
             zIndexOffset={200}
-          >
-            <Popup>
-              <div className="lectura-popup">
-                <Text fw={700} size="sm">Lector del Caso {lector.ID_Lector}</Text>
-                <Stack gap={4}>
-                  {lector.Nombre && <Text size="sm"><b>Nombre:</b> {lector.Nombre}</Text>}
-                  {lector.Carretera && <Text size="sm"><b>Carretera:</b> {lector.Carretera}</Text>}
-                  <Text size="sm"><b>Coords:</b> {lector.Coordenada_Y?.toFixed(5)}, {lector.Coordenada_X?.toFixed(5)}</Text>
-                </Stack>
-              </div>
-            </Popup>
-          </Marker>
+            eventHandlers={{
+              click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: [] })
+            }}
+          />
         ))}
       </>
     );
@@ -929,67 +882,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           iconAnchor: [24, 24]
         })}
         zIndexOffset={700}
-      >
-        <Popup>
-          <div className="lectura-popup" style={{ maxWidth: '400px', minWidth: '350px' }}>
-            <Group gap="xs" mb="xs" align="center">
-              <div style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '50%',
-                backgroundColor: 'red',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-                fontWeight: 'bold'
-              }}>!</div>
-              <Text fw={700} size="md" c="red">Coincidencia Detectada</Text>
-            </Group>
-            
-            <Stack gap="xs">
-              <Paper p="xs" withBorder>
-                <Text fw={600} size="sm" mb={4}>Vehículos Involucrados</Text>
-                <Stack gap={4}>
-                  {coincidencia.fechas.map((item, idx) => (
-                    <Group key={idx} gap={8} wrap="nowrap" justify="space-between">
-                      <Badge color="red" variant="light" size="sm" style={{ minWidth: '80px' }}>
-                        {item.vehiculo}
-                      </Badge>
-                      <Text size="xs" c="dimmed" style={{ flex: 1, textAlign: 'right' }}>
-                        {item.fecha}
-                      </Text>
-                    </Group>
-                  ))}
-                </Stack>
-              </Paper>
-
-              <Paper p="xs" withBorder>
-                <Text fw={600} size="sm" mb={4}>Lectores Involucrados</Text>
-                <Group gap={4} wrap="wrap">
-                  {coincidencia.lectores.map((lector, idx) => (
-                    <Badge key={idx} color="blue" variant="light" size="sm">
-                      {lector}
-                    </Badge>
-                  ))}
-                </Group>
-              </Paper>
-
-              <Paper p="xs" withBorder>
-                <Text fw={600} size="sm" mb={4}>Ubicación</Text>
-                <Group gap={8} wrap="nowrap" justify="space-between">
-                  <Text size="sm" c="dimmed">
-                    Lat: {coincidencia.lat.toFixed(5)}
-                  </Text>
-                  <Text size="sm" c="dimmed">
-                    Lon: {coincidencia.lon.toFixed(5)}
-                  </Text>
-                </Group>
-              </Paper>
-            </Stack>
-          </div>
-        </Popup>
-      </Marker>
+      />
     ));
   };
 
@@ -1044,6 +937,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           }
         `}
       </style>
+      {/* Banner deslizante */}
+      <InfoBanner info={infoBanner} onClose={() => setInfoBanner(null)} />
       <MapContainer 
         key={`map-${mapKey}-${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}-${mapControls.visualizationType}`}
         center={centroInicial} 
