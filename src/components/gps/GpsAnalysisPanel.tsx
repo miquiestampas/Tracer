@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
@@ -94,6 +94,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
 
   // Estado para controlar el foco en el formulario de localización
   const [formFocused, setFormFocused] = useState(false);
+
+  const mapRef = useRef<any>(null);
 
   // Cargar localizaciones de interés al montar o cambiar casoId
   useEffect(() => {
@@ -322,13 +324,21 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     const lecturasCapasActivas = capas.filter(c => c.activa).flatMap(c => c.lecturas);
     const lecturasParaMapa = [...lecturasCapasActivas, ...(capas.some(c => c.activa && c.lecturas === lecturas) ? [] : lecturasValidas)];
 
-    // Calcular centro inicial y zoom
-    const centroInicial: L.LatLngExpression = 
-      lecturasParaMapa.length > 0
-        ? [lecturasParaMapa[0].Coordenada_Y, lecturasParaMapa[0].Coordenada_X] 
-        : [40.416775, -3.703790];
-    
-    const zoomInicial = lecturasParaMapa.length > 0 ? 13 : 6;
+    // Subcomponente para ajustar la vista automáticamente
+    const AjustarVista = ({ puntos }: { puntos: [number, number][] }) => {
+      const map = useMap();
+      React.useEffect(() => {
+        if (!puntos || puntos.length === 0) {
+          map.setView([40.416775, -3.703790], 10); // Vista por defecto
+        } else if (puntos.length === 1) {
+          map.setView([puntos[0][0], puntos[0][1]], 15); // Zoom sobre el único punto
+        } else {
+          const bounds = L.latLngBounds(puntos);
+          map.fitBounds(bounds, { padding: [50, 50] });
+        }
+      }, [JSON.stringify(puntos)]);
+      return null;
+    };
 
     return (
       <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -353,103 +363,121 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
           `}
         </style>
         <MapContainer 
-          key={lecturasParaMapa.length}
-          center={centroInicial} 
-          zoom={zoomInicial} 
+          center={[40.416775, -3.703790]}
+          zoom={10}
           scrollWheelZoom={true}
           keyboard={!formFocused}
           style={{ 
             ...mapContainerStyle,
             height: isFullscreen ? '100vh' : '100%',
+            width: isFullscreen ? '100vw' : '100%',
+            position: isFullscreen ? 'fixed' : 'relative',
+            top: isFullscreen ? 0 : undefined,
+            left: isFullscreen ? 0 : undefined,
+            zIndex: isFullscreen ? 9999 : 1,
+            background: isFullscreen ? 'white' : undefined,
           }}
         >
+          <AjustarVista puntos={lecturasParaMapa.map(l => [l.Coordenada_Y, l.Coordenada_X])} />
           <TileLayer
             attribution={tileLayerAttribution}
             url={tileLayerUrl}
           />
-          {/* Renderizar puntos básicos (azules), excepto los que tienen localización personalizada */}
-          {lecturasParaMapa.filter(lectura => !localizaciones.some(loc => loc.id_lectura === lectura.ID_Lectura)).map((lectura, idx) => (
-            <Marker 
-              key={lectura.ID_Lectura + '-' + idx}
-              position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
-              icon={blueCircleIcon}
-              eventHandlers={{
-                click: () => onClickPunto(lectura)
-              }}
-            >
-              <Popup className="gps-popup" maxWidth={364}>
-                <div style={{ width: 364, minHeight: 350, height: 350, overflow: 'hidden' }}>
-                  <Card shadow="sm" padding="md" radius="md" withBorder style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
-                    <Card.Section withBorder inheritPadding py="sm">
-                      <Group justify="space-between" style={{ minWidth: 0, width: '100%' }}>
-                        <Text fw={700} size="sm" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          Lectura GPS
-                        </Text>
-                        <Tooltip label={lectura.Matricula} withArrow>
-                          <Badge
-                            color="blue"
-                            variant="light"
-                            size="sm"
-                            style={{
-                              maxWidth: 80,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              display: 'block',
-                              padding: '0 8px',
-                            }}
-                          >
-                            {lectura.Matricula}
-                          </Badge>
-                        </Tooltip>
-                      </Group>
-                    </Card.Section>
+          {/* Renderizar puntos básicos (azules) o de capa activa, excepto los que tienen localización personalizada */}
+          {lecturasParaMapa.filter(lectura => !localizaciones.some(loc => loc.id_lectura === lectura.ID_Lectura)).map((lectura, idx) => {
+            // Buscar si la lectura pertenece a una capa activa
+            const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
+            // Si pertenece a una capa activa, usar su color, si no, azul por defecto
+            const color = capa ? capa.color : '#228be6';
+            const customIcon = L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div style="background: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+              iconSize: [12, 12],
+              iconAnchor: [6, 6]
+            });
+            return (
+              <Marker 
+                key={lectura.ID_Lectura + '-' + idx}
+                position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
+                icon={customIcon}
+                eventHandlers={{
+                  click: () => onClickPunto(lectura)
+                }}
+              >
+                <Popup className="gps-popup" maxWidth={364}>
+                  <div style={{ width: 364, minHeight: 350, height: 350, overflow: 'hidden' }}>
+                    <Card shadow="sm" padding="md" radius="md" withBorder style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
+                      <Card.Section withBorder inheritPadding py="sm">
+                        <Group justify="space-between" style={{ minWidth: 0, width: '100%' }}>
+                          <Text fw={700} size="sm" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            Lectura GPS
+                          </Text>
+                          <Tooltip label={lectura.Matricula} withArrow>
+                            <Badge
+                              color="blue"
+                              variant="light"
+                              size="sm"
+                              style={{
+                                maxWidth: 80,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                display: 'block',
+                                padding: '0 8px',
+                              }}
+                            >
+                              {lectura.Matricula}
+                            </Badge>
+                          </Tooltip>
+                        </Group>
+                      </Card.Section>
 
-                    {/* Datos GPS en filas flexibles */}
-                    <div style={{ width: '100%', marginTop: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'gray' }} /></span>
-                        <span style={{ fontSize: 13, color: '#666', wordBreak: 'break-word' }}>{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: 'gray' }} /></span>
-                        <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof lectura.Velocidad === 'number' && !isNaN(lectura.Velocidad) ? lectura.Velocidad.toFixed(1) : '?'} km/h</span>
-                      </div>
-                      {typeof lectura.duracion_parada_min === 'number' && !isNaN(lectura.duracion_parada_min) && (
+                      {/* Datos GPS en filas flexibles */}
+                      <div style={{ width: '100%', marginTop: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'blue' }} /></span>
-                          <span style={{ fontSize: 13, color: '#228be6', wordBreak: 'break-word' }}><b>Duración parada:</b> {lectura.duracion_parada_min.toFixed(1)} min</span>
+                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'gray' }} /></span>
+                          <span style={{ fontSize: 13, color: '#666', wordBreak: 'break-word' }}>{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
                         </div>
-                      )}
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconCompass size={14} style={{ color: 'gray' }} /></span>
-                        <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Dirección:</b> {typeof lectura.Direccion === 'number' && !isNaN(lectura.Direccion) ? lectura.Direccion.toFixed(1) : '?'}°</span>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: 'gray' }} /></span>
+                          <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof lectura.Velocidad === 'number' && !isNaN(lectura.Velocidad) ? lectura.Velocidad.toFixed(1) : '?'} km/h</span>
+                        </div>
+                        {typeof lectura.duracion_parada_min === 'number' && !isNaN(lectura.duracion_parada_min) && (
+                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'blue' }} /></span>
+                            <span style={{ fontSize: 13, color: '#228be6', wordBreak: 'break-word' }}><b>Duración parada:</b> {lectura.duracion_parada_min.toFixed(1)} min</span>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconCompass size={14} style={{ color: 'gray' }} /></span>
+                          <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Dirección:</b> {typeof lectura.Direccion === 'number' && !isNaN(lectura.Direccion) ? lectura.Direccion.toFixed(1) : '?'}°</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
+                          <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {typeof lectura.Coordenada_Y === 'number' && !isNaN(lectura.Coordenada_Y) ? lectura.Coordenada_Y.toFixed(5) : '?'}, {typeof lectura.Coordenada_X === 'number' && !isNaN(lectura.Coordenada_X) ? lectura.Coordenada_X.toFixed(5) : '?'}</span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
-                        <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {typeof lectura.Coordenada_Y === 'number' && !isNaN(lectura.Coordenada_Y) ? lectura.Coordenada_Y.toFixed(5) : '?'}, {typeof lectura.Coordenada_X === 'number' && !isNaN(lectura.Coordenada_X) ? lectura.Coordenada_X.toFixed(5) : '?'}</span>
-                      </div>
-                    </div>
 
-                    <Button 
-                      size="xs" 
-                      variant="light" 
-                      color="blue" 
-                      fullWidth
-                      mt="xs"
-                      leftSection={<IconMapPin size={12} />}
-                      onClick={() => {
-                        setLecturaSeleccionada(lectura);
-                        handleAbrirModalLocalizacion();
-                      }}
-                    >
-                      Guardar Localización
-                    </Button>
-                  </Card>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                      <Button 
+                        size="xs" 
+                        variant="light" 
+                        color="blue" 
+                        fullWidth
+                        mt="xs"
+                        leftSection={<IconMapPin size={12} />}
+                        onClick={() => {
+                          setLecturaSeleccionada(lectura);
+                          handleAbrirModalLocalizacion();
+                        }}
+                      >
+                        Guardar Localización
+                      </Button>
+                    </Card>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
           {/* Renderizar puntos personalizados si el toggle está activo */}
           {mostrarLocalizaciones && localizaciones.map((loc, idx) => {
             const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
@@ -549,6 +577,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     try {
       const capaGuardada = await createGpsCapa(casoId, nuevaCapaCompleta);
       setCapas(prev => [...prev, { ...capaGuardada, descripcion: capaGuardada.descripcion || '' }]);
+      setLecturas([]);
       setNuevaCapa({ nombre: '', color: '#228be6' });
       setMostrarFormularioCapa(false);
       setEditandoCapa(null);
@@ -626,24 +655,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
       partes.push(`< ${filters.velocidadMax}km/h`);
     }
     return partes.join(', ');
-  }
-
-  if (fullscreenMap) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          backgroundColor: 'white',
-          zIndex: 9999,
-        }}
-      >
-        <MapComponent isFullscreen={true} onClickPunto={handleClickPunto} mostrarLocalizaciones={mostrarLocalizaciones} localizaciones={localizaciones} modalAbierto={modalAbierto} />
-      </div>
-    );
   }
 
   return (
@@ -1055,7 +1066,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
 
         {/* Mapa */}
         <Paper withBorder>
-          <MapComponent onClickPunto={handleClickPunto} mostrarLocalizaciones={mostrarLocalizaciones} localizaciones={localizaciones} modalAbierto={modalAbierto} />
+          <MapComponent isFullscreen={fullscreenMap} onClickPunto={handleClickPunto} mostrarLocalizaciones={mostrarLocalizaciones} localizaciones={localizaciones} modalAbierto={modalAbierto} />
         </Paper>
       </div>
     </Box>
