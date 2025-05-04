@@ -5,6 +5,7 @@ import ReactDOMServer from 'react-dom/server';
 import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/core';
 import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
+import HeatmapLayer from './HeatmapLayer';
 
 interface GpsMapStandaloneProps {
   lecturas: GpsLectura[];
@@ -183,6 +184,29 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
     tileLayerAttribution = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under ODbL.';
   }
 
+  // --- Cálculo de puntos para el heatmap ---
+  let heatmapPoints: Array<[number, number, number]> = [];
+  if (mapControls.showHeatmap && Array.isArray(lecturas) && lecturas.length > 0) {
+    // Agrupa por coordenada redondeada
+    const agrupadas: Record<string, { lat: number, lng: number, tiempo: number }> = {};
+    lecturas.forEach(l => {
+      const lat = Number(l.Coordenada_Y?.toFixed(5));
+      const lng = Number(l.Coordenada_X?.toFixed(5));
+      if (isNaN(lat) || isNaN(lng)) return;
+      const key = `${lat},${lng}`;
+      // Usa duracion_parada_min si está disponible, si no, asigna 0.1 min como base
+      const tiempo = typeof l.duracion_parada_min === 'number' && !isNaN(l.duracion_parada_min) ? l.duracion_parada_min : 0.1;
+      if (!agrupadas[key]) {
+        agrupadas[key] = { lat, lng, tiempo: 0 };
+      }
+      agrupadas[key].tiempo += tiempo;
+    });
+    // Normaliza intensidades
+    const tiempos = Object.values(agrupadas).map(p => p.tiempo);
+    const maxTiempo = Math.max(...tiempos, 1); // evita división por cero
+    heatmapPoints = Object.values(agrupadas).map(p => [p.lat, p.lng, Math.max(0.1, p.tiempo / maxTiempo)]);
+  }
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
@@ -196,6 +220,10 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
           attribution={tileLayerAttribution}
           url={tileLayerUrl}
         />
+        {/* Renderizar heatmap si está activado */}
+        {mapControls.showHeatmap && heatmapPoints.length > 0 && (
+          <HeatmapLayer points={heatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
+        )}
         {/* Renderizar puntos individuales */}
         {mapControls.showPoints && lecturas.map((lectura, idx) => {
           const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
