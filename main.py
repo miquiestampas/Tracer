@@ -1,31 +1,32 @@
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Request, Query, Body
-from fastapi.middleware.cors import CORSMiddleware # Importar middleware CORS
-from fastapi.exceptions import RequestValidationError # Importar excepción
-from fastapi.responses import JSONResponse, FileResponse # Importar para respuesta personalizada y FileResponse
-from fastapi.encoders import jsonable_encoder # Importar para codificar errores
-from sqlalchemy.orm import Session, joinedload, contains_eager, relationship # Añadir relationship si no está
-from sqlalchemy.sql import func, extract, select, label # Añadir select y label
-import models, schemas # Importar nuestros modelos y schemas
-from database import SessionLocal, engine, get_db # Importar configuración de BD y get_db
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Query
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRouter
+from fastapi.encoders import jsonable_encoder
+from sqlalchemy.orm import Session, joinedload, contains_eager, relationship
+from sqlalchemy.sql import func, extract, select, label
+import models, schemas
+from database import SessionLocal, engine, get_db
 import pandas as pd
 from io import BytesIO
 import datetime
-from typing import List, Dict, Any, Optional, Tuple # Asegurar List y Optional
+from typing import List, Dict, Any, Optional, Tuple
 import json
 from urllib.parse import unquote
-import logging # Importar logging
-import os # Para trabajar con rutas de archivo
-import shutil # Para guardar archivos subidos
-import pathlib # Importar pathlib para rutas absolutas
-from dateutil import parser # Importar dateutil.parser
-import re # Importar re para expresiones regulares
-from sqlalchemy import select, distinct # Importar select y distinct
-from sqlalchemy.exc import IntegrityError # Importar IntegrityError
-from datetime import timedelta # Asegurar import timedelta
-from collections import defaultdict # Importar defaultdict
+import logging
+import os
+import shutil
+import pathlib
+from dateutil import parser
+import re
+from sqlalchemy import select, distinct
+from sqlalchemy.exc import IntegrityError
+from datetime import timedelta
+from collections import defaultdict
 from contextlib import asynccontextmanager
-from sqlalchemy import or_ # Importar or_ para OR en consultas
-from sqlalchemy import and_, not_ # Importar and_ y not_ para AND y NOT en consultas
+from sqlalchemy import or_
+from sqlalchemy import and_, not_
 from pydantic import BaseModel
 from datetime import datetime, timedelta, date, time
 from sqlalchemy import func, select, and_, literal_column
@@ -35,6 +36,8 @@ import math
 from math import radians, sin, cos, sqrt, asin
 from schemas import Lectura as LecturaSchema
 from gps_capas import router as gps_capas_router
+from models import LocalizacionInteres
+from schemas import LocalizacionInteresCreate, LocalizacionInteresUpdate, LocalizacionInteresOut
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -61,6 +64,45 @@ app = FastAPI(
 )
 
 app.include_router(gps_capas_router)
+
+# ... existing code ...
+
+localizaciones_router = APIRouter()
+
+@localizaciones_router.get("/casos/{caso_id}/localizaciones-interes", response_model=List[LocalizacionInteresOut])
+def get_localizaciones_interes(caso_id: int, db: Session = Depends(get_db)):
+    return db.query(LocalizacionInteres).filter(LocalizacionInteres.caso_id == caso_id).all()
+
+@localizaciones_router.post("/casos/{caso_id}/localizaciones-interes", response_model=LocalizacionInteresOut, status_code=201)
+def create_localizacion_interes(caso_id: int, loc: LocalizacionInteresCreate, db: Session = Depends(get_db)):
+    db_loc = LocalizacionInteres(**loc.dict(), caso_id=caso_id)
+    db.add(db_loc)
+    db.commit()
+    db.refresh(db_loc)
+    return db_loc
+
+@localizaciones_router.put("/casos/{caso_id}/localizaciones-interes/{loc_id}", response_model=LocalizacionInteresOut)
+def update_localizacion_interes(caso_id: int, loc_id: int, loc: LocalizacionInteresUpdate, db: Session = Depends(get_db)):
+    db_loc = db.query(LocalizacionInteres).filter(LocalizacionInteres.id == loc_id, LocalizacionInteres.caso_id == caso_id).first()
+    if not db_loc:
+        raise HTTPException(status_code=404, detail="Localización no encontrada")
+    for key, value in loc.dict().items():
+        setattr(db_loc, key, value)
+    db.commit()
+    db.refresh(db_loc)
+    return db_loc
+
+@localizaciones_router.delete("/casos/{caso_id}/localizaciones-interes/{loc_id}", status_code=204)
+def delete_localizacion_interes(caso_id: int, loc_id: int, db: Session = Depends(get_db)):
+    db_loc = db.query(LocalizacionInteres).filter(LocalizacionInteres.id == loc_id, LocalizacionInteres.caso_id == caso_id).first()
+    if not db_loc:
+        raise HTTPException(status_code=404, detail="Localización no encontrada")
+    db.delete(db_loc)
+    db.commit()
+    return
+
+app.include_router(localizaciones_router)
+# ... existing code ...
 
 # --- Manejador de Excepción para Errores de Validación (422) ---
 @app.exception_handler(RequestValidationError)

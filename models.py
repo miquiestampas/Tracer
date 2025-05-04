@@ -143,6 +143,19 @@ class GpsCapa(Base):
     # usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)  # Si tienes usuarios
     caso_id = Column(Integer, ForeignKey("Casos.ID_Caso"), nullable=False)
 
+class LocalizacionInteres(Base):
+    __tablename__ = "localizaciones_interes"
+    id = Column(Integer, primary_key=True, index=True)
+    caso_id = Column(Integer, ForeignKey("Casos.ID_Caso"), nullable=False, index=True)
+    id_lectura = Column(Integer, nullable=True, index=True)  # Puede estar asociada a una lectura GPS
+    titulo = Column(String(100), nullable=False)
+    descripcion = Column(Text, nullable=True)
+    fecha_hora = Column(String(30), nullable=False)  # ISO string para simplicidad
+    icono = Column(String(30), nullable=False, default="pin")
+    color = Column(String(20), nullable=False, default="#228be6")
+    coordenada_x = Column(Float, nullable=False)
+    coordenada_y = Column(Float, nullable=False)
+
 # Función para crear las tablas (la llamaremos desde main.py)
 def create_db_and_tables():
     Base.metadata.create_all(bind=engine) 

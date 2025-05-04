@@ -373,3 +373,25 @@ class GpsCapaOut(GpsCapaBase):
     caso_id: int
     class Config:
         from_attributes = True  # Reemplaza orm_mode en Pydantic v2
+
+class LocalizacionInteresBase(BaseModel):
+    titulo: str
+    descripcion: Optional[str] = None
+    fecha_hora: str
+    icono: str
+    color: str
+    coordenada_x: float
+    coordenada_y: float
+    id_lectura: Optional[int] = None
+
+class LocalizacionInteresCreate(LocalizacionInteresBase):
+    pass
+
+class LocalizacionInteresUpdate(LocalizacionInteresBase):
+    pass
+
+class LocalizacionInteresOut(LocalizacionInteresBase):
+    id: int
+    caso_id: int
+    class Config:
+        from_attributes = True
