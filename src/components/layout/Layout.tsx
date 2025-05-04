@@ -16,7 +16,7 @@ function Layout() {
   const theme = useMantineTheme();
 
   return (
-    <Box style={{ display: 'flex', minHeight: '100vh', width: '100vw', background: theme.colors.gray[0] }}>
+    <Box style={{ display: 'flex', height: '100vh', width: '100vw', background: theme.colors.gray[0] }}>
       <Box
         style={{
           width: 280,
@@ -26,7 +26,7 @@ function Layout() {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between',
-          minHeight: '100vh',
+          height: '100vh',
         }}
       >
         <Stack gap={32} style={{ height: '100%' }}>
@@ -79,7 +79,7 @@ function Layout() {
           </Stack>
         </Stack>
       </Box>
-      <Box style={{ flex: 1, minHeight: '100vh', padding: 32 }}>
+      <Box style={{ flex: 1, height: '100vh', overflow: 'auto', padding: 32 }}>
         <Outlet />
       </Box>
     </Box>
