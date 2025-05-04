@@ -208,8 +208,8 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
               width: ${isSelected ? 28 : 12}px;
               height: ${isSelected ? 28 : 12}px;
               border-radius: 50%;
-              border: ${isSelected ? '4px solid ' + color : '2px solid white'};
-              box-shadow: 0 0 16px ${isSelected ? color : 'rgba(0,0,0,0.4)'};
+              border: ${isSelected ? '4px solid ' + color : '1px solid white'};
+              box-shadow: ${isSelected ? `0 0 16px ${color}` : 'none'};
               outline: ${isSelected ? '3px solid ' + color + '80' : 'none'};
               display: flex;
               align-items: center;
