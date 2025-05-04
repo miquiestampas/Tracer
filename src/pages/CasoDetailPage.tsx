@@ -548,7 +548,7 @@ const handleDeleteArchivo = async (archivoId: number) => {
 
   return (
       <Container fluid style={{ paddingLeft: 32, paddingRight: 32 }}>
-          <Text size="xl" fw={700} mt="md" mb="lg">Detalles del Caso: {caso.Nombre_del_Caso} ({caso.Año})</Text>
+          <Text size="xl" fw={700} mt="md" mb="lg">Panel de Investigación: {caso.Nombre_del_Caso} ({caso.Año})</Text>
 
           {/* --- NUEVO: Grupo de Botones de Navegación --- */}
           <Stack gap="xs" mb="md">
