@@ -225,7 +225,7 @@ export interface GpsLectura {
 }
 
 export interface GpsCapa {
-  id: string;
+  id: number;
   nombre: string;
   color: string;
   activa: boolean;
@@ -245,4 +245,5 @@ export interface GpsCapa {
       lonMax: number;
     } | null;
   };
+  descripcion?: string;
 } 

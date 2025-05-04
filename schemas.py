@@ -149,7 +149,7 @@ class Caso(CasoBase):
     # archivos: List['ArchivoExcel'] = []
 
     class Config:
-        from_attributes = True # Reemplaza orm_mode en Pydantic v2
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
 
 class ArchivoExcel(ArchivoExcelBase):
     ID_Archivo: int
@@ -159,7 +159,7 @@ class ArchivoExcel(ArchivoExcelBase):
     # lecturas: List['Lectura'] = []
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
 
 class Lectura(LecturaBase):
     ID_Lectura: int
@@ -171,14 +171,14 @@ class Lectura(LecturaBase):
     duracion_parada_min: Optional[float] = None  # Duración de la parada en minutos
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
 
 class Vehiculo(VehiculoBase):
     ID_Vehiculo: int
     total_lecturas_lpr_caso: Optional[int] = None # <-- NUEVO CAMPO
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
 
 # --- Schemas para Lecturas Relevantes ---
 class LecturaRelevanteBase(BaseModel):
@@ -199,7 +199,7 @@ class LecturaRelevante(LecturaRelevanteBase):
     Fecha_Marcada: SkipValidation[datetime.datetime]
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
 
 # --- NUEVO: Schema para respuesta paginada de lecturas ---
 class LecturasResponse(BaseModel):
@@ -231,7 +231,7 @@ class LectorCoordenadas(BaseModel):
     Organismo_Regulador: Optional[str] = None
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
 
 # --- Schema reutilizable para opciones de Select/MultiSelect ---
 class SelectOption(BaseModel):
@@ -291,7 +291,7 @@ class SavedSearch(SavedSearchBase):
     updated_at: datetime.datetime
 
     class Config:
-        from_attributes = True
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
 
 # Caso.update_forward_refs()
 # ArchivoExcel.update_forward_refs()
@@ -353,3 +353,23 @@ class EstadisticasGlobales(BaseModel):
     total_lecturas: int
     total_vehiculos: int
     tamanio_bd: str
+
+class GpsCapaBase(BaseModel):
+    nombre: str
+    color: str
+    activa: bool
+    lecturas: List[dict]
+    filtros: dict
+    descripcion: Optional[str] = None
+
+class GpsCapaCreate(GpsCapaBase):
+    pass
+
+class GpsCapaUpdate(GpsCapaBase):
+    pass
+
+class GpsCapaOut(GpsCapaBase):
+    id: int
+    caso_id: int
+    class Config:
+        from_attributes = True  # Reemplaza orm_mode en Pydantic v2

@@ -1,5 +1,5 @@
 import apiClient from './api';
-import type { GpsLectura } from '../types/data';
+import type { GpsLectura, GpsCapa } from '../types/data';
 
 export const getLecturasGps = async (casoId: number, params?: {
     fecha_inicio?: string;
@@ -59,4 +59,24 @@ export const getCoincidenciasGps = async (casoId: number, params?: {
         fechas: string[];
     }[]>(`/casos/${casoId}/coincidencias_gps`, { params });
     return response.data;
+};
+
+// Gestión de capas GPS
+export const getGpsCapas = async (casoId: number) => {
+    const response = await apiClient.get<GpsCapa[]>(`/casos/${casoId}/gps-capas`);
+    return response.data;
+};
+
+export const createGpsCapa = async (casoId: number, capa: Omit<GpsCapa, 'id' | 'caso_id'>) => {
+    const response = await apiClient.post<GpsCapa>(`/casos/${casoId}/gps-capas`, capa);
+    return response.data;
+};
+
+export const updateGpsCapa = async (casoId: number, capaId: number, capa: Partial<GpsCapa>) => {
+    const response = await apiClient.put<GpsCapa>(`/casos/${casoId}/gps-capas/${capaId}`, capa);
+    return response.data;
+};
+
+export const deleteGpsCapa = async (casoId: number, capaId: number) => {
+    await apiClient.delete(`/casos/${casoId}/gps-capas/${capaId}`);
 }; 

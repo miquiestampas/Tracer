@@ -34,6 +34,7 @@ from sqlalchemy import over
 import math
 from math import radians, sin, cos, sqrt, asin
 from schemas import Lectura as LecturaSchema
+from gps_capas import router as gps_capas_router
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +59,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
+app.include_router(gps_capas_router)
 
 # --- Manejador de Excepción para Errores de Validación (422) ---
 @app.exception_handler(RequestValidationError)

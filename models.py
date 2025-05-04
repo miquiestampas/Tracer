@@ -131,6 +131,18 @@ class SavedSearch(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }
 
+class GpsCapa(Base):
+    __tablename__ = "gps_capas"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, nullable=False)
+    color = Column(String, nullable=False)
+    activa = Column(Boolean, default=True)
+    lecturas = Column(JSON, nullable=False)  # Array de lecturas GPS serializado
+    filtros = Column(JSON, nullable=False)    # Filtros usados para crear la capa
+    descripcion = Column(String, nullable=True)
+    # usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)  # Si tienes usuarios
+    caso_id = Column(Integer, ForeignKey("Casos.ID_Caso"), nullable=False)
+
 # Función para crear las tablas (la llamaremos desde main.py)
 def create_db_and_tables():
     Base.metadata.create_all(bind=engine) 
