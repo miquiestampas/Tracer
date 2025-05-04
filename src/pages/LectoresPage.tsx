@@ -34,6 +34,15 @@ const fuchsiaPointIcon = new L.DivIcon({
 });
 // *** FIN: Crear icono personalizado ***
 
+// *** NUEVO: Crear icono personalizado para marcador activo ***
+const activeLectorIcon = new L.DivIcon({
+  html: `<span style="background-color: fuchsia; width: 16px; height: 16px; border-radius: 50%; display: inline-block; border: 3px solid #222; box-shadow: 0 0 0 4px rgba(120,0,120,0.15);"></span>`,
+  className: '',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8]
+});
+// *** FIN: Crear icono personalizado ***
+
 // Opciones para el filtro de Sentido
 const SENTIDO_OPTIONS = [
   { value: 'Creciente', label: 'Creciente' },
@@ -73,6 +82,39 @@ import BatchEditLectoresModal from '../components/modals/BatchEditLectoresModal'
 
 import * as XLSX from 'xlsx';
 import ExportarLectoresModal from '../components/modals/ExportarLectoresModal';
+
+// --- Añadir componente InfoBanner al inicio del archivo ---
+const InfoBanner = ({ open, onClose, children }) => (
+  <Box
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      zIndex: 2001,
+      transition: 'transform 0.3s cubic-bezier(.4,0,.2,1)',
+      transform: open ? 'translateY(0)' : 'translateY(-120%)',
+      pointerEvents: open ? 'auto' : 'none',
+    }}
+  >
+    <Alert
+      color="blue"
+      withCloseButton
+      onClose={onClose}
+      style={{
+        borderRadius: 0,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+        margin: 0,
+        background: 'rgba(255,255,255,0.92)', // Fondo blanco con transparencia
+        border: '1px solid #dde3f0',
+      }}
+    >
+      <div style={{ marginLeft: 32 }}>
+        {children}
+      </div>
+    </Alert>
+  </Box>
+);
 
 function LectoresPage() {
   const [lectores, setLectores] = useState<Lector[]>([]);
@@ -118,6 +160,9 @@ function LectoresPage() {
   const [sugerencias, setSugerencias] = useState<LectorSugerenciasResponse>({ provincias: [], localidades: [], carreteras: [], organismos: [], contactos: [] });
 
   const [exportModalOpened, { open: openExportModal, close: closeExportModal }] = useDisclosure(false);
+
+  // --- Añadir estado infoBanner ---
+  const [infoBanner, setInfoBanner] = useState<LectorCoordenadas | null>(null);
 
   // Función para cargar los lectores
   const fetchLectores = useCallback(async () => {
@@ -952,45 +997,47 @@ function LectoresPage() {
                 minHeight: '450px',
                 position: 'relative'
               }}>
-                 {mapLectores.length > 0 ? (
-                    <MapContainer 
-                      center={[40.416775, -3.703790]} 
-                      zoom={6} 
-                      scrollWheelZoom={true} 
-                      style={{ height: '100%', width: '100%' }}
-                    >
-                      <TileLayer
-                        url="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png"
-                        attribution='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://www.stamen.com/" target="_blank">Stamen Design</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
-                      />
-                      
-                      <DrawControl 
-                         onShapeDrawn={handleShapeDrawn}
-                         onShapeDeleted={handleShapeDeleted}
-                      />
-                      
-                      {lectoresFiltradosMapa.map(lector => {
-                        const useFuchsiaIcon = lector.Organismo_Regulador === 'ZBE Madrid';
-                        
-                        return (
-                          <Marker 
-                            key={lector.ID_Lector} 
-                            position={[lector.Coordenada_Y, lector.Coordenada_X]}
-                            icon={useFuchsiaIcon ? fuchsiaPointIcon : undefined} 
-                          >
-                            <Popup>
-                              <b>{lector.ID_Lector}</b><br />
-                              {lector.Nombre || '-'}<br />
-                              {lector.Carretera || '-'} ({lector.Provincia || '-'}) <br />
-                              Organismo: {lector.Organismo_Regulador || '-'}
-                            </Popup>
-                          </Marker>
-                        );
-                      })}
-                    </MapContainer>
-                 ) : (
-                    <Text>No hay lectores con coordenadas para mostrar en el mapa.</Text>
-                 )}
+                {infoBanner && (
+                  <InfoBanner open={true} onClose={() => setInfoBanner(null)}>
+                    <div>
+                      <b>{infoBanner.ID_Lector}</b><br />
+                      {infoBanner.Nombre || '-'}<br />
+                      {infoBanner.Carretera || '-'} ({infoBanner.Provincia || '-'}) <br />
+                      Organismo: {infoBanner.Organismo_Regulador || '-'}
+                    </div>
+                  </InfoBanner>
+                )}
+                {mapLectores.length > 0 ? (
+                  <MapContainer 
+                    center={[40.416775, -3.703790]} 
+                    zoom={6} 
+                    scrollWheelZoom={true} 
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer
+                      url="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png"
+                      attribution='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://www.stamen.com/" target="_blank">Stamen Design</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+                    />
+                    <DrawControl 
+                      onShapeDrawn={handleShapeDrawn}
+                      onShapeDeleted={handleShapeDeleted}
+                    />
+                    {lectoresFiltradosMapa.map(lector => {
+                      const useFuchsiaIcon = lector.Organismo_Regulador === 'ZBE Madrid';
+                      const isActive = infoBanner && infoBanner.ID_Lector === lector.ID_Lector;
+                      return (
+                        <Marker 
+                          key={lector.ID_Lector} 
+                          position={[lector.Coordenada_Y, lector.Coordenada_X]}
+                          icon={isActive ? activeLectorIcon : (useFuchsiaIcon ? fuchsiaPointIcon : undefined)}
+                          eventHandlers={{ click: () => setInfoBanner(lector) }}
+                        />
+                      );
+                    })}
+                  </MapContainer>
+                ) : (
+                  <Text>No hay lectores con coordenadas para mostrar en el mapa.</Text>
+                )}
               </Box>
 
               <Collapse in={resultsListOpened} transitionDuration={200}>
