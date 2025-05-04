@@ -246,4 +246,17 @@ export interface GpsCapa {
     } | null;
   };
   descripcion?: string;
+}
+
+export interface LocalizacionInteres {
+  id: number;
+  caso_id: number;
+  id_lectura?: number | null;
+  titulo: string;
+  descripcion?: string | null;
+  fecha_hora: string;
+  icono: string;
+  color: string;
+  coordenada_x: number;
+  coordenada_y: number;
 } 

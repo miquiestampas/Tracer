@@ -1,5 +1,5 @@
 import apiClient from './api';
-import type { GpsLectura, GpsCapa } from '../types/data';
+import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../types/data';
 
 export const getLecturasGps = async (casoId: number, params?: {
     fecha_inicio?: string;
@@ -79,4 +79,24 @@ export const updateGpsCapa = async (casoId: number, capaId: number, capa: Partia
 
 export const deleteGpsCapa = async (casoId: number, capaId: number) => {
     await apiClient.delete(`/casos/${casoId}/gps-capas/${capaId}`);
+};
+
+// Gestión de localizaciones de interés
+export const getLocalizacionesInteres = async (casoId: number) => {
+    const response = await apiClient.get<LocalizacionInteres[]>(`/casos/${casoId}/localizaciones-interes`);
+    return response.data;
+};
+
+export const createLocalizacionInteres = async (casoId: number, loc: Omit<LocalizacionInteres, 'id' | 'caso_id'>) => {
+    const response = await apiClient.post<LocalizacionInteres>(`/casos/${casoId}/localizaciones-interes`, loc);
+    return response.data;
+};
+
+export const updateLocalizacionInteres = async (casoId: number, locId: number, loc: Partial<LocalizacionInteres>) => {
+    const response = await apiClient.put<LocalizacionInteres>(`/casos/${casoId}/localizaciones-interes/${locId}`, loc);
+    return response.data;
+};
+
+export const deleteLocalizacionInteres = async (casoId: number, locId: number) => {
+    await apiClient.delete(`/casos/${casoId}/localizaciones-interes/${locId}`);
 }; 
