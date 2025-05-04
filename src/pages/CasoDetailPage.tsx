@@ -471,11 +471,10 @@ const handleDeleteArchivo = async (archivoId: number) => {
       setLoadingMapLecturas(true);
       setErrorMapLecturas(null);
       try {
-          // Asumimos un endpoint que devuelve las lecturas (LPR/GPS) con coordenadas
-          // para un caso específico. Podría necesitar ajustes según tu API.
-          const response = await apiClient.get<LectorConCoordenadas[]>(`/casos/${idCasoNum}/lecturas_para_mapa`);
+          // Cambiamos el endpoint para que solo devuelva lectores LPR
+          const response = await apiClient.get<LectorConCoordenadas[]>(`/casos/${idCasoNum}/lectores`);
           setMapLecturas(response.data || []);
-          console.log("[CasoMap] Lecturas cargadas:", response.data?.length);
+          console.log("[CasoMap] Lectores LPR cargados:", response.data?.length);
       } catch (err: any) {
           console.error("Error fetching map lecturas:", err);
           setErrorMapLecturas(err.response?.data?.detail || 'No se pudieron cargar los datos para el mapa.');

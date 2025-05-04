@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
@@ -94,6 +94,12 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
 
   // Estado para controlar el foco en el formulario de localización
   const [formFocused, setFormFocused] = useState(false);
+
+  const [filtrosColapsados, setFiltrosColapsados] = useState(true);
+  const [controlesColapsados, setControlesColapsados] = useState(true);
+
+  const [localizacionesColapsadas, setLocalizacionesColapsadas] = useState(true);
+  const [capasColapsadas, setCapasColapsadas] = useState(true);
 
   const mapRef = useRef<any>(null);
 
@@ -751,7 +757,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         {/* Panel de Filtros */}
         <Stack>
           <Paper p="md" withBorder>
-            <Title order={3} mb="md">Filtros</Title>
+            <Title order={3} mb="md">Mapa GPS</Title>
             <Stack gap="md">
               {/* Selector de vehículo objetivo */}
               <Select
@@ -765,75 +771,88 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                 disabled={loadingVehiculos}
                 leftSection={<IconCar size={18} />}
               />
-              {/* Filtros existentes */}
-              <Group grow>
-                <TextInput
-                  label="Fecha Inicio"
-                  type="date"
-                  value={filters.fechaInicio}
-                  onChange={(e) => handleFilterChange({ fechaInicio: e.target.value })}
-                />
-                <TextInput
-                  label="Hora Inicio"
-                  type="time"
-                  value={filters.horaInicio}
-                  onChange={(e) => handleFilterChange({ horaInicio: e.target.value })}
-                />
-              </Group>
-              <Group grow>
-                <TextInput
-                  label="Fecha Fin"
-                  type="date"
-                  value={filters.fechaFin}
-                  onChange={(e) => handleFilterChange({ fechaFin: e.target.value })}
-                />
-                <TextInput
-                  label="Hora Fin"
-                  type="time"
-                  value={filters.horaFin}
-                  onChange={(e) => handleFilterChange({ horaFin: e.target.value })}
-                />
-              </Group>
-              <Group grow>
-                <NumberInput
-                  label="Velocidad Mínima (km/h)"
-                  value={filters.velocidadMin || ''}
-                  onChange={(value) => handleFilterChange({ velocidadMin: value === '' ? null : Number(value) })}
-                  min={0}
-                />
-                <NumberInput
-                  label="Velocidad Máxima (km/h)"
-                  value={filters.velocidadMax || ''}
-                  onChange={(value) => handleFilterChange({ velocidadMax: value === '' ? null : Number(value) })}
-                  min={0}
-                />
-              </Group>
-              <NumberInput
-                label="Duración Mínima Parada (min)"
-                value={filters.duracionParada || ''}
-                onChange={(value) => handleFilterChange({ duracionParada: value === '' ? null : Number(value) })}
-                min={0}
-              />
-              <Group grow>
+              <Group justify="flex-end">
                 <Button
-                  variant="outline"
-                  color="#234be7"
-                  leftSection={<IconListDetails size={18} />}
-                  onClick={handleLimpiar}
-                  style={{ fontWeight: 500 }}
+                  variant="subtle"
+                  size="xs"
+                  onClick={() => setFiltrosColapsados((v) => !v)}
+                  leftSection={filtrosColapsados ? <IconChevronDown size={16} /> : <IconChevronUp size={16} />}
                 >
-                  Limpiar Filtros
-                </Button>
-                <Button
-                  variant="filled"
-                  color="#234be7"
-                  leftSection={<IconSearch size={18} />}
-                  onClick={handleFiltrar}
-                  style={{ fontWeight: 700 }}
-                >
-                  Aplicar Filtros
+                  {filtrosColapsados ? 'Mostrar más filtros' : 'Ocultar filtros'}
                 </Button>
               </Group>
+              <Collapse in={!filtrosColapsados}>
+                <Stack gap="md">
+                  <Group grow>
+                    <TextInput
+                      label="Fecha Inicio"
+                      type="date"
+                      value={filters.fechaInicio}
+                      onChange={(e) => handleFilterChange({ fechaInicio: e.target.value })}
+                    />
+                    <TextInput
+                      label="Hora Inicio"
+                      type="time"
+                      value={filters.horaInicio}
+                      onChange={(e) => handleFilterChange({ horaInicio: e.target.value })}
+                    />
+                  </Group>
+                  <Group grow>
+                    <TextInput
+                      label="Fecha Fin"
+                      type="date"
+                      value={filters.fechaFin}
+                      onChange={(e) => handleFilterChange({ fechaFin: e.target.value })}
+                    />
+                    <TextInput
+                      label="Hora Fin"
+                      type="time"
+                      value={filters.horaFin}
+                      onChange={(e) => handleFilterChange({ horaFin: e.target.value })}
+                    />
+                  </Group>
+                  <Group grow>
+                    <NumberInput
+                      label="Velocidad Mínima (km/h)"
+                      value={filters.velocidadMin || ''}
+                      onChange={(value) => handleFilterChange({ velocidadMin: value === '' ? null : Number(value) })}
+                      min={0}
+                    />
+                    <NumberInput
+                      label="Velocidad Máxima (km/h)"
+                      value={filters.velocidadMax || ''}
+                      onChange={(value) => handleFilterChange({ velocidadMax: value === '' ? null : Number(value) })}
+                      min={0}
+                    />
+                  </Group>
+                  <NumberInput
+                    label="Detección de Paradas"
+                    value={filters.duracionParada || ''}
+                    onChange={(value) => handleFilterChange({ duracionParada: value === '' ? null : Number(value) })}
+                    min={0}
+                  />
+                  <Group grow>
+                    <Button
+                      variant="outline"
+                      color="#234be7"
+                      leftSection={<IconListDetails size={18} />}
+                      onClick={handleLimpiar}
+                      style={{ fontWeight: 500 }}
+                    >
+                      Limpiar Filtros
+                    </Button>
+                    <Button
+                      variant="filled"
+                      color="#234be7"
+                      leftSection={<IconSearch size={18} />}
+                      onClick={handleFiltrar}
+                      style={{ fontWeight: 700 }}
+                    >
+                      Aplicar Filtros
+                    </Button>
+                  </Group>
+                </Stack>
+              </Collapse>
               {/* Botón y formulario para guardar capa, igual que MapPanel */}
               {lecturas.length > 0 && (
                 mostrarFormularioCapa ? (
@@ -883,184 +902,215 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
 
           {/* Panel de Localizaciones de Interés (ahora encima y separado) */}
           <Paper p="md" withBorder mt="md">
-            <Group justify="space-between" mb="md">
+            <Group justify="space-between" align="center" mb="md">
               <Title order={4}>Localizaciones de Interés</Title>
-              <Switch
-                checked={mostrarLocalizaciones}
-                onChange={e => setMostrarLocalizaciones(e.currentTarget.checked)}
-                label={mostrarLocalizaciones ? 'Mostrar' : 'Ocultar'}
-                size="sm"
-                color="#234be7"
-              />
+              <Group>
+                <Switch
+                  checked={mostrarLocalizaciones}
+                  onChange={e => setMostrarLocalizaciones(e.currentTarget.checked)}
+                  label={mostrarLocalizaciones ? 'Mostrar' : 'Ocultar'}
+                  size="sm"
+                  color="#234be7"
+                />
+                <ActionIcon
+                  variant="subtle"
+                  onClick={() => setLocalizacionesColapsadas((v) => !v)}
+                  aria-label={localizacionesColapsadas ? 'Mostrar localizaciones' : 'Ocultar localizaciones'}
+                >
+                  {localizacionesColapsadas ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
+                </ActionIcon>
+              </Group>
             </Group>
-            <Collapse in={modalAbierto && !!localizacionActual}>
-              {modalAbierto && localizacionActual && (
-                <Paper p="md" withBorder mb="md" style={{ position: 'relative' }}>
-                  <ActionIcon
-                    variant="subtle"
-                    color="gray"
-                    style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
-                    onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}
-                    aria-label="Cerrar panel"
-                  >
-                    <IconX size={20} />
-                  </ActionIcon>
-                  <Stack gap="sm">
-                    <Group align="center">
-                      {(() => {
-                        const Icon = ICONOS.find(i => i.name === localizacionActual.icono)?.icon || IconMapPin;
-                        return <Icon size={32} color={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'} />;
-                      })()}
-                      <TextInput
-                        label="Título"
-                        value={localizacionActual.titulo}
-                        onChange={e => setLocalizacionActual(l => l ? { ...l, titulo: e.target.value } : l)}
-                        style={{ flex: 1 }}
+            <Collapse in={!localizacionesColapsadas}>
+              <Collapse in={modalAbierto && !!localizacionActual}>
+                {modalAbierto && localizacionActual && (
+                  <Paper p="md" withBorder mb="md" style={{ position: 'relative' }}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
+                      onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}
+                      aria-label="Cerrar panel"
+                    >
+                      <IconX size={20} />
+                    </ActionIcon>
+                    <Stack gap="sm">
+                      <Group align="center">
+                        {(() => {
+                          const Icon = ICONOS.find(i => i.name === localizacionActual.icono)?.icon || IconMapPin;
+                          return <Icon size={32} color={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'} />;
+                        })()}
+                        <TextInput
+                          label="Título"
+                          value={localizacionActual.titulo}
+                          onChange={e => setLocalizacionActual(l => l ? { ...l, titulo: e.target.value } : l)}
+                          style={{ flex: 1 }}
+                          onFocus={() => setFormFocused(true)}
+                          onBlur={() => setFormFocused(false)}
+                        />
+                      </Group>
+                      <Textarea
+                        label="Descripción"
+                        value={localizacionActual.descripcion ?? ''}
+                        onChange={e => setLocalizacionActual(l => l ? { ...l, descripcion: e.target.value } : l)}
                         onFocus={() => setFormFocused(true)}
                         onBlur={() => setFormFocused(false)}
                       />
-                    </Group>
-                    <Textarea
-                      label="Descripción"
-                      value={localizacionActual.descripcion ?? ''}
-                      onChange={e => setLocalizacionActual(l => l ? { ...l, descripcion: e.target.value } : l)}
-                      onFocus={() => setFormFocused(true)}
-                      onBlur={() => setFormFocused(false)}
-                    />
-                    <Text size="sm" c="dimmed">Fecha y hora: {dayjs(localizacionActual.fecha_hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                    <Group>
-                      <Text size="sm">Icono:</Text>
-                      <SimpleGrid cols={5} spacing={4}>
-                        {ICONOS.map(({ name, icon: Icon }) => (
-                          <ActionIcon
-                            key={name}
-                            variant={localizacionActual.icono === name ? 'filled' : 'light'}
-                            color={localizacionActual.icono === name ? typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6' : 'gray'}
-                            onClick={() => setLocalizacionActual(l => l ? { ...l, icono: name } : l)}
-                          >
-                            <Icon size={20} />
-                          </ActionIcon>
-                        ))}
-                      </SimpleGrid>
-                      <ColorInput
-                        label="Color"
-                        value={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'}
-                        onChange={color => setLocalizacionActual(l => l ? { ...l, color } : l)}
-                        format="hex"
-                        style={{ width: 120 }}
-                      />
-                    </Group>
-                    <Group justify="flex-end">
-                      {localizaciones.some(l => l.id_lectura === localizacionActual.id_lectura) && (
-                        <Button color="red" variant="light" onClick={handleEliminarLocalizacion}>Eliminar</Button>
-                      )}
-                      <Button variant="light" onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}>Cancelar</Button>
-                      <Button onClick={handleGuardarLocalizacion} disabled={!localizacionActual.titulo}>Guardar</Button>
-                    </Group>
-                  </Stack>
-                </Paper>
-              )}
-            </Collapse>
-            <Stack gap="xs">
-              {localizaciones.length === 0 && <Text size="sm" c="dimmed">No hay localizaciones guardadas.</Text>}
-              {localizaciones.map(loc => {
-                const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
-                return (
-                  <Paper key={loc.id_lectura} p="xs" withBorder>
-                    <Group justify="space-between">
-                      <Group gap="xs">
-                        <Icon size={18} color={loc.color} />
-                        <Text size="sm" fw={600}>{loc.titulo}</Text>
-                        <Text size="xs" c="dimmed">{dayjs(loc.fecha_hora).format('DD/MM/YYYY HH:mm')}</Text>
+                      <Text size="sm" c="dimmed">Fecha y hora: {dayjs(localizacionActual.fecha_hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+                      <Group>
+                        <Text size="sm">Icono:</Text>
+                        <SimpleGrid cols={5} spacing={4}>
+                          {ICONOS.map(({ name, icon: Icon }) => (
+                            <ActionIcon
+                              key={name}
+                              variant={localizacionActual.icono === name ? 'filled' : 'light'}
+                              color={localizacionActual.icono === name ? typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6' : 'gray'}
+                              onClick={() => setLocalizacionActual(l => l ? { ...l, icono: name } : l)}
+                            >
+                              <Icon size={20} />
+                            </ActionIcon>
+                          ))}
+                        </SimpleGrid>
+                        <ColorInput
+                          label="Color"
+                          value={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'}
+                          onChange={color => setLocalizacionActual(l => l ? { ...l, color } : l)}
+                          format="hex"
+                          style={{ width: 120 }}
+                        />
                       </Group>
-                      <Group gap={4}>
-                        <ActionIcon variant="subtle" color="blue" onClick={() => {
-                          // Centrar mapa en la localización (puedes implementar esta lógica)
-                        }}><IconMapPin size={16} /></ActionIcon>
-                        <ActionIcon variant="subtle" color="gray" onClick={() => {
-                          setLocalizacionActual(loc);
-                          setModalAbierto(true);
-                        }}><IconEdit size={16} /></ActionIcon>
-                        <ActionIcon variant="subtle" color="red" onClick={() => {
-                          setLocalizacionActual(loc);
-                          handleEliminarLocalizacion();
-                        }}><IconTrash size={16} /></ActionIcon>
+                      <Group justify="flex-end">
+                        {localizaciones.some(l => l.id_lectura === localizacionActual.id_lectura) && (
+                          <Button color="red" variant="light" onClick={handleEliminarLocalizacion}>Eliminar</Button>
+                        )}
+                        <Button variant="light" onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}>Cancelar</Button>
+                        <Button onClick={handleGuardarLocalizacion} disabled={!localizacionActual.titulo}>Guardar</Button>
                       </Group>
-                    </Group>
-                    {loc.descripcion && <Text size="xs" c="dimmed" mt={2}>{loc.descripcion}</Text>}
+                    </Stack>
                   </Paper>
-                );
-              })}
-            </Stack>
+                )}
+              </Collapse>
+              <Stack gap="xs">
+                {localizaciones.length === 0 && <Text size="sm" c="dimmed">No hay localizaciones guardadas.</Text>}
+                {localizaciones.map(loc => {
+                  const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
+                  return (
+                    <Paper key={loc.id_lectura} p="xs" withBorder>
+                      <Group justify="space-between">
+                        <Group gap="xs">
+                          <Icon size={18} color={loc.color} />
+                          <Text size="sm" fw={600}>{loc.titulo}</Text>
+                          <Text size="xs" c="dimmed">{dayjs(loc.fecha_hora).format('DD/MM/YYYY HH:mm')}</Text>
+                        </Group>
+                        <Group gap={4}>
+                          <ActionIcon variant="subtle" color="blue" onClick={() => {
+                            // Centrar mapa en la localización (puedes implementar esta lógica)
+                          }}><IconMapPin size={16} /></ActionIcon>
+                          <ActionIcon variant="subtle" color="gray" onClick={() => {
+                            setLocalizacionActual(loc);
+                            setModalAbierto(true);
+                          }}><IconEdit size={16} /></ActionIcon>
+                          <ActionIcon variant="subtle" color="red" onClick={() => {
+                            setLocalizacionActual(loc);
+                            handleEliminarLocalizacion();
+                          }}><IconTrash size={16} /></ActionIcon>
+                        </Group>
+                      </Group>
+                      {loc.descripcion && <Text size="xs" c="dimmed" mt={2}>{loc.descripcion}</Text>}
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            </Collapse>
           </Paper>
 
           {/* Gestión de Capas debe ir aquí, después de Localizaciones */}
           <Paper p="md" withBorder mt="md">
-            <Group justify="space-between" mb="md">
+            <Group justify="space-between" align="center" mb="md">
               <Title order={3}>Gestión de Capas</Title>
+              <ActionIcon
+                variant="subtle"
+                onClick={() => setCapasColapsadas((v) => !v)}
+                aria-label={capasColapsadas ? 'Mostrar capas' : 'Ocultar capas'}
+              >
+                {capasColapsadas ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
+              </ActionIcon>
             </Group>
-            <Stack gap="xs">
-              {capas.map(capa => (
-                <Paper key={capa.id} p="xs" withBorder>
-                  <Group justify="space-between">
-                    <Group gap="xs">
-                      <Switch
-                        checked={capa.activa}
-                        onChange={() => handleToggleCapa(capa.id)}
-                        size="sm"
-                      />
-                      <Box style={{ width: 16, height: 16, backgroundColor: capa.color, borderRadius: '50%' }} />
-                      <Text size="sm">{capa.nombre}</Text>
-                      <Tooltip label={`Filtros: ${JSON.stringify(capa.filtros)}`}><ActionIcon variant="subtle" size="sm"><IconInfoCircle size={14} /></ActionIcon></Tooltip>
+            <Collapse in={!capasColapsadas}>
+              <Stack gap="xs">
+                {capas.map(capa => (
+                  <Paper key={capa.id} p="xs" withBorder>
+                    <Group justify="space-between">
+                      <Group gap="xs">
+                        <Switch
+                          checked={capa.activa}
+                          onChange={() => handleToggleCapa(capa.id)}
+                          size="sm"
+                        />
+                        <Box style={{ width: 16, height: 16, backgroundColor: capa.color, borderRadius: '50%' }} />
+                        <Text size="sm">{capa.nombre}</Text>
+                        <Tooltip label={`Filtros: ${JSON.stringify(capa.filtros)}`}><ActionIcon variant="subtle" size="sm"><IconInfoCircle size={14} /></ActionIcon></Tooltip>
+                      </Group>
+                      <Group gap={4}>
+                        <ActionIcon variant="subtle" color="blue" onClick={() => handleEditarCapa(capa.id)}><IconEdit size={16} /></ActionIcon>
+                        <ActionIcon variant="subtle" color="red" onClick={() => handleEliminarCapa(capa.id)}><IconTrash size={16} /></ActionIcon>
+                      </Group>
                     </Group>
-                    <Group gap={4}>
-                      <ActionIcon variant="subtle" color="blue" onClick={() => handleEditarCapa(capa.id)}><IconEdit size={16} /></ActionIcon>
-                      <ActionIcon variant="subtle" color="red" onClick={() => handleEliminarCapa(capa.id)}><IconTrash size={16} /></ActionIcon>
-                    </Group>
-                  </Group>
-                  <Text size="xs" c="dimmed" mt={4}>{capa.lecturas.length} lecturas</Text>
-                </Paper>
-              ))}
-              {capas.length === 0 && (
-                <Text size="sm" c="dimmed" ta="center" py="md">No hay capas creadas. Aplica un filtro y guárdalo en una capa.</Text>
-              )}
-            </Stack>
+                    <Text size="xs" c="dimmed" mt={4}>{capa.lecturas.length} lecturas</Text>
+                  </Paper>
+                ))}
+                {capas.length === 0 && (
+                  <Text size="sm" c="dimmed" ta="center" py="md">No hay capas creadas. Aplica un filtro y guárdalo en una capa.</Text>
+                )}
+              </Stack>
+            </Collapse>
           </Paper>
 
           {/* Controles del Mapa debe ir debajo */}
           <Paper p="md" withBorder>
-            <Title order={3} mb="md">Controles del Mapa</Title>
-            <Stack gap="md">
-              <Select
-                label="Tipo de Visualización"
-                value={mapControls.visualizationType}
-                onChange={(value) => setMapControls(prev => ({ ...prev, visualizationType: value as 'standard' | 'satellite' | 'toner' }))}
-                data={[
-                  { value: 'standard', label: 'Estándar' },
-                  { value: 'satellite', label: 'Satélite' },
-                  { value: 'toner', label: 'Toner Lite' }
-                ]}
-              />
-              <Switch
-                label="Mostrar mapa de calor"
-                checked={mapControls.showHeatmap}
-                onChange={(e) => setMapControls(prev => ({ ...prev, showHeatmap: e.currentTarget.checked }))}
-              />
-              <Switch
-                label="Mostrar puntos individuales"
-                checked={mapControls.showPoints}
-                onChange={(e) => setMapControls(prev => ({ ...prev, showPoints: e.currentTarget.checked }))}
-              />
-              <Divider my="xs" />
-              <Button 
-                variant="light" 
-                color="red" 
-                fullWidth
-                onClick={handleLimpiarMapa}
+            <Group justify="space-between" align="center" mb="md">
+              <Title order={3} mb="md">Controles del Mapa</Title>
+              <ActionIcon
+                variant="subtle"
+                onClick={() => setControlesColapsados((v) => !v)}
+                aria-label={controlesColapsados ? 'Mostrar controles' : 'Ocultar controles'}
               >
-                Limpiar Mapa
-              </Button>
-            </Stack>
+                {controlesColapsados ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
+              </ActionIcon>
+            </Group>
+            <Collapse in={!controlesColapsados}>
+              <Stack gap="md">
+                <Select
+                  label="Tipo de Visualización"
+                  value={mapControls.visualizationType}
+                  onChange={(value) => setMapControls(prev => ({ ...prev, visualizationType: value as 'standard' | 'satellite' | 'toner' }))}
+                  data={[
+                    { value: 'standard', label: 'Estándar' },
+                    { value: 'satellite', label: 'Satélite' },
+                    { value: 'toner', label: 'Toner Lite' }
+                  ]}
+                />
+                <Switch
+                  label="Mostrar mapa de calor"
+                  checked={mapControls.showHeatmap}
+                  onChange={(e) => setMapControls(prev => ({ ...prev, showHeatmap: e.currentTarget.checked }))}
+                />
+                <Switch
+                  label="Mostrar puntos individuales"
+                  checked={mapControls.showPoints}
+                  onChange={(e) => setMapControls(prev => ({ ...prev, showPoints: e.currentTarget.checked }))}
+                />
+                <Divider my="xs" />
+                <Button 
+                  variant="light" 
+                  color="red" 
+                  fullWidth
+                  onClick={handleLimpiarMapa}
+                >
+                  Limpiar Mapa
+                </Button>
+              </Stack>
+            </Collapse>
           </Paper>
         </Stack>
 

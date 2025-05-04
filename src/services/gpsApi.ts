@@ -1,6 +1,19 @@
 import apiClient from './api';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../types/data';
 
+// Haversine distance in km
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export const getLecturasGps = async (casoId: number, params?: {
     fecha_inicio?: string;
     hora_inicio?: string;
@@ -24,7 +37,19 @@ export const getLecturasGps = async (casoId: number, params?: {
     };
     
     const response = await apiClient.get<GpsLectura[]>(`/casos/${casoId}/lecturas`, { params: paramsWithType });
-    return response.data;
+    // Filtrar por distancia a Madrid (máx 2000 km)
+    const epicentro = { lat: 40.416775, lon: -3.703790 };
+    return response.data.filter(l => {
+      if (
+        typeof l.Coordenada_Y !== 'number' ||
+        typeof l.Coordenada_X !== 'number' ||
+        isNaN(l.Coordenada_Y) ||
+        isNaN(l.Coordenada_X) ||
+        l.Coordenada_Y < -90 || l.Coordenada_Y > 90 ||
+        l.Coordenada_X < -180 || l.Coordenada_X > 180
+      ) return false;
+      return haversineDistance(l.Coordenada_Y, l.Coordenada_X, epicentro.lat, epicentro.lon) <= 2000;
+    });
 };
 
 export const getParadasGps = async (casoId: number, params?: {
