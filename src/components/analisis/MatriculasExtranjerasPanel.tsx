@@ -82,12 +82,6 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
         if (!response.ok) throw new Error('Error al cargar lecturas');
         const data = await response.json();
         setLecturas(data);
-        const json = JSON.stringify(data);
-        if (json.length < 4_000_000) { // ~4MB margen de seguridad
-          sessionStorage.setItem(cacheKey, json);
-        } else {
-          console.warn("Demasiados datos para cachear en sessionStorage");
-        }
       } catch (error) {
         console.error('Error fetching lecturas:', error);
         // Aquí podrías mostrar un mensaje de error si lo deseas
@@ -96,6 +90,11 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
       }
     };
     fetchLecturas();
+    // Limpieza al desmontar: elimina cualquier cache de este panel
+    return () => {
+      const cacheKey = `lecturas_caso_${idCaso}`;
+      sessionStorage.removeItem(cacheKey);
+    };
   }, [idCaso]);
 
   const handleBuscar = () => {
@@ -117,6 +116,9 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
         pais: getCountryForPlate(l.Matricula)
       })));
       setSearching(false);
+      // Elimina cache tras cada búsqueda
+      const cacheKey = `lecturas_caso_${idCaso}`;
+      sessionStorage.removeItem(cacheKey);
     }, 200);
   };
 

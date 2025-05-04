@@ -240,11 +240,11 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   // Estado para controlar el foco en el formulario de localización
   const [formFocused, setFormFocused] = useState(false);
 
-  const [filtrosColapsados, setFiltrosColapsados] = useState(true);
-  const [controlesColapsados, setControlesColapsados] = useState(true);
-
-  const [localizacionesColapsadas, setLocalizacionesColapsadas] = useState(true);
-  const [capasColapsadas, setCapasColapsadas] = useState(true);
+  // Cambiar los siguientes estados a 'false' para que los paneles estén extendidos por defecto
+  const [filtrosColapsados, setFiltrosColapsados] = useState(false);
+  const [controlesColapsados, setControlesColapsados] = useState(false);
+  const [localizacionesColapsadas, setLocalizacionesColapsadas] = useState(false);
+  const [capasColapsadas, setCapasColapsadas] = useState(false);
 
   // Cargar localizaciones de interés al montar o cambiar casoId
   useEffect(() => {
@@ -929,7 +929,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         </Stack>
 
         {/* Mapa */}
-        <Paper withBorder>
+        <Paper withBorder style={{ height: '100%', minHeight: 400, width: '100%' }}>
           <GpsMapStandalone
             lecturas={lecturas}
             capas={capas}
