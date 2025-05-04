@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { useHotkeys } from '@mantine/hooks';
 import { getLecturasGps, getParadasGps, getCoincidenciasGps, getGpsCapas, createGpsCapa, updateGpsCapa, deleteGpsCapa, getLocalizacionesInteres, createLocalizacionInteres, updateLocalizacionInteres, deleteLocalizacionInteres } from '../../services/gpsApi';
 import ReactDOMServer from 'react-dom/server';
+import GpsMapStandalone from './GpsMapStandalone';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -44,6 +45,150 @@ const ICONOS = [
   { name: 'briefcase', icon: IconBriefcase },
   { name: 'alert', icon: IconAlertCircle },
 ];
+
+// Extraer y memoizar el componente ModalLocalizacion
+const ModalLocalizacion = React.memo(({ localizacionActual, setLocalizacionActual, setModalAbierto, setFormFocused, handleGuardarLocalizacion, handleEliminarLocalizacion, localizaciones }: {
+  localizacionActual: Partial<LocalizacionInteres> | null;
+  setLocalizacionActual: React.Dispatch<React.SetStateAction<Partial<LocalizacionInteres> | null>>;
+  setModalAbierto: React.Dispatch<React.SetStateAction<boolean>>;
+  setFormFocused: React.Dispatch<React.SetStateAction<boolean>>;
+  handleGuardarLocalizacion: () => void;
+  handleEliminarLocalizacion: () => void;
+  localizaciones: LocalizacionInteres[];
+}) => {
+  if (!localizacionActual) return null;
+  return (
+    <Paper p="md" withBorder mb="md" style={{ position: 'relative' }}>
+      <ActionIcon
+        variant="subtle"
+        color="gray"
+        style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
+        onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}
+        aria-label="Cerrar panel"
+      >
+        <IconX size={20} />
+      </ActionIcon>
+      <Stack gap="sm">
+        <Group align="center">
+          {(() => {
+            const Icon = ICONOS.find(i => i.name === localizacionActual.icono)?.icon || IconMapPin;
+            return <Icon size={32} color={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'} />;
+          })()}
+          <TextInput
+            label="Título"
+            value={localizacionActual.titulo}
+            onChange={e => setLocalizacionActual(l => l ? { ...l, titulo: e.target.value } : l)}
+            style={{ flex: 1 }}
+            onFocus={() => setFormFocused(true)}
+            onBlur={() => setFormFocused(false)}
+          />
+        </Group>
+        <Textarea
+          label="Descripción"
+          value={localizacionActual.descripcion ?? ''}
+          onChange={e => setLocalizacionActual(l => l ? { ...l, descripcion: e.target.value } : l)}
+          onFocus={() => setFormFocused(true)}
+          onBlur={() => setFormFocused(false)}
+        />
+        <Text size="sm" c="dimmed">Fecha y hora: {dayjs(localizacionActual.fecha_hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+        <Group>
+          <Text size="sm">Icono:</Text>
+          <SimpleGrid cols={5} spacing={4}>
+            {ICONOS.map(({ name, icon: Icon }) => (
+              <ActionIcon
+                key={name}
+                variant={localizacionActual.icono === name ? 'filled' : 'light'}
+                color={localizacionActual.icono === name ? typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6' : 'gray'}
+                onClick={() => setLocalizacionActual(l => l ? { ...l, icono: name } : l)}
+              >
+                <Icon size={20} />
+              </ActionIcon>
+            ))}
+          </SimpleGrid>
+          <ColorInput
+            label="Color"
+            value={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'}
+            onChange={color => setLocalizacionActual(l => l ? { ...l, color } : l)}
+            format="hex"
+            style={{ width: 120 }}
+          />
+        </Group>
+        <Group justify="flex-end">
+          {localizaciones.some(l => l.id_lectura === localizacionActual.id_lectura) && (
+            <Button color="red" variant="light" onClick={handleEliminarLocalizacion}>Eliminar</Button>
+          )}
+          <Button variant="light" onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}>Cancelar</Button>
+          <Button onClick={handleGuardarLocalizacion} disabled={!localizacionActual.titulo}>Guardar</Button>
+        </Group>
+      </Stack>
+    </Paper>
+  );
+});
+
+// Extraer y memoizar el componente LocalizacionItem
+const LocalizacionItem = React.memo(({ loc, setLocalizacionActual, setModalAbierto, handleEliminarLocalizacion }: {
+  loc: LocalizacionInteres;
+  setLocalizacionActual: React.Dispatch<React.SetStateAction<Partial<LocalizacionInteres> | null>>;
+  setModalAbierto: React.Dispatch<React.SetStateAction<boolean>>;
+  handleEliminarLocalizacion: () => void;
+}) => {
+  const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
+  return (
+    <Paper key={loc.id_lectura} p="xs" withBorder>
+      <Group justify="space-between">
+        <Group gap="xs">
+          <Icon size={18} color={loc.color} />
+          <Text size="sm" fw={600}>{loc.titulo}</Text>
+          <Text size="xs" c="dimmed">{dayjs(loc.fecha_hora).format('DD/MM/YYYY HH:mm')}</Text>
+        </Group>
+        <Group gap={4}>
+          <ActionIcon variant="subtle" color="blue" onClick={() => {
+            // Centrar mapa en la localización (puedes implementar esta lógica)
+          }}><IconMapPin size={16} /></ActionIcon>
+          <ActionIcon variant="subtle" color="gray" onClick={() => {
+            setLocalizacionActual(loc);
+            setModalAbierto(true);
+          }}><IconEdit size={16} /></ActionIcon>
+          <ActionIcon variant="subtle" color="red" onClick={() => {
+            setLocalizacionActual(loc);
+            handleEliminarLocalizacion();
+          }}><IconTrash size={16} /></ActionIcon>
+        </Group>
+      </Group>
+      {loc.descripcion && <Text size="xs" c="dimmed" mt={2}>{loc.descripcion}</Text>}
+    </Paper>
+  );
+});
+
+// Extraer y memoizar el componente CapaItem
+const CapaItem = React.memo(({ capa, handleToggleCapa, handleEditarCapa, handleEliminarCapa }: {
+  capa: CapaGps;
+  handleToggleCapa: (id: number) => void;
+  handleEditarCapa: (id: number) => void;
+  handleEliminarCapa: (id: number) => void;
+}) => {
+  return (
+    <Paper key={capa.id} p="xs" withBorder>
+      <Group justify="space-between">
+        <Group gap="xs">
+          <Switch
+            checked={capa.activa}
+            onChange={() => handleToggleCapa(capa.id)}
+            size="sm"
+          />
+          <Box style={{ width: 16, height: 16, backgroundColor: capa.color, borderRadius: '50%' }} />
+          <Text size="sm">{capa.nombre}</Text>
+          <Tooltip label={`Filtros: ${JSON.stringify(capa.filtros)}`}><ActionIcon variant="subtle" size="sm"><IconInfoCircle size={14} /></ActionIcon></Tooltip>
+        </Group>
+        <Group gap={4}>
+          <ActionIcon variant="subtle" color="blue" onClick={() => handleEditarCapa(capa.id)}><IconEdit size={16} /></ActionIcon>
+          <ActionIcon variant="subtle" color="red" onClick={() => handleEliminarCapa(capa.id)}><IconTrash size={16} /></ActionIcon>
+        </Group>
+      </Group>
+      <Text size="xs" c="dimmed" mt={4}>{capa.lecturas.length} lecturas</Text>
+    </Paper>
+  );
+});
 
 const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   // Estados principales
@@ -101,8 +246,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [localizacionesColapsadas, setLocalizacionesColapsadas] = useState(true);
   const [capasColapsadas, setCapasColapsadas] = useState(true);
 
-  const mapRef = useRef<any>(null);
-
   // Cargar localizaciones de interés al montar o cambiar casoId
   useEffect(() => {
     if (!casoId) return;
@@ -122,19 +265,20 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   };
 
   // Añadir función para abrir el modal de localización
-  const handleAbrirModalLocalizacion = () => {
-    if (!lecturaSeleccionada) return;
-    
-    const existente = localizaciones.find(l => l.id_lectura === lecturaSeleccionada.ID_Lectura);
+  const handleAbrirModalLocalizacion = (lectura: GpsLectura) => {
+    if (!lectura) return;
+    setLocalizacionesColapsadas(false);
+    const existente = localizaciones.find(l => l.id_lectura === lectura.ID_Lectura);
+    setLecturaSeleccionada(lectura);
     setLocalizacionActual(existente || {
-      id_lectura: lecturaSeleccionada.ID_Lectura,
+      id_lectura: lectura.ID_Lectura,
       titulo: '',
       descripcion: '',
-      fecha_hora: lecturaSeleccionada.Fecha_y_Hora,
+      fecha_hora: lectura.Fecha_y_Hora,
       icono: 'pin',
       color: '#228be6',
-      coordenada_x: lecturaSeleccionada.Coordenada_X,
-      coordenada_y: lecturaSeleccionada.Coordenada_Y,
+      coordenada_x: lectura.Coordenada_X,
+      coordenada_y: lectura.Coordenada_Y,
     });
     setModalAbierto(true);
   };
@@ -305,265 +449,21 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     iconAnchor: [6, 6]
   });
 
-  // Componente del mapa
-  const MapComponent: React.FC<{ isFullscreen?: boolean, onClickPunto: (lectura: GpsLectura) => void, mostrarLocalizaciones: boolean, localizaciones: LocalizacionInteres[], modalAbierto?: boolean }> = ({ isFullscreen = false, onClickPunto, mostrarLocalizaciones, localizaciones, modalAbierto = false }) => {
-    // Selección dinámica de capa
-    let tileLayerUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-    let tileLayerAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-    if (mapControls.visualizationType === 'satellite') {
-      tileLayerUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      tileLayerAttribution = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community';
-    } else if (mapControls.visualizationType === 'toner') {
-      tileLayerUrl = 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png';
-      tileLayerAttribution = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under ODbL.';
+  // Centro y zoom inicial SOLO una vez al montar el componente
+  const getInitialMap = () => {
+    const primeraLectura = Array.isArray(lecturas) && lecturas.length > 0
+      ? lecturas.find(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
+      : null;
+    if (primeraLectura) {
+      return {
+        center: [primeraLectura.Coordenada_Y, primeraLectura.Coordenada_X],
+        zoom: 13
+      };
     }
-
-    // Filtrar lecturas con coordenadas válidas
-    const lecturasValidas = lecturas.filter(lectura => 
-      typeof lectura.Coordenada_Y === 'number' && 
-      typeof lectura.Coordenada_X === 'number' &&
-      !isNaN(lectura.Coordenada_Y) && 
-      !isNaN(lectura.Coordenada_X)
-    );
-
-    // En MapComponent, mostrar lecturas de capas activas además de lecturas actuales si no están guardadas en capa
-    const lecturasCapasActivas = capas.filter(c => c.activa).flatMap(c => c.lecturas);
-    const lecturasParaMapa = [...lecturasCapasActivas, ...(capas.some(c => c.activa && c.lecturas === lecturas) ? [] : lecturasValidas)];
-
-    // Subcomponente para ajustar la vista automáticamente
-    const AjustarVista = ({ puntos }: { puntos: [number, number][] }) => {
-      const map = useMap();
-      React.useEffect(() => {
-        if (!puntos || puntos.length === 0) {
-          map.setView([40.416775, -3.703790], 10); // Vista por defecto
-        } else if (puntos.length === 1) {
-          map.setView([puntos[0][0], puntos[0][1]], 15); // Zoom sobre el único punto
-        } else {
-          const bounds = L.latLngBounds(puntos);
-          map.fitBounds(bounds, { padding: [50, 50] });
-        }
-      }, [JSON.stringify(puntos)]);
-      return null;
-    };
-
-    return (
-      <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-        <style>
-          {`
-            .leaflet-container {
-              z-index: ${isFullscreen ? 10000 : 1} !important;
-            }
-            .leaflet-div-icon, .custom-div-icon {
-              background: transparent !important;
-              border: none !important;
-            }
-            .gps-popup, .leaflet-popup-content {
-              min-height: 350px !important;
-              height: 350px !important;
-              max-height: 350px !important;
-              overflow: hidden !important;
-              min-width: 364px !important;
-              width: 364px !important;
-              max-width: 364px !important;
-            }
-          `}
-        </style>
-        <MapContainer 
-          center={[40.416775, -3.703790]}
-          zoom={10}
-          scrollWheelZoom={true}
-          keyboard={!formFocused}
-          style={{ 
-            ...mapContainerStyle,
-            height: isFullscreen ? '100vh' : '100%',
-            width: isFullscreen ? '100vw' : '100%',
-            position: isFullscreen ? 'fixed' : 'relative',
-            top: isFullscreen ? 0 : undefined,
-            left: isFullscreen ? 0 : undefined,
-            zIndex: isFullscreen ? 9999 : 1,
-            background: isFullscreen ? 'white' : undefined,
-          }}
-        >
-          <AjustarVista puntos={lecturasParaMapa.map(l => [l.Coordenada_Y, l.Coordenada_X])} />
-          <TileLayer
-            attribution={tileLayerAttribution}
-            url={tileLayerUrl}
-          />
-          {/* Renderizar puntos básicos (azules) o de capa activa, excepto los que tienen localización personalizada */}
-          {lecturasParaMapa.filter(lectura => !localizaciones.some(loc => loc.id_lectura === lectura.ID_Lectura)).map((lectura, idx) => {
-            // Buscar si la lectura pertenece a una capa activa
-            const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
-            // Si pertenece a una capa activa, usar su color, si no, azul por defecto
-            const color = capa ? capa.color : '#228be6';
-            const customIcon = L.divIcon({
-              className: 'custom-div-icon',
-              html: `<div style="background: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
-              iconSize: [12, 12],
-              iconAnchor: [6, 6]
-            });
-            return (
-              <Marker 
-                key={lectura.ID_Lectura + '-' + idx}
-                position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
-                icon={customIcon}
-                eventHandlers={{
-                  click: () => onClickPunto(lectura)
-                }}
-              >
-                <Popup className="gps-popup" maxWidth={364}>
-                  <div style={{ width: 364, minHeight: 350, height: 350, overflow: 'hidden' }}>
-                    <Card shadow="sm" padding="md" radius="md" withBorder style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-start' }}>
-                      <Card.Section withBorder inheritPadding py="sm">
-                        <Group justify="space-between" style={{ minWidth: 0, width: '100%' }}>
-                          <Text fw={700} size="sm" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            Lectura GPS
-                          </Text>
-                          <Tooltip label={lectura.Matricula} withArrow>
-                            <Badge
-                              color="blue"
-                              variant="light"
-                              size="sm"
-                              style={{
-                                maxWidth: 80,
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                display: 'block',
-                                padding: '0 8px',
-                              }}
-                            >
-                              {lectura.Matricula}
-                            </Badge>
-                          </Tooltip>
-                        </Group>
-                      </Card.Section>
-
-                      {/* Datos GPS en filas flexibles */}
-                      <div style={{ width: '100%', marginTop: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'gray' }} /></span>
-                          <span style={{ fontSize: 13, color: '#666', wordBreak: 'break-word' }}>{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: 'gray' }} /></span>
-                          <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof lectura.Velocidad === 'number' && !isNaN(lectura.Velocidad) ? lectura.Velocidad.toFixed(1) : '?'} km/h</span>
-                        </div>
-                        {typeof lectura.duracion_parada_min === 'number' && !isNaN(lectura.duracion_parada_min) && (
-                          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                            <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'blue' }} /></span>
-                            <span style={{ fontSize: 13, color: '#228be6', wordBreak: 'break-word' }}><b>Duración parada:</b> {lectura.duracion_parada_min.toFixed(1)} min</span>
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconCompass size={14} style={{ color: 'gray' }} /></span>
-                          <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Dirección:</b> {typeof lectura.Direccion === 'number' && !isNaN(lectura.Direccion) ? lectura.Direccion.toFixed(1) : '?'}°</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
-                          <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {typeof lectura.Coordenada_Y === 'number' && !isNaN(lectura.Coordenada_Y) ? lectura.Coordenada_Y.toFixed(5) : '?'}, {typeof lectura.Coordenada_X === 'number' && !isNaN(lectura.Coordenada_X) ? lectura.Coordenada_X.toFixed(5) : '?'}</span>
-                        </div>
-                      </div>
-
-                      <Button 
-                        size="xs" 
-                        variant="light" 
-                        color="blue" 
-                        fullWidth
-                        mt="xs"
-                        leftSection={<IconMapPin size={12} />}
-                        onClick={() => {
-                          setLecturaSeleccionada(lectura);
-                          handleAbrirModalLocalizacion();
-                        }}
-                      >
-                        Guardar Localización
-                      </Button>
-                    </Card>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
-          {/* Renderizar puntos personalizados si el toggle está activo */}
-          {mostrarLocalizaciones && localizaciones.map((loc, idx) => {
-            const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
-            const svgIcon = ReactDOMServer.renderToStaticMarkup(
-              <Icon size={22} color={loc.color} stroke={2} />
-            );
-            return (
-              <Marker
-                key={loc.id_lectura + '-' + idx}
-                position={[
-                  typeof loc.coordenada_y === 'number' && !isNaN(loc.coordenada_y) ? loc.coordenada_y : 0,
-                  typeof loc.coordenada_x === 'number' && !isNaN(loc.coordenada_x) ? loc.coordenada_x : 0
-                ]}
-                icon={L.divIcon({
-                  className: 'custom-div-icon',
-                  html: `<div style="display: flex; flex-direction: column; align-items: center;">
-                    <div style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                      <div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background-color: ${loc.color}20; border: 2px solid ${loc.color}40;"></div>
-                      <div style="position: relative; color: ${loc.color}; font-size: 22px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;">
-                        ${svgIcon}
-                      </div>
-                    </div>
-                    ${loc.titulo ? `<span style='background: white; color: black; font-size: 11px; border-radius: 3px; padding: 0 2px; margin-top: 2px;'>${loc.titulo}</span>` : ''}
-                  </div>`
-                })}
-                eventHandlers={{
-                  click: () => onClickPunto({
-                    ID_Lectura: loc.id_lectura ?? 0,
-                    Matricula: '',
-                    Fecha_y_Hora: loc.fecha_hora,
-                    Coordenada_X: loc.coordenada_x,
-                    Coordenada_Y: loc.coordenada_y,
-                    Velocidad: 0,
-                    Direccion: 0,
-                    Altitud: 0,
-                    Precisión: 0,
-                    ID_Archivo: 0,
-                    duracion_parada_min: undefined
-                  })
-                }}
-              />
-            );
-          })}
-        </MapContainer>
-        <Tooltip label={isFullscreen ? "Cerrar pantalla completa (Esc)" : "Pantalla completa"}>
-          <ActionIcon
-            variant={isFullscreen ? "filled" : "light"}
-            color={isFullscreen ? "red" : "blue"}
-            size="xl"
-            style={{
-              position: 'absolute',
-              top: '1rem',
-              right: '1rem',
-              zIndex: 1000,
-              boxShadow: isFullscreen ? '0 0 10px rgba(0,0,0,0.2)' : 'none',
-            }}
-            onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
-          >
-            {isFullscreen ? <IconMinimize size={24} /> : <IconMaximize size={24} />}
-          </ActionIcon>
-        </Tooltip>
-
-        {/* Overlay para bloquear interacción con el mapa cuando el modal está abierto */}
-        {modalAbierto && (
-          <div
-            style={{
-              position: 'absolute',
-              zIndex: 2000,
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              background: 'transparent',
-              pointerEvents: 'all',
-            }}
-          />
-        )}
-      </div>
-    );
+    return { center: [40.416775, -3.703790], zoom: 10 };
   };
+  const mapInitialRef = useRef(getInitialMap());
+  const [mapKey] = useState(() => Date.now());
 
   // Guardar resultados actuales en una nueva capa (persistente)
   const [errorGuardarCapa, setErrorGuardarCapa] = useState<string | null>(null);
@@ -924,102 +824,28 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             <Collapse in={!localizacionesColapsadas}>
               <Collapse in={modalAbierto && !!localizacionActual}>
                 {modalAbierto && localizacionActual && (
-                  <Paper p="md" withBorder mb="md" style={{ position: 'relative' }}>
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
-                      onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}
-                      aria-label="Cerrar panel"
-                    >
-                      <IconX size={20} />
-                    </ActionIcon>
-                    <Stack gap="sm">
-                      <Group align="center">
-                        {(() => {
-                          const Icon = ICONOS.find(i => i.name === localizacionActual.icono)?.icon || IconMapPin;
-                          return <Icon size={32} color={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'} />;
-                        })()}
-                        <TextInput
-                          label="Título"
-                          value={localizacionActual.titulo}
-                          onChange={e => setLocalizacionActual(l => l ? { ...l, titulo: e.target.value } : l)}
-                          style={{ flex: 1 }}
-                          onFocus={() => setFormFocused(true)}
-                          onBlur={() => setFormFocused(false)}
-                        />
-                      </Group>
-                      <Textarea
-                        label="Descripción"
-                        value={localizacionActual.descripcion ?? ''}
-                        onChange={e => setLocalizacionActual(l => l ? { ...l, descripcion: e.target.value } : l)}
-                        onFocus={() => setFormFocused(true)}
-                        onBlur={() => setFormFocused(false)}
-                      />
-                      <Text size="sm" c="dimmed">Fecha y hora: {dayjs(localizacionActual.fecha_hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                      <Group>
-                        <Text size="sm">Icono:</Text>
-                        <SimpleGrid cols={5} spacing={4}>
-                          {ICONOS.map(({ name, icon: Icon }) => (
-                            <ActionIcon
-                              key={name}
-                              variant={localizacionActual.icono === name ? 'filled' : 'light'}
-                              color={localizacionActual.icono === name ? typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6' : 'gray'}
-                              onClick={() => setLocalizacionActual(l => l ? { ...l, icono: name } : l)}
-                            >
-                              <Icon size={20} />
-                            </ActionIcon>
-                          ))}
-                        </SimpleGrid>
-                        <ColorInput
-                          label="Color"
-                          value={typeof localizacionActual.color === 'string' ? localizacionActual.color : '#228be6'}
-                          onChange={color => setLocalizacionActual(l => l ? { ...l, color } : l)}
-                          format="hex"
-                          style={{ width: 120 }}
-                        />
-                      </Group>
-                      <Group justify="flex-end">
-                        {localizaciones.some(l => l.id_lectura === localizacionActual.id_lectura) && (
-                          <Button color="red" variant="light" onClick={handleEliminarLocalizacion}>Eliminar</Button>
-                        )}
-                        <Button variant="light" onClick={() => { setModalAbierto(false); setLocalizacionActual(null); }}>Cancelar</Button>
-                        <Button onClick={handleGuardarLocalizacion} disabled={!localizacionActual.titulo}>Guardar</Button>
-                      </Group>
-                    </Stack>
-                  </Paper>
+                  <ModalLocalizacion
+                    localizacionActual={localizacionActual}
+                    setLocalizacionActual={setLocalizacionActual}
+                    setModalAbierto={setModalAbierto}
+                    setFormFocused={setFormFocused}
+                    handleGuardarLocalizacion={handleGuardarLocalizacion}
+                    handleEliminarLocalizacion={handleEliminarLocalizacion}
+                    localizaciones={localizaciones}
+                  />
                 )}
               </Collapse>
               <Stack gap="xs">
                 {localizaciones.length === 0 && <Text size="sm" c="dimmed">No hay localizaciones guardadas.</Text>}
-                {localizaciones.map(loc => {
-                  const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
-                  return (
-                    <Paper key={loc.id_lectura} p="xs" withBorder>
-                      <Group justify="space-between">
-                        <Group gap="xs">
-                          <Icon size={18} color={loc.color} />
-                          <Text size="sm" fw={600}>{loc.titulo}</Text>
-                          <Text size="xs" c="dimmed">{dayjs(loc.fecha_hora).format('DD/MM/YYYY HH:mm')}</Text>
-                        </Group>
-                        <Group gap={4}>
-                          <ActionIcon variant="subtle" color="blue" onClick={() => {
-                            // Centrar mapa en la localización (puedes implementar esta lógica)
-                          }}><IconMapPin size={16} /></ActionIcon>
-                          <ActionIcon variant="subtle" color="gray" onClick={() => {
-                            setLocalizacionActual(loc);
-                            setModalAbierto(true);
-                          }}><IconEdit size={16} /></ActionIcon>
-                          <ActionIcon variant="subtle" color="red" onClick={() => {
-                            setLocalizacionActual(loc);
-                            handleEliminarLocalizacion();
-                          }}><IconTrash size={16} /></ActionIcon>
-                        </Group>
-                      </Group>
-                      {loc.descripcion && <Text size="xs" c="dimmed" mt={2}>{loc.descripcion}</Text>}
-                    </Paper>
-                  );
-                })}
+                {localizaciones.map(loc => (
+                  <LocalizacionItem
+                    key={loc.id_lectura}
+                    loc={loc}
+                    setLocalizacionActual={setLocalizacionActual}
+                    setModalAbierto={setModalAbierto}
+                    handleEliminarLocalizacion={handleEliminarLocalizacion}
+                  />
+                ))}
               </Stack>
             </Collapse>
           </Paper>
@@ -1039,25 +865,13 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             <Collapse in={!capasColapsadas}>
               <Stack gap="xs">
                 {capas.map(capa => (
-                  <Paper key={capa.id} p="xs" withBorder>
-                    <Group justify="space-between">
-                      <Group gap="xs">
-                        <Switch
-                          checked={capa.activa}
-                          onChange={() => handleToggleCapa(capa.id)}
-                          size="sm"
-                        />
-                        <Box style={{ width: 16, height: 16, backgroundColor: capa.color, borderRadius: '50%' }} />
-                        <Text size="sm">{capa.nombre}</Text>
-                        <Tooltip label={`Filtros: ${JSON.stringify(capa.filtros)}`}><ActionIcon variant="subtle" size="sm"><IconInfoCircle size={14} /></ActionIcon></Tooltip>
-                      </Group>
-                      <Group gap={4}>
-                        <ActionIcon variant="subtle" color="blue" onClick={() => handleEditarCapa(capa.id)}><IconEdit size={16} /></ActionIcon>
-                        <ActionIcon variant="subtle" color="red" onClick={() => handleEliminarCapa(capa.id)}><IconTrash size={16} /></ActionIcon>
-                      </Group>
-                    </Group>
-                    <Text size="xs" c="dimmed" mt={4}>{capa.lecturas.length} lecturas</Text>
-                  </Paper>
+                  <CapaItem
+                    key={capa.id}
+                    capa={capa}
+                    handleToggleCapa={handleToggleCapa}
+                    handleEditarCapa={handleEditarCapa}
+                    handleEliminarCapa={handleEliminarCapa}
+                  />
                 ))}
                 {capas.length === 0 && (
                   <Text size="sm" c="dimmed" ta="center" py="md">No hay capas creadas. Aplica un filtro y guárdalo en una capa.</Text>
@@ -1116,7 +930,14 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
 
         {/* Mapa */}
         <Paper withBorder>
-          <MapComponent isFullscreen={fullscreenMap} onClickPunto={handleClickPunto} mostrarLocalizaciones={mostrarLocalizaciones} localizaciones={localizaciones} modalAbierto={modalAbierto} />
+          <GpsMapStandalone
+            lecturas={lecturas}
+            capas={capas}
+            localizaciones={localizaciones}
+            mapControls={mapControls}
+            mostrarLocalizaciones={mostrarLocalizaciones}
+            onGuardarLocalizacion={handleAbrirModalLocalizacion}
+          />
         </Paper>
       </div>
     </Box>

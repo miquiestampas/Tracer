@@ -82,7 +82,12 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
         if (!response.ok) throw new Error('Error al cargar lecturas');
         const data = await response.json();
         setLecturas(data);
-        sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        const json = JSON.stringify(data);
+        if (json.length < 4_000_000) { // ~4MB margen de seguridad
+          sessionStorage.setItem(cacheKey, json);
+        } else {
+          console.warn("Demasiados datos para cachear en sessionStorage");
+        }
       } catch (error) {
         console.error('Error fetching lecturas:', error);
         // Aquí podrías mostrar un mensaje de error si lo deseas
