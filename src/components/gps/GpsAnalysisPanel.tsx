@@ -7,7 +7,7 @@ import type { GpsLectura, GpsCapa } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { useHotkeys } from '@mantine/hooks';
-import { getLecturasGps, getParadasGps, getCoincidenciasGps } from '../../services/gpsApi';
+import { getLecturasGps, getParadasGps, getCoincidenciasGps, getGpsCapas, createGpsCapa, updateGpsCapa, deleteGpsCapa } from '../../services/gpsApi';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -23,12 +23,13 @@ interface GpsAnalysisPanelProps {
 
 // Tipo de capa para GPS
 interface CapaGps {
-  id: string;
+  id: number;
   nombre: string;
   color: string;
   activa: boolean;
   lecturas: GpsLectura[];
   filtros: any;
+  descripcion?: string;
 }
 
 const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
@@ -40,7 +41,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [mostrarFormularioCapa, setMostrarFormularioCapa] = useState(false);
   const [fullscreenMap, setFullscreenMap] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
-  const [editandoCapa, setEditandoCapa] = useState<string | null>(null);
+  const [editandoCapa, setEditandoCapa] = useState<number | null>(null);
 
   // Estados para filtros
   const [filters, setFilters] = useState({
@@ -113,6 +114,19 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
       }
     };
     cargarVehiculos();
+  }, [casoId]);
+
+  // Cargar capas GPS al montar el componente o cambiar casoId
+  useEffect(() => {
+    if (!casoId) return;
+    (async () => {
+      try {
+        const capasBD = await getGpsCapas(casoId);
+        setCapas(capasBD.map(c => ({ ...c, descripcion: c.descripcion || '' })));
+      } catch (error) {
+        setCapas([]);
+      }
+    })();
   }, [casoId]);
 
   // Función para manejar cambios en los filtros
@@ -299,51 +313,73 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     );
   };
 
-  // Guardar resultados actuales en una nueva capa
-  const handleGuardarResultadosEnCapa = () => {
+  // Guardar resultados actuales en una nueva capa (persistente)
+  const [errorGuardarCapa, setErrorGuardarCapa] = useState<string | null>(null);
+  const [guardandoCapa, setGuardandoCapa] = useState(false);
+  const handleGuardarResultadosEnCapa = async () => {
+    setErrorGuardarCapa(null);
     if (!nuevaCapa.nombre) return;
-    const nuevaCapaCompleta: CapaGps = {
-      id: Date.now().toString(),
+    setGuardandoCapa(true);
+    const nuevaCapaCompleta: Omit<CapaGps, 'id' | 'caso_id'> = {
       nombre: nuevaCapa.nombre!,
       color: nuevaCapa.color || '#228be6',
       activa: true,
       lecturas: lecturas,
-      filtros: { ...filters }
+      filtros: { ...filters },
+      descripcion: nuevaCapa.descripcion || ''
     };
-    setCapas(prev => [...prev, nuevaCapaCompleta]);
-    setNuevaCapa({ nombre: '', color: '#228be6' });
-    setMostrarFormularioCapa(false);
-    setEditandoCapa(null);
+    try {
+      const capaGuardada = await createGpsCapa(casoId, nuevaCapaCompleta);
+      setCapas(prev => [...prev, { ...capaGuardada, descripcion: capaGuardada.descripcion || '' }]);
+      setNuevaCapa({ nombre: '', color: '#228be6' });
+      setMostrarFormularioCapa(false);
+      setEditandoCapa(null);
+    } catch (e: any) {
+      setErrorGuardarCapa(e?.message || 'Error al guardar la capa');
+    } finally {
+      setGuardandoCapa(false);
+    }
   };
 
-  const handleEditarCapa = (id: string) => {
+  const handleEditarCapa = (id: number) => {
     const capa = capas.find(c => c.id === id);
     if (!capa) return;
-    setNuevaCapa({ nombre: capa.nombre, color: capa.color });
+    setNuevaCapa({ nombre: capa.nombre, color: capa.color, descripcion: capa.descripcion });
     setEditandoCapa(id);
     setMostrarFormularioCapa(true);
   };
 
-  const handleActualizarCapa = () => {
-    if (!editandoCapa || !nuevaCapa.nombre) return;
-    setCapas(prev => prev.map(capa =>
-      capa.id === editandoCapa
-        ? { ...capa, nombre: nuevaCapa.nombre!, color: nuevaCapa.color || capa.color }
-        : capa
-    ));
+  const handleActualizarCapa = async () => {
+    if (editandoCapa === null || !nuevaCapa.nombre) return;
+    try {
+      const capaActualizada = await updateGpsCapa(casoId, editandoCapa, {
+        nombre: nuevaCapa.nombre!,
+        color: nuevaCapa.color || '#228be6',
+        descripcion: nuevaCapa.descripcion || '',
+      });
+      setCapas(prev => prev.map(capa =>
+        capa.id === editandoCapa ? { ...capa, ...capaActualizada, descripcion: capaActualizada.descripcion || '' } : capa
+      ));
+    } catch (e) {}
     setNuevaCapa({ nombre: '', color: '#228be6' });
     setEditandoCapa(null);
     setMostrarFormularioCapa(false);
   };
 
-  const handleToggleCapa = (id: string) => {
-    setCapas(prev => prev.map(capa =>
-      capa.id === id ? { ...capa, activa: !capa.activa } : capa
-    ));
+  const handleToggleCapa = async (id: number) => {
+    const capa = capas.find(c => c.id === id);
+    if (!capa) return;
+    try {
+      const capaActualizada = await updateGpsCapa(casoId, id, { activa: !capa.activa });
+      setCapas(prev => prev.map(c => c.id === id ? { ...c, activa: capaActualizada.activa } : c));
+    } catch (e) {}
   };
 
-  const handleEliminarCapa = (id: string) => {
-    setCapas(prev => prev.filter(capa => capa.id !== id));
+  const handleEliminarCapa = async (id: number) => {
+    try {
+      await deleteGpsCapa(casoId, id);
+      setCapas(prev => prev.filter(capa => capa.id !== id));
+    } catch (e) {}
   };
 
   // Función para generar nombre sugerido de capa según filtros
@@ -525,20 +561,21 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                         onChange={color => setNuevaCapa(prev => ({ ...prev, color }))}
                         format="hex"
                       />
+                      <TextInput
+                        label="Descripción de la capa"
+                        value={nuevaCapa.descripcion}
+                        onChange={e => setNuevaCapa(prev => ({ ...prev, descripcion: e.target.value }))}
+                        placeholder="Descripción de la capa"
+                      />
                       <Group justify="flex-end">
                         <Button variant="light" color="gray" onClick={() => { setMostrarFormularioCapa(false); setEditandoCapa(null); }}><IconX size={16} style={{ marginRight: 8 }} />Cancelar</Button>
-                        {editandoCapa ? (
+                        {editandoCapa !== null ? (
                           <Button onClick={handleActualizarCapa} disabled={!nuevaCapa.nombre}><IconCheck size={16} style={{ marginRight: 8 }} />Actualizar capa</Button>
                         ) : (
-                          <Button onClick={() => {
-                            setNuevaCapa(prev => ({
-                              ...prev,
-                              nombre: generarNombreCapaPorFiltros({ ...filters, vehiculoObjetivo })
-                            }));
-                            setMostrarFormularioCapa(true);
-                          }}><IconCheck size={16} style={{ marginRight: 8 }} />Guardar en capa</Button>
+                          <Button onClick={handleGuardarResultadosEnCapa} loading={guardandoCapa} disabled={!nuevaCapa.nombre}><IconCheck size={16} style={{ marginRight: 8 }} />Guardar en capa</Button>
                         )}
                       </Group>
+                      {errorGuardarCapa && <Alert color="red" mt="sm">{errorGuardarCapa}</Alert>}
                     </Stack>
                   </Collapse>
                 ) : (
