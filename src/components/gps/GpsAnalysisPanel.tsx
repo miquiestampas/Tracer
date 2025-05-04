@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
@@ -21,15 +21,26 @@ interface GpsAnalysisPanelProps {
   casoId: number;
 }
 
+// Tipo de capa para GPS
+interface CapaGps {
+  id: string;
+  nombre: string;
+  color: string;
+  activa: boolean;
+  lecturas: GpsLectura[];
+  filtros: any;
+}
+
 const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   // Estados principales
   const [lecturas, setLecturas] = useState<GpsLectura[]>([]);
   const [loading, setLoading] = useState(false);
-  const [capas, setCapas] = useState<GpsCapa[]>([]);
-  const [nuevaCapa, setNuevaCapa] = useState<Partial<GpsCapa>>({ nombre: '', color: '#228be6' });
+  const [capas, setCapas] = useState<CapaGps[]>([]);
+  const [nuevaCapa, setNuevaCapa] = useState<Partial<CapaGps>>({ nombre: '', color: '#228be6' });
   const [mostrarFormularioCapa, setMostrarFormularioCapa] = useState(false);
   const [fullscreenMap, setFullscreenMap] = useState(false);
   const [ayudaAbierta, setAyudaAbierta] = useState(false);
+  const [editandoCapa, setEditandoCapa] = useState<string | null>(null);
 
   // Estados para filtros
   const [filters, setFilters] = useState({
@@ -152,8 +163,35 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     }
   }, [fetchLecturasGps, vehiculoObjetivo]);
 
+  // Función para limpiar el mapa completamente (igual que MapPanel)
+  const handleLimpiarMapa = () => {
+    setCapas([]);
+    setLecturas([]);
+    setNuevaCapa({ nombre: '', color: '#228be6' });
+    setMostrarFormularioCapa(false);
+    setEditandoCapa(null);
+    setFilters({
+      fechaInicio: '',
+      horaInicio: '',
+      fechaFin: '',
+      horaFin: '',
+      velocidadMin: null,
+      velocidadMax: null,
+      duracionParada: null,
+      zonaSeleccionada: null
+    });
+    setVehiculoObjetivo(null);
+  };
+
+  const blueCircleIcon = L.divIcon({
+    className: 'custom-div-icon',
+    html: `<div style="background: #228be6; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [12, 12],
+    iconAnchor: [6, 6]
+  });
+
   // Componente del mapa
-  const MapComponent = ({ isFullscreen = false }) => {
+  const MapComponent: React.FC<{ isFullscreen?: boolean }> = ({ isFullscreen = false }) => {
     // Selección dinámica de capa
     let tileLayerUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
     let tileLayerAttribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -164,6 +202,27 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
       tileLayerUrl = 'https://stamen-tiles.a.ssl.fastly.net/toner-lite/{z}/{x}/{y}.png';
       tileLayerAttribution = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under ODbL.';
     }
+
+    // Filtrar lecturas con coordenadas válidas
+    const lecturasValidas = lecturas.filter(lectura => 
+      typeof lectura.Coordenada_Y === 'number' && 
+      typeof lectura.Coordenada_X === 'number' &&
+      !isNaN(lectura.Coordenada_Y) && 
+      !isNaN(lectura.Coordenada_X)
+    );
+
+    // En MapComponent, mostrar lecturas de capas activas además de lecturas actuales si no están guardadas en capa
+    const lecturasCapasActivas = capas.filter(c => c.activa).flatMap(c => c.lecturas);
+    const lecturasParaMapa = [...lecturasCapasActivas, ...(capas.some(c => c.activa && c.lecturas === lecturas) ? [] : lecturasValidas)];
+
+    // Calcular centro inicial y zoom
+    const centroInicial: L.LatLngExpression = 
+      lecturasParaMapa.length > 0
+        ? [lecturasParaMapa[0].Coordenada_Y, lecturasParaMapa[0].Coordenada_X] 
+        : [40.416775, -3.703790];
+    
+    const zoomInicial = lecturasParaMapa.length > 0 ? 13 : 6;
+
     return (
       <div style={{ position: 'relative', height: '100%', width: '100%' }}>
         <style>
@@ -171,7 +230,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             .leaflet-container {
               z-index: ${isFullscreen ? 10000 : 1} !important;
             }
-            .leaflet-div-icon {
+            .leaflet-div-icon, .custom-div-icon {
               background: transparent !important;
               border: none !important;
             }
@@ -182,8 +241,9 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
           `}
         </style>
         <MapContainer 
-          center={[40.416775, -3.703790]} 
-          zoom={13} 
+          key={lecturasParaMapa.length}
+          center={centroInicial} 
+          zoom={zoomInicial} 
           scrollWheelZoom={true} 
           style={{ 
             ...mapContainerStyle,
@@ -194,28 +254,25 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             attribution={tileLayerAttribution}
             url={tileLayerUrl}
           />
-          {lecturas.map((lectura) => (
+          {lecturasParaMapa.map((lectura, idx) => (
             <Marker 
-              key={lectura.ID_Lectura}
+              key={lectura.ID_Lectura + '-' + idx}
               position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
+              icon={blueCircleIcon}
             >
               <Popup>
                 <div className="gps-popup">
-                  <Group justify="space-between" mb="xs">
-                    <Text fw={700} size="sm">Lectura GPS</Text>
-                    <Text size="xs" c="dimmed">{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                  </Group>
-                  <Stack gap={4}>
-                    <Text size="sm"><b>Matrícula:</b> {lectura.Matricula}</Text>
-                    <Text size="sm"><b>Velocidad:</b> {lectura.Velocidad} km/h</Text>
-                    {lectura.duracion_parada_min !== undefined && (
-                      <Text size="sm" c="blue"><b>Duración parada:</b> {lectura.duracion_parada_min.toFixed(1)} min</Text>
-                    )}
-                    <Text size="sm"><b>Dirección:</b> {lectura.Direccion}°</Text>
-                    <Text size="sm"><b>Altitud:</b> {lectura.Altitud} m</Text>
-                    <Text size="sm"><b>Precisión:</b> {lectura.Precisión} m</Text>
-                    <Text size="sm"><b>Coords:</b> {lectura.Coordenada_Y.toFixed(5)}, {lectura.Coordenada_X.toFixed(5)}</Text>
-                  </Stack>
+                  <Text fw={700} size="sm">Lectura GPS</Text>
+                  <Text size="xs" c="dimmed">{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+                  <Text size="sm"><b>Matrícula:</b> {lectura.Matricula}</Text>
+                  <Text size="sm"><b>Velocidad:</b> {typeof lectura.Velocidad === 'number' && !isNaN(lectura.Velocidad) ? lectura.Velocidad.toFixed(1) : "?"} km/h</Text>
+                  {typeof lectura.duracion_parada_min === 'number' && !isNaN(lectura.duracion_parada_min) && (
+                    <Text size="sm" c="blue"><b>Duración parada:</b> {lectura.duracion_parada_min.toFixed(1)} min</Text>
+                  )}
+                  <Text size="sm"><b>Dirección:</b> {typeof lectura.Direccion === 'number' && !isNaN(lectura.Direccion) ? lectura.Direccion.toFixed(1) : "?"}°</Text>
+                  <Text size="sm"><b>Altitud:</b> {typeof lectura.Altitud === 'number' && !isNaN(lectura.Altitud) ? lectura.Altitud.toFixed(1) : "?"} m</Text>
+                  <Text size="sm"><b>Precisión:</b> {typeof lectura.Precisión === 'number' && !isNaN(lectura.Precisión) ? lectura.Precisión.toFixed(1) : "?"} m</Text>
+                  <Text size="sm"><b>Coords:</b> {typeof lectura.Coordenada_Y === 'number' && !isNaN(lectura.Coordenada_Y) ? lectura.Coordenada_Y.toFixed(5) : "?"}, {typeof lectura.Coordenada_X === 'number' && !isNaN(lectura.Coordenada_X) ? lectura.Coordenada_X.toFixed(5) : "?"}</Text>
                 </div>
               </Popup>
             </Marker>
@@ -241,6 +298,76 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
       </div>
     );
   };
+
+  // Guardar resultados actuales en una nueva capa
+  const handleGuardarResultadosEnCapa = () => {
+    if (!nuevaCapa.nombre) return;
+    const nuevaCapaCompleta: CapaGps = {
+      id: Date.now().toString(),
+      nombre: nuevaCapa.nombre!,
+      color: nuevaCapa.color || '#228be6',
+      activa: true,
+      lecturas: lecturas,
+      filtros: { ...filters }
+    };
+    setCapas(prev => [...prev, nuevaCapaCompleta]);
+    setNuevaCapa({ nombre: '', color: '#228be6' });
+    setMostrarFormularioCapa(false);
+    setEditandoCapa(null);
+  };
+
+  const handleEditarCapa = (id: string) => {
+    const capa = capas.find(c => c.id === id);
+    if (!capa) return;
+    setNuevaCapa({ nombre: capa.nombre, color: capa.color });
+    setEditandoCapa(id);
+    setMostrarFormularioCapa(true);
+  };
+
+  const handleActualizarCapa = () => {
+    if (!editandoCapa || !nuevaCapa.nombre) return;
+    setCapas(prev => prev.map(capa =>
+      capa.id === editandoCapa
+        ? { ...capa, nombre: nuevaCapa.nombre!, color: nuevaCapa.color || capa.color }
+        : capa
+    ));
+    setNuevaCapa({ nombre: '', color: '#228be6' });
+    setEditandoCapa(null);
+    setMostrarFormularioCapa(false);
+  };
+
+  const handleToggleCapa = (id: string) => {
+    setCapas(prev => prev.map(capa =>
+      capa.id === id ? { ...capa, activa: !capa.activa } : capa
+    ));
+  };
+
+  const handleEliminarCapa = (id: string) => {
+    setCapas(prev => prev.filter(capa => capa.id !== id));
+  };
+
+  // Función para generar nombre sugerido de capa según filtros
+  function generarNombreCapaPorFiltros(filters: any) {
+    const partes: string[] = [];
+    if (filters && filters.vehiculoObjetivo) {
+      partes.push(filters.vehiculoObjetivo);
+    } else if (filters.matricula) {
+      partes.push(filters.matricula);
+    }
+    if (filters.fechaInicio) {
+      partes.push(filters.fechaInicio.split('-').reverse().join('/'));
+    }
+    if (filters.duracionParada) {
+      partes.push(`Paradas ${filters.duracionParada}min`);
+    }
+    if (filters.velocidadMin) {
+      partes.push(`> ${filters.velocidadMin}km/h`);
+    }
+    if (filters.velocidadMax) {
+      partes.push(`< ${filters.velocidadMax}km/h`);
+    }
+    return partes.join(', ');
+  }
 
   if (fullscreenMap) {
     return (
@@ -362,13 +489,105 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                 min={0}
               />
               <Group grow>
-                <Button onClick={handleFiltrar}>Aplicar Filtros</Button>
-                <Button variant="light" color="red" onClick={handleLimpiar}>Limpiar</Button>
+                <Button
+                  variant="outline"
+                  color="#234be7"
+                  leftSection={<IconListDetails size={18} />}
+                  onClick={handleLimpiar}
+                  style={{ fontWeight: 500 }}
+                >
+                  Limpiar Filtros
+                </Button>
+                <Button
+                  variant="filled"
+                  color="#234be7"
+                  leftSection={<IconSearch size={18} />}
+                  onClick={handleFiltrar}
+                  style={{ fontWeight: 700 }}
+                >
+                  Aplicar Filtros
+                </Button>
               </Group>
+              {/* Botón y formulario para guardar capa, igual que MapPanel */}
+              {lecturas.length > 0 && (
+                mostrarFormularioCapa ? (
+                  <Collapse in={mostrarFormularioCapa}>
+                    <Stack gap="sm" mt="md">
+                      <TextInput
+                        label="Nombre de la capa"
+                        value={nuevaCapa.nombre}
+                        onChange={e => setNuevaCapa(prev => ({ ...prev, nombre: e.target.value }))}
+                        placeholder="Ej: Trayecto 1"
+                      />
+                      <ColorInput
+                        label="Color de la capa"
+                        value={nuevaCapa.color}
+                        onChange={color => setNuevaCapa(prev => ({ ...prev, color }))}
+                        format="hex"
+                      />
+                      <Group justify="flex-end">
+                        <Button variant="light" color="gray" onClick={() => { setMostrarFormularioCapa(false); setEditandoCapa(null); }}><IconX size={16} style={{ marginRight: 8 }} />Cancelar</Button>
+                        {editandoCapa ? (
+                          <Button onClick={handleActualizarCapa} disabled={!nuevaCapa.nombre}><IconCheck size={16} style={{ marginRight: 8 }} />Actualizar capa</Button>
+                        ) : (
+                          <Button onClick={() => {
+                            setNuevaCapa(prev => ({
+                              ...prev,
+                              nombre: generarNombreCapaPorFiltros({ ...filters, vehiculoObjetivo })
+                            }));
+                            setMostrarFormularioCapa(true);
+                          }}><IconCheck size={16} style={{ marginRight: 8 }} />Guardar en capa</Button>
+                        )}
+                      </Group>
+                    </Stack>
+                  </Collapse>
+                ) : (
+                  <Button fullWidth variant="light" color="blue" mt="md" onClick={() => {
+                    setNuevaCapa(prev => ({
+                      ...prev,
+                      nombre: generarNombreCapaPorFiltros({ ...filters, vehiculoObjetivo })
+                    }));
+                    setMostrarFormularioCapa(true);
+                  }}><IconPlus size={16} style={{ marginRight: 8 }} />Guardar resultados en capa</Button>
+                )
+              )}
             </Stack>
           </Paper>
 
-          {/* Panel de Controles del Mapa */}
+          {/* Gestión de Capas debe ir aquí, antes de Controles del Mapa */}
+          <Paper p="md" withBorder mt="md">
+            <Group justify="space-between" mb="md">
+              <Title order={3}>Gestión de Capas</Title>
+            </Group>
+            <Stack gap="xs">
+              {capas.map(capa => (
+                <Paper key={capa.id} p="xs" withBorder>
+                  <Group justify="space-between">
+                    <Group gap="xs">
+                      <Switch
+                        checked={capa.activa}
+                        onChange={() => handleToggleCapa(capa.id)}
+                        size="sm"
+                      />
+                      <Box style={{ width: 16, height: 16, backgroundColor: capa.color, borderRadius: '50%' }} />
+                      <Text size="sm">{capa.nombre}</Text>
+                      <Tooltip label={`Filtros: ${JSON.stringify(capa.filtros)}`}><ActionIcon variant="subtle" size="sm"><IconInfoCircle size={14} /></ActionIcon></Tooltip>
+                    </Group>
+                    <Group gap={4}>
+                      <ActionIcon variant="subtle" color="blue" onClick={() => handleEditarCapa(capa.id)}><IconEdit size={16} /></ActionIcon>
+                      <ActionIcon variant="subtle" color="red" onClick={() => handleEliminarCapa(capa.id)}><IconTrash size={16} /></ActionIcon>
+                    </Group>
+                  </Group>
+                  <Text size="xs" c="dimmed" mt={4}>{capa.lecturas.length} lecturas</Text>
+                </Paper>
+              ))}
+              {capas.length === 0 && (
+                <Text size="sm" c="dimmed" ta="center" py="md">No hay capas creadas. Aplica un filtro y guárdalo en una capa.</Text>
+              )}
+            </Stack>
+          </Paper>
+
+          {/* Controles del Mapa debe ir debajo */}
           <Paper p="md" withBorder>
             <Title order={3} mb="md">Controles del Mapa</Title>
             <Stack gap="md">
@@ -392,6 +611,15 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                 checked={mapControls.showPoints}
                 onChange={(e) => setMapControls(prev => ({ ...prev, showPoints: e.currentTarget.checked }))}
               />
+              <Divider my="xs" />
+              <Button 
+                variant="light" 
+                color="red" 
+                fullWidth
+                onClick={handleLimpiarMapa}
+              >
+                Limpiar Mapa
+              </Button>
             </Stack>
           </Paper>
         </Stack>
