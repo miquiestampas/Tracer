@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
@@ -245,6 +245,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [controlesColapsados, setControlesColapsados] = useState(false);
   const [localizacionesColapsadas, setLocalizacionesColapsadas] = useState(false);
   const [capasColapsadas, setCapasColapsadas] = useState(false);
+
+  const mapRef = useRef<any>(null);
 
   // Cargar localizaciones de interés al montar o cambiar casoId
   useEffect(() => {
@@ -566,6 +568,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   return (
     <Box>
       <Group justify="flex-end" mb="xs">
+        <Button variant="light" size="xs" onClick={() => mapRef.current?.refrescarMapa()} leftSection={<IconRefresh size={16} />}>Refrescar mapa</Button>
         <Button
           variant="light"
           color="blue"
@@ -576,124 +579,19 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         </Button>
       </Group>
       <Collapse in={ayudaAbierta}>
-        <Alert color="blue" title="¿Cómo funciona el Panel de Análisis GPS?" mb="md">
+        <Alert color="blue" title="¿Qué puedes hacer en el Panel de Análisis GPS?" mb="md">
           <Text size="sm">
-            <b>¿Qué es este panel?</b><br />
-            El Panel de Análisis GPS te permite visualizar y analizar datos de seguimiento GPS. Puedes filtrar por fechas, velocidades, duración de paradas y crear capas personalizadas para análisis avanzados.<br /><br />
-            <b>Filtros disponibles:</b><br />
-            - Filtros por fecha y hora para acotar el periodo de análisis<br />
-            - Filtros por velocidad para identificar comportamientos inusuales<br />
-            - Filtros por duración de paradas para detectar lugares de interés<br />
-            - Selección de zonas específicas en el mapa<br /><br />
-            <b>Visualización:</b><br />
-            - Mapa de calor para identificar zonas de mayor actividad<br />
-            - Puntos individuales con información detallada<br />
-            - Capas personalizables para comparar diferentes análisis<br />
-            - Navegación cronológica entre puntos usando los botones "Anterior" y "Siguiente"<br /><br />
-            <b>Consejos:</b><br />
-            - Usa los filtros de velocidad para identificar comportamientos inusuales<br />
-            - Las paradas prolongadas pueden indicar lugares de interés<br />
-            - El mapa de calor ayuda a identificar patrones de movimiento<br />
-            - Navega entre puntos cronológicamente para analizar el recorrido paso a paso<br />
+            El Panel de Análisis GPS te permite visualizar, filtrar y analizar recorridos de vehículos a partir de datos de localización. Puedes:<br /><br />
+            - Seleccionar un vehículo y filtrar sus trayectos por fecha, hora, velocidad o duración de paradas.<br />
+            - Visualizar los puntos GPS en el mapa, tanto individualmente como mediante mapas de calor para identificar zonas de mayor actividad.<br />
+            - Crear, editar y gestionar capas personalizadas para guardar y comparar diferentes análisis o recorridos.<br />
+            - Marcar y gestionar localizaciones de interés sobre el mapa, asignándoles iconos y colores personalizados.<br />
+            - Navegar cronológicamente entre los puntos GPS para analizar el recorrido paso a paso.<br />
+            - Optimizar la visualización eliminando puntos redundantes y resaltando los más relevantes.<br />
+            - Limpiar filtros y resultados para comenzar nuevos análisis de forma rápida.<br /><br />
+            Para una explicación detallada de cada función, consulta el manual de usuario disponible en la plataforma.
           </Text>
         </Alert>
-      </Collapse>
-
-      <Collapse in={ayudaAbierta}>
-        <Paper p="md" mt="md" withBorder>
-          <Stack gap="sm">
-            <Title order={4}>Ayuda - Navegación entre Puntos</Title>
-            <Text size="sm">
-              La navegación entre puntos te permite recorrer cronológicamente todos los puntos GPS de forma sencilla.
-            </Text>
-            <Text size="sm">
-              <b>Para navegar entre puntos:</b>
-            </Text>
-            <Text size="sm" ml="md">
-              1. Haz clic en cualquier punto del mapa para ver su información
-            </Text>
-            <Text size="sm" ml="md">
-              2. En el banner de información que aparece, usa los botones:
-            </Text>
-            <Text size="sm" ml="lg">
-              • "Anterior": Muestra el punto GPS anterior en el tiempo
-            </Text>
-            <Text size="sm" ml="lg">
-              • "Siguiente": Muestra el punto GPS siguiente en el tiempo
-            </Text>
-            <Text size="sm">
-              <b>Características:</b>
-            </Text>
-            <Text size="sm" ml="md">
-              • La navegación es circular (al llegar al último punto, vuelve al primero)
-            </Text>
-            <Text size="sm" ml="md">
-              • El mapa se centra automáticamente en el punto seleccionado
-            </Text>
-            <Text size="sm" ml="md">
-              • Se mantiene el nivel de zoom actual durante la navegación
-            </Text>
-            <Text size="sm" ml="md">
-              • Los botones solo aparecen cuando se visualiza un punto GPS (no una localización)
-            </Text>
-          </Stack>
-        </Paper>
-      </Collapse>
-
-      <Collapse in={ayudaAbierta}>
-        <Paper p="md" mt="md" withBorder>
-          <Stack gap="sm">
-            <Title order={4}>Ayuda - Localizaciones de Interés</Title>
-            <Text size="sm">
-              Las localizaciones de interés te permiten marcar puntos específicos en el mapa para su posterior análisis.
-            </Text>
-            <Text size="sm">
-              <b>Para crear una localización:</b>
-            </Text>
-            <Text size="sm" ml="md">
-              1. Haz clic en cualquier punto del mapa para ver su información
-            </Text>
-            <Text size="sm" ml="md">
-              2. En el popup que aparece, haz clic en "Guardar Localización"
-            </Text>
-            <Text size="sm" ml="md">
-              3. Completa los datos en el modal:
-            </Text>
-            <Text size="sm" ml="lg">
-              • Título: Nombre descriptivo de la localización
-            </Text>
-            <Text size="sm" ml="lg">
-              • Descripción: Detalles adicionales sobre el punto
-            </Text>
-            <Text size="sm" ml="lg">
-              • Icono: Selecciona un icono que represente la localización
-            </Text>
-            <Text size="sm" ml="lg">
-              • Color: Elige un color distintivo para el icono
-            </Text>
-            <Text size="sm">
-              <b>Para editar o eliminar una localización:</b>
-            </Text>
-            <Text size="sm" ml="md">
-              1. Haz clic en la localización en el mapa
-            </Text>
-            <Text size="sm" ml="md">
-              2. En el modal que aparece, modifica los datos o haz clic en "Eliminar"
-            </Text>
-            <Text size="sm">
-              <b>Notas:</b>
-            </Text>
-            <Text size="sm" ml="md">
-              • Las localizaciones se guardan automáticamente en la base de datos
-            </Text>
-            <Text size="sm" ml="md">
-              • Puedes mostrar/ocultar las localizaciones usando el toggle en el panel
-            </Text>
-            <Text size="sm" ml="md">
-              • Las localizaciones se pueden filtrar por fecha y hora
-            </Text>
-          </Stack>
-        </Paper>
       </Collapse>
 
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr 420px', gap: '1rem', height: 'calc(100vh - 200px)' }}>
@@ -887,16 +785,19 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         </Stack>
 
         {/* Mapa */}
-        <Paper withBorder style={{ height: 'calc(100vh - 263px)', minHeight: 400, width: '100%' }}>
-          <GpsMapStandalone
-            lecturas={lecturas}
-            capas={capas}
-            localizaciones={localizaciones}
-            mapControls={mapControls}
-            mostrarLocalizaciones={mostrarLocalizaciones}
-            onGuardarLocalizacion={handleAbrirModalLocalizacion}
-          />
-        </Paper>
+        <div style={{ width: '100%' }}>
+          <Paper withBorder style={{ height: 'calc(100vh - 263px)', minHeight: 400, width: '100%' }}>
+            <GpsMapStandalone
+              ref={mapRef}
+              lecturas={lecturas}
+              capas={capas}
+              localizaciones={localizaciones}
+              mapControls={mapControls}
+              mostrarLocalizaciones={mostrarLocalizaciones}
+              onGuardarLocalizacion={handleAbrirModalLocalizacion}
+            />
+          </Paper>
+        </div>
 
         {/* Panel derecho con Localizaciones y Capas */}
         <Stack>
