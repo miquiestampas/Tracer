@@ -8,8 +8,9 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
+import html2canvas from 'html2canvas';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -939,6 +940,72 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       </style>
       {/* Banner deslizante */}
       <InfoBanner info={infoBanner} onClose={() => setInfoBanner(null)} />
+      {/* Botones de cámara y pantalla completa arriba a la derecha */}
+      <div style={{
+        position: 'absolute',
+        top: 12,
+        right: 16,
+        zIndex: 1000,
+        display: 'flex',
+        gap: 8
+      }}>
+        <ActionIcon
+          variant="default"
+          size={32}
+          style={{
+            width: 32,
+            height: 32,
+            background: 'white',
+            border: '2px solid #234be7',
+            color: '#234be7',
+            boxShadow: 'none',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0
+          }}
+          onClick={async () => {
+            const mapContainer = document.querySelector('.leaflet-container')?.parentElement;
+            if (!mapContainer) return;
+            const cameraBtn = document.getElementById('camera-capture-btn-lpr');
+            if (cameraBtn) cameraBtn.style.visibility = 'hidden';
+            await new Promise(r => setTimeout(r, 50));
+            html2canvas(mapContainer, { useCORS: true, backgroundColor: null }).then(canvas => {
+              if (cameraBtn) cameraBtn.style.visibility = 'visible';
+              const link = document.createElement('a');
+              link.download = `captura-mapa-lpr.png`;
+              link.href = canvas.toDataURL('image/png');
+              link.click();
+            });
+          }}
+          id="camera-capture-btn-lpr"
+          aria-label="Exportar captura de pantalla"
+        >
+          <IconCamera size={16} color="#234be7" />
+        </ActionIcon>
+        <ActionIcon
+          variant="default"
+          size={32}
+          style={{
+            width: 32,
+            height: 32,
+            background: 'white',
+            border: '2px solid #234be7',
+            color: '#234be7',
+            boxShadow: 'none',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0
+          }}
+          onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
+          aria-label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+        >
+          {isFullscreen ? <IconMinimize size={16} color="#234be7" /> : <IconMaximize size={16} color="#234be7" />}
+        </ActionIcon>
+      </div>
       <MapContainer 
         key={`map-${mapKey}-${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}-${mapControls.visualizationType}`}
         center={centroInicial} 
@@ -963,23 +1030,6 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
         {capas.map(renderCapaMarkers)}
         {renderCoincidencias()}
       </MapContainer>
-      <Tooltip label={isFullscreen ? "Cerrar pantalla completa (Esc)" : "Pantalla completa"}>
-        <ActionIcon
-          variant={isFullscreen ? "filled" : "light"}
-          color={isFullscreen ? "red" : "blue"}
-          size="xl"
-          style={{
-            position: 'absolute',
-            top: '1rem',
-            right: '1rem',
-            zIndex: 1000,
-            boxShadow: isFullscreen ? '0 0 10px rgba(0,0,0,0.2)' : 'none',
-          }}
-          onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
-        >
-          {isFullscreen ? <IconMinimize size={24} /> : <IconMaximize size={24} />}
-        </ActionIcon>
-      </Tooltip>
     </div>
   );
 

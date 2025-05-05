@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh, IconPlayerPlay, IconPlayerPause, IconPlayerStop, IconPlayerTrackNext, IconPlayerTrackPrev, IconPlayerSkipForward, IconPlayerSkipBack } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh, IconPlayerPlay, IconPlayerPause, IconPlayerStop, IconPlayerTrackNext, IconPlayerTrackPrev, IconPlayerSkipForward, IconPlayerSkipBack, IconCamera } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
@@ -10,6 +10,7 @@ import { useHotkeys } from '@mantine/hooks';
 import { getLecturasGps, getParadasGps, getCoincidenciasGps, getGpsCapas, createGpsCapa, updateGpsCapa, deleteGpsCapa, getLocalizacionesInteres, createLocalizacionInteres, updateLocalizacionInteres, deleteLocalizacionInteres } from '../../services/gpsApi';
 import ReactDOMServer from 'react-dom/server';
 import GpsMapStandalone from './GpsMapStandalone';
+import html2canvas from 'html2canvas';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -552,8 +553,10 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     }
   };
 
-  // Manejar la tecla Escape
-  useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
+  // Manejar la tecla Escape para salir de pantalla completa
+  useHotkeys([
+    ['Escape', () => fullscreenMap && setFullscreenMap(false)]
+  ]);
 
   // Función para cargar lecturas GPS
   const fetchLecturasGps = useCallback(async () => {
@@ -855,6 +858,60 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     centerMapOnCurrentPoint();
   }, [currentIndex, centerMapOnCurrentPoint]);
 
+  // --- Renderizado principal ---
+  if (fullscreenMap) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'white',
+          zIndex: 9999,
+        }}
+      >
+        <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 1000 }}>
+          <ActionIcon
+            variant="default"
+            size={32}
+            style={{
+              width: 32,
+              height: 32,
+              background: 'white',
+              border: '2px solid #234be7',
+              color: '#234be7',
+              boxShadow: 'none',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0
+            }}
+            onClick={() => setFullscreenMap(false)}
+            aria-label="Salir de pantalla completa"
+          >
+            <IconMinimize size={16} color="#234be7" />
+          </ActionIcon>
+        </div>
+        <Paper withBorder style={{ height: '100vh', minHeight: 400, width: '100vw' }}>
+          <GpsMapStandalone
+            ref={mapRef}
+            lecturas={lecturas}
+            capas={capas}
+            localizaciones={localizaciones}
+            mapControls={mapControls}
+            mostrarLocalizaciones={mostrarLocalizaciones}
+            onGuardarLocalizacion={handleAbrirModalLocalizacion}
+            playbackLayer={selectedLayerForPlayback !== null ? capas.find(c => c.id === selectedLayerForPlayback) || null : null}
+            currentPlaybackIndex={currentIndex}
+          />
+        </Paper>
+      </div>
+    );
+  }
+
   return (
     <Box>
       <Group justify="flex-end" mb="xs">
@@ -1075,7 +1132,88 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         </Stack>
 
         {/* Mapa */}
-        <div style={{ width: '100%' }}>
+        <div
+          style={fullscreenMap ? {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 1000,
+            background: 'white',
+            boxShadow: '0 0 0 9999px rgba(0,0,0,0.3)',
+            transition: 'all 0.2s',
+          } : {
+            width: '100%',
+            position: 'relative'
+          }}
+        >
+          {/* Botones de cámara y pantalla completa alineados arriba a la derecha del mapa, pequeños */}
+          <div style={{
+            position: 'absolute',
+            top: 12,
+            right: 16,
+            zIndex: 20,
+            display: 'flex',
+            gap: 8
+          }}>
+            <ActionIcon
+              variant="default"
+              size={32}
+              style={{
+                width: 32,
+                height: 32,
+                background: 'white',
+                border: '2px solid #234be7',
+                color: '#234be7',
+                boxShadow: 'none',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0
+              }}
+              onClick={async () => {
+                const mapContainer = document.querySelector('.leaflet-container')?.parentElement;
+                if (!mapContainer) return;
+                const cameraBtn = document.getElementById('camera-capture-btn');
+                if (cameraBtn) cameraBtn.style.visibility = 'hidden';
+                await new Promise(r => setTimeout(r, 50));
+                html2canvas(mapContainer, { useCORS: true, backgroundColor: null }).then(canvas => {
+                  if (cameraBtn) cameraBtn.style.visibility = 'visible';
+                  const link = document.createElement('a');
+                  link.download = `captura-mapa-gps.png`;
+                  link.href = canvas.toDataURL('image/png');
+                  link.click();
+                });
+              }}
+              id="camera-capture-btn"
+              aria-label="Exportar captura de pantalla"
+            >
+              <IconCamera size={16} color="#234be7" />
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              size={32}
+              style={{
+                width: 32,
+                height: 32,
+                background: 'white',
+                border: '2px solid #234be7',
+                color: '#234be7',
+                boxShadow: 'none',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0
+              }}
+              onClick={() => setFullscreenMap(f => !f)}
+              aria-label="Pantalla completa del mapa"
+            >
+              <IconMaximize size={16} color="#234be7" />
+            </ActionIcon>
+          </div>
           <Paper withBorder style={{ height: 'calc(100vh - 263px)', minHeight: 400, width: '100%' }}>
             <GpsMapStandalone
               ref={mapRef}
