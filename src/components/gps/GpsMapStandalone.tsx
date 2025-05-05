@@ -311,9 +311,22 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
     return decimatePoints(lecturas);
   }, [lecturas, mapControls.optimizePoints]);
 
+  // Obtener todas las lecturas de las capas activas
+  const activeLayerLecturas = useMemo(() => {
+    if (!Array.isArray(capas)) return [];
+    return capas
+      .filter(capa => capa.activa)
+      .flatMap(capa => capa.lecturas);
+  }, [capas]);
+
+  // Combinar lecturas activas con las lecturas actuales
+  const allLecturas = useMemo(() => {
+    return [...optimizedLecturas, ...activeLayerLecturas];
+  }, [optimizedLecturas, activeLayerLecturas]);
+
   // Solo calcula el centro y zoom inicial una vez
-  const primeraLectura = Array.isArray(lecturas) && lecturas.length > 0
-    ? lecturas.find(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
+  const primeraLectura = Array.isArray(allLecturas) && allLecturas.length > 0
+    ? allLecturas.find(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
     : null;
   const initialCenter = primeraLectura
     ? [primeraLectura.Coordenada_Y, primeraLectura.Coordenada_X]
@@ -333,10 +346,10 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
 
   // --- Cálculo de puntos para el heatmap ---
   let heatmapPoints: Array<[number, number, number]> = [];
-  if (mapControls.showHeatmap && Array.isArray(lecturas) && lecturas.length > 0) {
+  if (mapControls.showHeatmap && Array.isArray(allLecturas) && allLecturas.length > 0) {
     // Agrupa por coordenada redondeada
     const agrupadas: Record<string, { lat: number, lng: number, tiempo: number }> = {};
-    lecturas.forEach(l => {
+    allLecturas.forEach(l => {
       const lat = Number(l.Coordenada_Y?.toFixed(5));
       const lng = Number(l.Coordenada_X?.toFixed(5));
       if (isNaN(lat) || isNaN(lng)) return;
@@ -368,7 +381,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
   const handleNavigate = (direction: 'prev' | 'next') => {
     if (!infoBanner || infoBanner.isLocalizacion) return;
 
-    const currentIndex = optimizedLecturas.findIndex(
+    const currentIndex = allLecturas.findIndex(
       l => l.ID_Lectura === infoBanner.info.ID_Lectura
     );
 
@@ -376,12 +389,12 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
 
     let newIndex: number;
     if (direction === 'prev') {
-      newIndex = currentIndex > 0 ? currentIndex - 1 : optimizedLecturas.length - 1;
+      newIndex = currentIndex > 0 ? currentIndex - 1 : allLecturas.length - 1;
     } else {
-      newIndex = currentIndex < optimizedLecturas.length - 1 ? currentIndex + 1 : 0;
+      newIndex = currentIndex < allLecturas.length - 1 ? currentIndex + 1 : 0;
     }
 
-    const newPoint = optimizedLecturas[newIndex];
+    const newPoint = allLecturas[newIndex];
     setInfoBanner({ 
       info: { 
         ...newPoint, 
@@ -417,7 +430,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
           <HeatmapLayer points={validHeatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
         )}
         {/* Renderizar puntos individuales */}
-        {mapControls.showPoints && optimizedLecturas.map((lectura, idx) => {
+        {mapControls.showPoints && allLecturas.map((lectura, idx) => {
           const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
           const color = capa ? capa.color : '#228be6';
           const isSelected = infoBanner && !infoBanner.isLocalizacion && infoBanner.info?.ID_Lectura === lectura.ID_Lectura;
