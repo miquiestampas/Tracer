@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Imports necesarios, incluyendo Select
-import { Tabs, Text, Box, Table, Button, Modal, TextInput, Textarea, Group, Loader, Alert, NumberInput, ActionIcon, Tooltip, Select, Card, SimpleGrid, SegmentedControl, Input, Title, Stack, ThemeIcon } from '@mantine/core';
+import { Tabs, Text, Box, Table, Button, Modal, TextInput, Textarea, Group, Loader, Alert, NumberInput, ActionIcon, Tooltip, Select, Card, SimpleGrid, SegmentedControl, Input, Title, Stack, ThemeIcon, Divider } from '@mantine/core';
 import { IconList, IconPlus, IconAlertCircle, IconEye, IconTrash, IconLayoutGrid, IconSortAscending, IconSortDescending, IconSearch, IconPencil, IconArrowsUpDown } from '@tabler/icons-react'; // Icono Kanban eliminado
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
@@ -22,7 +22,7 @@ const CASE_STATUSES: EstadoCaso[] = [
 ];
 
 // --- Tipos para Ordenación ---
-type SortField = 'Fecha_de_Creacion' | 'Nombre_del_Caso' | 'Año';
+type SortField = 'Fecha_de_Creacion' | 'Nombre_del_Caso' | 'Año' | 'Ultima_Visita';
 type SortDirection = 'asc' | 'desc';
 
 // --- NUEVO: Función para obtener color según estado ---
@@ -183,10 +183,15 @@ function CasosPage() {
       );
     }
 
-    // Ordenación
-    const sorted = _.orderBy(filtered, [sortField], [sortDirection]);
+    // Separar casos cerrados y activos
+    const activeCases = filtered.filter(caso => caso.Estado !== 'Cerrado');
+    const closedCases = filtered.filter(caso => caso.Estado === 'Cerrado');
 
-    return sorted;
+    // Ordenación
+    const sortedActive = _.orderBy(activeCases, [sortField], [sortDirection]);
+    const sortedClosed = _.orderBy(closedCases, [sortField], [sortDirection]);
+
+    return { active: sortedActive, closed: sortedClosed };
   }, [casos, filterText, sortField, sortDirection]);
 
   // --- NUEVO: Handlers unificados para Modal --- 
@@ -269,33 +274,31 @@ function CasosPage() {
               leftSection={<IconSearch size={14} />}
               value={filterText}
               onChange={(event) => setFilterText(event.currentTarget.value)}
-              style={{ flexGrow: 1, maxWidth: '400px' }} // Ajusta el ancho si es necesario
+              style={{ flexGrow: 1, maxWidth: '400px' }}
           />
           <Group>
-               {/* --- Reemplazar ActionIcon por Button con texto del campo actual --- */}
-               {(() => { // IIFE para lógica de texto y ciclo
+               {(() => {
                    let currentFieldLabel = '';
                    if (sortField === 'Fecha_de_Creacion') currentFieldLabel = 'Fecha Creación';
                    else if (sortField === 'Nombre_del_Caso') currentFieldLabel = 'Nombre';
+                   else if (sortField === 'Ultima_Visita') currentFieldLabel = 'Última Visita';
                    else currentFieldLabel = 'Año';
                    
                    return (
                         <Button 
                             variant="default"
-                            size="xs" // Tamaño similar a los ActionIcon
-                            // Modificar onClick para ciclar entre 3 campos
+                            size="xs"
                             onClick={() => setSortField(prev => {
                                 if (prev === 'Fecha_de_Creacion') return 'Nombre_del_Caso';
                                 if (prev === 'Nombre_del_Caso') return 'Año';
-                                return 'Fecha_de_Creacion'; // Volver a Fecha desde Año
+                                if (prev === 'Año') return 'Ultima_Visita';
+                                return 'Fecha_de_Creacion';
                             })}
                         >
                              Ordenar por: {currentFieldLabel}
                          </Button>
                    );
                })()}
-                {/* --- Fin Reemplazo --- */}
-                {/* Botón Ordenar Dirección (sin cambios) */}
                 <Tooltip label={`Orden ${sortDirection === 'asc' ? 'Descendente' : 'Ascendente'}`}>
                     <ActionIcon variant="default" size="xs" onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}>
                         {sortDirection === 'asc' ? <IconSortAscending size={16} /> : <IconSortDescending size={16} />}
@@ -311,80 +314,131 @@ function CasosPage() {
       {error && <Alert title="Error" color="red" icon={<IconAlertCircle />}>{error}</Alert>}
 
       {!loading && !error && (
-          <SimpleGrid
-              cols={{ base: 1, sm: 2, md: 3, lg: 4 }} // Ajusta las columnas según necesites
-              spacing="lg"
-          >
-              {filteredAndSortedCasos.map((caso) => (
-                  <Card 
-                      key={caso.ID_Caso} 
-                      shadow="sm" 
-                      padding="lg" 
-                      radius="md" 
-                      withBorder 
-                      style={{
-                          cursor: 'pointer',
-                          borderLeft: `5px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)` // Borde izquierdo con color de estado
-                      }}
-                  >
-                       {/* Envolver contenido principal con Link */}
-                       <Link to={`/casos/detalle/${caso.ID_Caso}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                            <Group justify="space-between" mt="md" mb="xs">
-                                <Text fw={500} size="lg" truncate>{caso.Nombre_del_Caso}</Text>
-                                {/* Quitar o mantener ThemeIcon opcionalmente, por ahora lo dejamos comentado 
-                                <Tooltip label={`Estado: ${caso.Estado || 'No definido'}`}>
-                                    <ThemeIcon color={getStatusColor(caso.Estado)} size="xs" radius="xl">
-                                    </ThemeIcon>
-                                </Tooltip> */}
-                            </Group>
+          <>
+              {/* Casos Activos */}
+              <SimpleGrid
+                  cols={{ base: 1, sm: 2, md: 3, lg: 4 }}
+                  spacing="lg"
+                  mb="xl"
+              >
+                  {filteredAndSortedCasos.active?.map((caso) => (
+                      <Card 
+                          key={caso.ID_Caso} 
+                          shadow="sm" 
+                          padding="lg" 
+                          radius="md" 
+                          withBorder 
+                          style={{
+                              cursor: 'pointer',
+                              borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`
+                          }}
+                      >
+                          <Link to={`/casos/detalle/${caso.ID_Caso}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+                              <Group justify="space-between" mt="md" mb="xs">
+                                  <Text fw={500} size="lg" truncate>{caso.Nombre_del_Caso}</Text>
+                              </Group>
 
-                            <Text size="sm" c="dimmed" mb="sm">
-                                {/* Mostrar siempre Año y NIV */}
-                                Año: {caso.Año} | NIV: {caso.NIV || '-'}
-                            </Text>
+                              <Text size="sm" c="dimmed" mb="sm">
+                                  Año: {caso.Año} | NIV: {caso.NIV || '-'}
+                              </Text>
 
-                            <Text size="sm" c="dimmed" lineClamp={3}>
-                                {caso.Descripcion || 'Sin descripción'}
-                            </Text>
-                        </Link>
+                              <Text size="sm" c="dimmed" lineClamp={3}>
+                                  {caso.Descripcion || 'Sin descripción'}
+                              </Text>
+                          </Link>
 
-                       {/* Select para cambiar estado */}
-                      <Select
-                          mt="md"
-                          size="xs"
-                          data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
-                          value={caso.Estado}
-                          onChange={(value) => handleEstadoChange(caso.ID_Caso, value)}
-                          disabled={updatingEstadoCasoId === caso.ID_Caso}
-                          placeholder="Cambiar estado"
-                          comboboxProps={{ shadow: 'md', transitionProps: { transition: 'pop', duration: 200 } }}
-                       />
+                          <Select
+                              mt="md"
+                              size="xs"
+                              data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
+                              value={caso.Estado}
+                              onChange={(value) => handleEstadoChange(caso.ID_Caso, value)}
+                              disabled={updatingEstadoCasoId === caso.ID_Caso}
+                              placeholder="Cambiar estado"
+                              comboboxProps={{ shadow: 'md', transitionProps: { transition: 'pop', duration: 200 } }}
+                          />
 
-                      {/* Botones de acción */}
-                      <Group justify="flex-end" mt="md">
-                          {/* ELIMINAR Botón Ver Detalles */}
-                          {/* <Tooltip label="Ver Detalles">
-                              <ActionIcon variant="light" color="blue" onClick={() => navigate(`/casos/${caso.ID_Caso}`)}>
-                                  <IconEye size={16} />
-                              </ActionIcon>
-                          </Tooltip> */}
-                          <Tooltip label="Editar Caso">
-                               <ActionIcon variant="light" color="gray" onClick={() => openEditModal(caso)}>
-                                   <IconPencil size={16} />
-                               </ActionIcon>
-                          </Tooltip>
-                          <Tooltip label="Eliminar Caso">
-                              <ActionIcon variant="light" color="red" onClick={() => handleDeleteCaso(caso.ID_Caso)} loading={deletingCasoId === caso.ID_Caso}>
-                                  <IconTrash size={16} />
-                              </ActionIcon>
-                          </Tooltip>
-                      </Group>
-                  </Card>
-              ))}
-          </SimpleGrid>
+                          <Group justify="flex-end" mt="md">
+                              <Tooltip label="Editar Caso">
+                                  <ActionIcon variant="light" color="gray" onClick={() => openEditModal(caso)}>
+                                      <IconPencil size={16} />
+                                  </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label="Eliminar Caso">
+                                  <ActionIcon variant="light" color="red" onClick={() => handleDeleteCaso(caso.ID_Caso)} loading={deletingCasoId === caso.ID_Caso}>
+                                      <IconTrash size={16} />
+                                  </ActionIcon>
+                              </Tooltip>
+                          </Group>
+                      </Card>
+                  ))}
+              </SimpleGrid>
+
+              {/* Separador y Casos Cerrados */}
+              {filteredAndSortedCasos.closed?.length > 0 && (
+                  <>
+                      <Divider 
+                          label="Casos Cerrados" 
+                          labelPosition="center" 
+                          my="xl"
+                          styles={{
+                              label: {
+                                  fontSize: 'var(--mantine-font-size-sm)',
+                                  fontWeight: 500
+                              }
+                          }}
+                      />
+                      <SimpleGrid
+                          cols={{ base: 1, sm: 2, md: 4, lg: 6 }}
+                          spacing="md"
+                      >
+                          {filteredAndSortedCasos.closed?.map((caso) => (
+                              <Card 
+                                  key={caso.ID_Caso} 
+                                  shadow="sm" 
+                                  padding="md" 
+                                  radius="md" 
+                                  withBorder 
+                                  style={{
+                                      cursor: 'pointer',
+                                      borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`
+                                  }}
+                              >
+                                  <Link to={`/casos/detalle/${caso.ID_Caso}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+                                      <Group justify="space-between" mt="md" mb="xs">
+                                          <Text fw={500} size="sm" truncate>{caso.Nombre_del_Caso}</Text>
+                                      </Group>
+
+                                      <Text size="xs" c="dimmed" mb="xs">
+                                          Año: {caso.Año} | NIV: {caso.NIV || '-'}
+                                      </Text>
+
+                                      <Text size="xs" c="dimmed" lineClamp={2}>
+                                          {caso.Descripcion || 'Sin descripción'}
+                                      </Text>
+                                  </Link>
+
+                                  <Group justify="flex-end" mt="xs">
+                                      <Tooltip label="Editar Caso">
+                                          <ActionIcon variant="light" color="gray" size="xs" onClick={() => openEditModal(caso)}>
+                                              <IconPencil size={14} />
+                                          </ActionIcon>
+                                      </Tooltip>
+                                      <Tooltip label="Eliminar Caso">
+                                          <ActionIcon variant="light" color="red" size="xs" onClick={() => handleDeleteCaso(caso.ID_Caso)} loading={deletingCasoId === caso.ID_Caso}>
+                                              <IconTrash size={14} />
+                                          </ActionIcon>
+                                      </Tooltip>
+                                  </Group>
+                              </Card>
+                          ))}
+                      </SimpleGrid>
+                  </>
+              )}
+          </>
       )}
 
-      {/* --- Modal Crear/Editar Caso --- */}
+      {/* Modal Crear/Editar Caso */}
       <Modal
         opened={createModalOpened}
         onClose={closeModal}
