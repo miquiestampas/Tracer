@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh, IconPlayerPlay, IconPlayerPause, IconPlayerStop, IconPlayerTrackNext, IconPlayerTrackPrev, IconPlayerSkipForward, IconPlayerSkipBack } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
@@ -190,6 +190,233 @@ const CapaItem = React.memo(({ capa, handleToggleCapa, handleEditarCapa, handleE
   );
 });
 
+// Nuevo componente para el reproductor de recorrido
+const RoutePlayer = React.memo(({ capas, onPlay, onPause, onStop, onSpeedChange, isPlaying, currentSpeed, currentIndex, onIndexChange, selectedLayerId, onLayerChange }: {
+  capas: CapaGps[];
+  onPlay: () => void;
+  onPause: () => void;
+  onStop: () => void;
+  onSpeedChange: (speed: number) => void;
+  isPlaying: boolean;
+  currentSpeed: number;
+  currentIndex: number;
+  onIndexChange: (index: number) => void;
+  selectedLayerId: number | null;
+  onLayerChange: (layerId: number | null) => void;
+}) => {
+  const selectedLayer = capas.find(c => c.id === selectedLayerId);
+  const totalPoints = selectedLayer?.lecturas.length || 0;
+  const currentPoint = selectedLayer?.lecturas[currentIndex];
+  const progress = totalPoints > 0 ? ((currentIndex + 1) / totalPoints) * 100 : 0;
+
+  return (
+    <Paper p="md" withBorder>
+      <Stack gap="md">
+        <Group justify="space-between" align="center">
+          <Title order={2}>Reproductor de Recorrido</Title>
+        </Group>
+        <Select
+          placeholder="Selecciona una capa"
+          value={selectedLayerId?.toString() || null}
+          onChange={(value) => {
+            onLayerChange(value ? Number(value) : null);
+            onIndexChange(0);
+            onStop();
+          }}
+          data={capas.map(capa => ({
+            value: capa.id.toString(),
+            label: capa.nombre
+          }))}
+          clearable
+          style={{ width: '100%' }}
+        />
+
+        {/* Barra de progreso */}
+        <div 
+          style={{ 
+            position: 'relative', 
+            height: 8, 
+            backgroundColor: 'var(--mantine-color-gray-2)', 
+            borderRadius: 4,
+            cursor: selectedLayer ? 'pointer' : 'default',
+            userSelect: 'none'
+          }}
+          onClick={(e) => {
+            if (!selectedLayer) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const percentage = (x / rect.width) * 100;
+            const newIndex = Math.min(
+              Math.max(0, Math.floor((percentage / 100) * totalPoints)),
+              totalPoints - 1
+            );
+            onIndexChange(newIndex);
+          }}
+          onMouseDown={(e) => {
+            if (!selectedLayer) return;
+            e.preventDefault();
+            
+            const updatePosition = (clientX: number) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = clientX - rect.left;
+              const percentage = (x / rect.width) * 100;
+              const newIndex = Math.min(
+                Math.max(0, Math.floor((percentage / 100) * totalPoints)),
+                totalPoints - 1
+              );
+              onIndexChange(newIndex);
+            };
+
+            // Actualizar inmediatamente en el primer clic
+            updatePosition(e.clientX);
+
+            const handleMouseMove = (moveEvent: MouseEvent) => {
+              requestAnimationFrame(() => {
+                updatePosition(moveEvent.clientX);
+              });
+            };
+
+            const handleMouseUp = () => {
+              document.removeEventListener('mousemove', handleMouseMove);
+              document.removeEventListener('mouseup', handleMouseUp);
+            };
+
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              height: '100%',
+              width: `${progress}%`,
+              backgroundColor: selectedLayer?.color || 'var(--mantine-color-blue-6)',
+              borderRadius: 4
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              left: `${progress}%`,
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 16,
+              height: 16,
+              backgroundColor: 'white',
+              border: `2px solid ${selectedLayer?.color || 'var(--mantine-color-blue-6)'}`,
+              borderRadius: '50%',
+              boxShadow: '0 0 4px rgba(0,0,0,0.2)',
+              pointerEvents: 'none'
+            }}
+          />
+        </div>
+
+        {/* Información del punto actual */}
+        {currentPoint && (
+          <Group gap="xs">
+            <IconClock size={16} style={{ color: 'var(--mantine-color-gray-6)' }} />
+            <Text size="sm">{dayjs(currentPoint.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+            <IconGauge size={16} style={{ color: 'var(--mantine-color-gray-6)' }} />
+            <Text size="sm">{currentPoint.Velocidad?.toFixed(1) || '0'} km/h</Text>
+          </Group>
+        )}
+
+        {/* Controles de reproducción */}
+        <Group justify="center" gap="xs">
+          <ActionIcon
+            variant="filled"
+            color="#234be7"
+            size="lg"
+            onClick={() => onIndexChange(Math.max(0, currentIndex - 1))}
+            disabled={!selectedLayer || currentIndex === 0}
+            style={{ fontWeight: 700 }}
+          >
+            <IconPlayerSkipBack size={20} />
+          </ActionIcon>
+          <ActionIcon
+            variant="outline"
+            color="#234be7"
+            size="lg"
+            onClick={() => {
+              const speeds = [0.25, 0.5, 1, 2, 4, 8, 10, 20];
+              const currentIndex = speeds.indexOf(currentSpeed);
+              if (currentIndex > 0) {
+                onSpeedChange(speeds[currentIndex - 1]);
+              }
+            }}
+            disabled={!selectedLayer || currentSpeed <= 0.25}
+            style={{ fontWeight: 700 }}
+          >
+            <IconPlayerTrackPrev size={20} />
+          </ActionIcon>
+          {isPlaying ? (
+            <ActionIcon
+              variant="filled"
+              color="#234be7"
+              size="xl"
+              onClick={onPause}
+              disabled={!selectedLayer}
+              style={{ fontWeight: 700 }}
+            >
+              <IconPlayerPause size={24} />
+            </ActionIcon>
+          ) : (
+            <ActionIcon
+              variant="filled"
+              color="#234be7"
+              size="xl"
+              onClick={onPlay}
+              disabled={!selectedLayer}
+              style={{ fontWeight: 700 }}
+            >
+              <IconPlayerPlay size={24} />
+            </ActionIcon>
+          )}
+          <ActionIcon
+            variant="outline"
+            color="#234be7"
+            size="lg"
+            onClick={() => {
+              const speeds = [0.25, 0.5, 1, 2, 4, 8, 10, 20];
+              const currentIndex = speeds.indexOf(currentSpeed);
+              if (currentIndex < speeds.length - 1) {
+                onSpeedChange(speeds[currentIndex + 1]);
+              }
+            }}
+            disabled={!selectedLayer || currentSpeed >= 20}
+            style={{ fontWeight: 700 }}
+          >
+            <IconPlayerTrackNext size={20} />
+          </ActionIcon>
+          <ActionIcon
+            variant="filled"
+            color="#234be7"
+            size="lg"
+            onClick={() => onIndexChange(Math.min(totalPoints - 1, currentIndex + 1))}
+            disabled={!selectedLayer || currentIndex === totalPoints - 1}
+            style={{ fontWeight: 700 }}
+          >
+            <IconPlayerSkipForward size={20} />
+          </ActionIcon>
+        </Group>
+
+        {/* Control de velocidad */}
+        <Group justify="center" gap="xs">
+          <Text size="sm">Velocidad: {currentSpeed}x</Text>
+        </Group>
+
+        {selectedLayer && (
+          <Text size="sm" c="dimmed" ta="center">
+            {currentIndex + 1} / {totalPoints} puntos
+          </Text>
+        )}
+      </Stack>
+    </Paper>
+  );
+});
+
 const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   // Estados principales
   const [lecturas, setLecturas] = useState<GpsLectura[]>([]);
@@ -247,6 +474,12 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [capasColapsadas, setCapasColapsadas] = useState(false);
 
   const mapRef = useRef<any>(null);
+
+  // Estados para el reproductor de recorrido
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState(4);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedLayerForPlayback, setSelectedLayerForPlayback] = useState<number | null>(null);
 
   // Cargar localizaciones de interés al montar o cambiar casoId
   useEffect(() => {
@@ -565,6 +798,63 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     return partes.join(', ');
   }
 
+  // Efecto para manejar la reproducción
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    let lastUpdate = Date.now();
+    let accumulatedTime = 0;
+
+    if (isPlaying && selectedLayerForPlayback !== null) {
+      const selectedLayer = capas.find(c => c.id === selectedLayerForPlayback);
+      if (!selectedLayer) return;
+
+      const interval = 16; // 60fps para suavizar la animación
+      intervalId = setInterval(() => {
+        const now = Date.now();
+        const deltaTime = now - lastUpdate;
+        lastUpdate = now;
+        
+        accumulatedTime += deltaTime;
+        const pointInterval = 1000 / currentSpeed; // Intervalo en ms por punto
+
+        if (accumulatedTime >= pointInterval) {
+          setCurrentIndex(prev => {
+            if (prev >= selectedLayer.lecturas.length - 1) {
+              setIsPlaying(false);
+              return prev;
+            }
+            return prev + 1;
+          });
+          accumulatedTime = 0;
+        }
+      }, interval);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isPlaying, currentSpeed, selectedLayerForPlayback, capas]);
+
+  // Función para centrar el mapa en el punto actual
+  const centerMapOnCurrentPoint = useCallback(() => {
+    if (selectedLayerForPlayback === null) return;
+    const selectedLayer = capas.find(c => c.id === selectedLayerForPlayback);
+    if (!selectedLayer || !selectedLayer.lecturas[currentIndex]) return;
+
+    const currentPoint = selectedLayer.lecturas[currentIndex];
+    if (mapRef.current) {
+      mapRef.current.setView(
+        currentPoint.Coordenada_Y,
+        currentPoint.Coordenada_X
+      );
+    }
+  }, [selectedLayerForPlayback, capas, currentIndex]);
+
+  // Efecto para centrar el mapa cuando cambia el índice
+  useEffect(() => {
+    centerMapOnCurrentPoint();
+  }, [currentIndex, centerMapOnCurrentPoint]);
+
   return (
     <Box>
       <Group justify="flex-end" mb="xs">
@@ -795,11 +1085,13 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
               mapControls={mapControls}
               mostrarLocalizaciones={mostrarLocalizaciones}
               onGuardarLocalizacion={handleAbrirModalLocalizacion}
+              playbackLayer={selectedLayerForPlayback !== null ? capas.find(c => c.id === selectedLayerForPlayback) || null : null}
+              currentPlaybackIndex={currentIndex}
             />
           </Paper>
         </div>
 
-        {/* Panel derecho con Localizaciones y Capas */}
+        {/* Panel derecho con Localizaciones, Capas y Reproductor */}
         <Stack>
           {/* Panel de Localizaciones de Interés */}
           <Paper p="md" withBorder>
@@ -880,6 +1172,24 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
               </Stack>
             </Collapse>
           </Paper>
+
+          {/* Reproductor de Recorrido */}
+          <RoutePlayer
+            capas={capas}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onStop={() => {
+              setIsPlaying(false);
+              setCurrentIndex(0);
+            }}
+            onSpeedChange={setCurrentSpeed}
+            isPlaying={isPlaying}
+            currentSpeed={currentSpeed}
+            currentIndex={currentIndex}
+            onIndexChange={setCurrentIndex}
+            selectedLayerId={selectedLayerForPlayback}
+            onLayerChange={setSelectedLayerForPlayback}
+          />
         </Stack>
       </div>
     </Box>
