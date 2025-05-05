@@ -1,3 +1,25 @@
 .date-picker-wrapper {
   width: 100%;
 } 
+
+/* Oculta cualquier icono de 'no records' de Mantine DataTable */
+.mantine-DataTable-noRecords svg,
+.mantine-DataTable-noRecords [class*="noRecordsIcon"],
+.mantine-DataTable-noRecords [data-icon],
+.mantine-DataTable-noRecordsIcon,
+.mantine-DataTable-noRecords > svg {
+  display: none !important;
+}
+
+/* Oculta completamente el área de no records del DataTable */
+.mantine-DataTable-noRecords {
+  display: none !important;
+}
+
+/* Oculta el SVG del icono de base de datos tachada (no records) de Tabler Icons */
+svg > path[d="M3 3l18 18"] {
+  display: none !important;
+}
+svg:has(> path[d="M3 3l18 18"]) {
+  display: none !important;
+} 
