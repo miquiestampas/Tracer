@@ -242,7 +242,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [formFocused, setFormFocused] = useState(false);
 
   // Cambiar los siguientes estados a 'false' para que los paneles estén extendidos por defecto
-  const [filtrosColapsados, setFiltrosColapsados] = useState(false);
   const [controlesColapsados, setControlesColapsados] = useState(false);
   const [localizacionesColapsadas, setLocalizacionesColapsadas] = useState(false);
   const [capasColapsadas, setCapasColapsadas] = useState(false);
@@ -589,13 +588,56 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             <b>Visualización:</b><br />
             - Mapa de calor para identificar zonas de mayor actividad<br />
             - Puntos individuales con información detallada<br />
-            - Capas personalizables para comparar diferentes análisis<br /><br />
+            - Capas personalizables para comparar diferentes análisis<br />
+            - Navegación cronológica entre puntos usando los botones "Anterior" y "Siguiente"<br /><br />
             <b>Consejos:</b><br />
             - Usa los filtros de velocidad para identificar comportamientos inusuales<br />
             - Las paradas prolongadas pueden indicar lugares de interés<br />
             - El mapa de calor ayuda a identificar patrones de movimiento<br />
+            - Navega entre puntos cronológicamente para analizar el recorrido paso a paso<br />
           </Text>
         </Alert>
+      </Collapse>
+
+      <Collapse in={ayudaAbierta}>
+        <Paper p="md" mt="md" withBorder>
+          <Stack gap="sm">
+            <Title order={4}>Ayuda - Navegación entre Puntos</Title>
+            <Text size="sm">
+              La navegación entre puntos te permite recorrer cronológicamente todos los puntos GPS de forma sencilla.
+            </Text>
+            <Text size="sm">
+              <b>Para navegar entre puntos:</b>
+            </Text>
+            <Text size="sm" ml="md">
+              1. Haz clic en cualquier punto del mapa para ver su información
+            </Text>
+            <Text size="sm" ml="md">
+              2. En el banner de información que aparece, usa los botones:
+            </Text>
+            <Text size="sm" ml="lg">
+              • "Anterior": Muestra el punto GPS anterior en el tiempo
+            </Text>
+            <Text size="sm" ml="lg">
+              • "Siguiente": Muestra el punto GPS siguiente en el tiempo
+            </Text>
+            <Text size="sm">
+              <b>Características:</b>
+            </Text>
+            <Text size="sm" ml="md">
+              • La navegación es circular (al llegar al último punto, vuelve al primero)
+            </Text>
+            <Text size="sm" ml="md">
+              • El mapa se centra automáticamente en el punto seleccionado
+            </Text>
+            <Text size="sm" ml="md">
+              • Se mantiene el nivel de zoom actual durante la navegación
+            </Text>
+            <Text size="sm" ml="md">
+              • Los botones solo aparecen cuando se visualiza un punto GPS (no una localización)
+            </Text>
+          </Stack>
+        </Paper>
       </Collapse>
 
       <Collapse in={ayudaAbierta}>
@@ -654,7 +696,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         </Paper>
       </Collapse>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: '1rem', height: 'calc(100vh - 200px)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr 420px', gap: '1rem', height: 'calc(100vh - 200px)' }}>
         {/* Panel de Filtros */}
         <Stack>
           <Paper p="md" withBorder>
@@ -672,88 +714,77 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                 disabled={loadingVehiculos}
                 leftSection={<IconCar size={18} />}
               />
-              <Group justify="flex-end">
-                <Button
-                  variant="subtle"
-                  size="xs"
-                  onClick={() => setFiltrosColapsados((v) => !v)}
-                  leftSection={filtrosColapsados ? <IconChevronDown size={16} /> : <IconChevronUp size={16} />}
-                >
-                  {filtrosColapsados ? 'Mostrar más filtros' : 'Ocultar filtros'}
-                </Button>
-              </Group>
-              <Collapse in={!filtrosColapsados}>
-                <Stack gap="md">
-                  <Group grow>
-                    <TextInput
-                      label="Fecha Inicio"
-                      type="date"
-                      value={filters.fechaInicio}
-                      onChange={(e) => handleFilterChange({ fechaInicio: e.target.value })}
-                    />
-                    <TextInput
-                      label="Hora Inicio"
-                      type="time"
-                      value={filters.horaInicio}
-                      onChange={(e) => handleFilterChange({ horaInicio: e.target.value })}
-                    />
-                  </Group>
-                  <Group grow>
-                    <TextInput
-                      label="Fecha Fin"
-                      type="date"
-                      value={filters.fechaFin}
-                      onChange={(e) => handleFilterChange({ fechaFin: e.target.value })}
-                    />
-                    <TextInput
-                      label="Hora Fin"
-                      type="time"
-                      value={filters.horaFin}
-                      onChange={(e) => handleFilterChange({ horaFin: e.target.value })}
-                    />
-                  </Group>
-                  <Group grow>
-                    <NumberInput
-                      label="Velocidad Mínima (km/h)"
-                      value={filters.velocidadMin || ''}
-                      onChange={(value) => handleFilterChange({ velocidadMin: value === '' ? null : Number(value) })}
-                      min={0}
-                    />
-                    <NumberInput
-                      label="Velocidad Máxima (km/h)"
-                      value={filters.velocidadMax || ''}
-                      onChange={(value) => handleFilterChange({ velocidadMax: value === '' ? null : Number(value) })}
-                      min={0}
-                    />
-                  </Group>
+              {/* Mostrar siempre todos los campos de filtro */}
+              <Stack gap="md">
+                <Group grow>
+                  <TextInput
+                    label="Fecha Inicio"
+                    type="date"
+                    value={filters.fechaInicio}
+                    onChange={(e) => handleFilterChange({ fechaInicio: e.target.value })}
+                  />
+                  <TextInput
+                    label="Hora Inicio"
+                    type="time"
+                    value={filters.horaInicio}
+                    onChange={(e) => handleFilterChange({ horaInicio: e.target.value })}
+                  />
+                </Group>
+                <Group grow>
+                  <TextInput
+                    label="Fecha Fin"
+                    type="date"
+                    value={filters.fechaFin}
+                    onChange={(e) => handleFilterChange({ fechaFin: e.target.value })}
+                  />
+                  <TextInput
+                    label="Hora Fin"
+                    type="time"
+                    value={filters.horaFin}
+                    onChange={(e) => handleFilterChange({ horaFin: e.target.value })}
+                  />
+                </Group>
+                <Group grow>
                   <NumberInput
-                    label="Detección de Paradas"
-                    value={filters.duracionParada || ''}
-                    onChange={(value) => handleFilterChange({ duracionParada: value === '' ? null : Number(value) })}
+                    label="Velocidad Mínima (km/h)"
+                    value={filters.velocidadMin || ''}
+                    onChange={(value) => handleFilterChange({ velocidadMin: value === '' ? null : Number(value) })}
                     min={0}
                   />
-                  <Group grow>
-                    <Button
-                      variant="outline"
-                      color="#234be7"
-                      leftSection={<IconListDetails size={18} />}
-                      onClick={handleLimpiar}
-                      style={{ fontWeight: 500 }}
-                    >
-                      Limpiar Filtros
-                    </Button>
-                    <Button
-                      variant="filled"
-                      color="#234be7"
-                      leftSection={<IconSearch size={18} />}
-                      onClick={handleFiltrar}
-                      style={{ fontWeight: 700 }}
-                    >
-                      Aplicar Filtros
-                    </Button>
-                  </Group>
-                </Stack>
-              </Collapse>
+                  <NumberInput
+                    label="Velocidad Máxima (km/h)"
+                    value={filters.velocidadMax || ''}
+                    onChange={(value) => handleFilterChange({ velocidadMax: value === '' ? null : Number(value) })}
+                    min={0}
+                  />
+                </Group>
+                <NumberInput
+                  label="Detección de Paradas"
+                  value={filters.duracionParada || ''}
+                  onChange={(value) => handleFilterChange({ duracionParada: value === '' ? null : Number(value) })}
+                  min={0}
+                />
+                <Group grow mt="md">
+                  <Button
+                    variant="outline"
+                    color="#234be7"
+                    leftSection={<IconListDetails size={18} />}
+                    onClick={handleLimpiar}
+                    style={{ fontWeight: 500 }}
+                  >
+                    Limpiar Filtros
+                  </Button>
+                  <Button
+                    variant="filled"
+                    color="#234be7"
+                    leftSection={<IconSearch size={18} />}
+                    onClick={handleFiltrar}
+                    style={{ fontWeight: 700 }}
+                  >
+                    Aplicar Filtros
+                  </Button>
+                </Group>
+              </Stack>
               {/* Botón y formulario para guardar capa, igual que MapPanel */}
               {lecturas.length > 0 && (
                 mostrarFormularioCapa ? (
@@ -799,86 +830,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                 )
               )}
             </Stack>
-          </Paper>
-
-          {/* Panel de Localizaciones de Interés (ahora encima y separado) */}
-          <Paper p="md" withBorder mt="md">
-            <Group justify="space-between" align="center" mb="md">
-              <Title order={4}>Localizaciones de Interés</Title>
-              <Group>
-                <Switch
-                  checked={mostrarLocalizaciones}
-                  onChange={e => setMostrarLocalizaciones(e.currentTarget.checked)}
-                  label={mostrarLocalizaciones ? 'Mostrar' : 'Ocultar'}
-                  size="sm"
-                  color="#234be7"
-                />
-                <ActionIcon
-                  variant="subtle"
-                  onClick={() => setLocalizacionesColapsadas((v) => !v)}
-                  aria-label={localizacionesColapsadas ? 'Mostrar localizaciones' : 'Ocultar localizaciones'}
-                >
-                  {localizacionesColapsadas ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
-                </ActionIcon>
-              </Group>
-            </Group>
-            <Collapse in={!localizacionesColapsadas}>
-              <Collapse in={modalAbierto && !!localizacionActual}>
-                {modalAbierto && localizacionActual && (
-                  <ModalLocalizacion
-                    localizacionActual={localizacionActual}
-                    setLocalizacionActual={setLocalizacionActual}
-                    setModalAbierto={setModalAbierto}
-                    setFormFocused={setFormFocused}
-                    handleGuardarLocalizacion={handleGuardarLocalizacion}
-                    handleEliminarLocalizacion={handleEliminarLocalizacion}
-                    localizaciones={localizaciones}
-                  />
-                )}
-              </Collapse>
-              <Stack gap="xs">
-                {localizaciones.length === 0 && <Text size="sm" c="dimmed">No hay localizaciones guardadas.</Text>}
-                {localizaciones.map(loc => (
-                  <LocalizacionItem
-                    key={loc.id_lectura}
-                    loc={loc}
-                    setLocalizacionActual={setLocalizacionActual}
-                    setModalAbierto={setModalAbierto}
-                    handleEliminarLocalizacion={handleEliminarLocalizacion}
-                  />
-                ))}
-              </Stack>
-            </Collapse>
-          </Paper>
-
-          {/* Gestión de Capas debe ir aquí, después de Localizaciones */}
-          <Paper p="md" withBorder mt="md">
-            <Group justify="space-between" align="center" mb="md">
-              <Title order={3}>Gestión de Capas</Title>
-              <ActionIcon
-                variant="subtle"
-                onClick={() => setCapasColapsadas((v) => !v)}
-                aria-label={capasColapsadas ? 'Mostrar capas' : 'Ocultar capas'}
-              >
-                {capasColapsadas ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
-              </ActionIcon>
-            </Group>
-            <Collapse in={!capasColapsadas}>
-              <Stack gap="xs">
-                {capas.map(capa => (
-                  <CapaItem
-                    key={capa.id}
-                    capa={capa}
-                    handleToggleCapa={handleToggleCapa}
-                    handleEditarCapa={handleEditarCapa}
-                    handleEliminarCapa={handleEliminarCapa}
-                  />
-                ))}
-                {capas.length === 0 && (
-                  <Text size="sm" c="dimmed" ta="center" py="md">No hay capas creadas. Aplica un filtro y guárdalo en una capa.</Text>
-                )}
-              </Stack>
-            </Collapse>
           </Paper>
 
           {/* Controles del Mapa debe ir debajo */}
@@ -936,7 +887,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         </Stack>
 
         {/* Mapa */}
-        <Paper withBorder style={{ height: '100%', minHeight: 400, width: '100%' }}>
+        <Paper withBorder style={{ height: 'calc(100vh - 263px)', minHeight: 400, width: '100%' }}>
           <GpsMapStandalone
             lecturas={lecturas}
             capas={capas}
@@ -946,6 +897,89 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             onGuardarLocalizacion={handleAbrirModalLocalizacion}
           />
         </Paper>
+
+        {/* Panel derecho con Localizaciones y Capas */}
+        <Stack>
+          {/* Panel de Localizaciones de Interés */}
+          <Paper p="md" withBorder>
+            <Group justify="space-between" align="center" mb="md">
+              <Title order={3}>Localizaciones de Interés</Title>
+              <ActionIcon
+                variant="subtle"
+                onClick={() => setLocalizacionesColapsadas((v) => !v)}
+                aria-label={localizacionesColapsadas ? 'Mostrar localizaciones' : 'Ocultar localizaciones'}
+              >
+                {localizacionesColapsadas ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
+              </ActionIcon>
+            </Group>
+            <Collapse in={!localizacionesColapsadas}>
+              <Group justify="flex-end" mb="md">
+                <Switch
+                  checked={mostrarLocalizaciones}
+                  onChange={e => setMostrarLocalizaciones(e.currentTarget.checked)}
+                  label={mostrarLocalizaciones ? 'Mostrar' : 'Ocultar'}
+                  size="sm"
+                  color="#234be7"
+                />
+              </Group>
+              <Collapse in={modalAbierto && !!localizacionActual}>
+                {modalAbierto && localizacionActual && (
+                  <ModalLocalizacion
+                    localizacionActual={localizacionActual}
+                    setLocalizacionActual={setLocalizacionActual}
+                    setModalAbierto={setModalAbierto}
+                    setFormFocused={setFormFocused}
+                    handleGuardarLocalizacion={handleGuardarLocalizacion}
+                    handleEliminarLocalizacion={handleEliminarLocalizacion}
+                    localizaciones={localizaciones}
+                  />
+                )}
+              </Collapse>
+              <Stack gap="xs">
+                {localizaciones.length === 0 && <Text size="sm" c="dimmed">No hay localizaciones guardadas.</Text>}
+                {localizaciones.map(loc => (
+                  <LocalizacionItem
+                    key={loc.id_lectura}
+                    loc={loc}
+                    setLocalizacionActual={setLocalizacionActual}
+                    setModalAbierto={setModalAbierto}
+                    handleEliminarLocalizacion={handleEliminarLocalizacion}
+                  />
+                ))}
+              </Stack>
+            </Collapse>
+          </Paper>
+
+          {/* Gestión de Capas */}
+          <Paper p="md" withBorder mt="md">
+            <Group justify="space-between" align="center" mb="md">
+              <Title order={3}>Gestión de Capas</Title>
+              <ActionIcon
+                variant="subtle"
+                onClick={() => setCapasColapsadas((v) => !v)}
+                aria-label={capasColapsadas ? 'Mostrar capas' : 'Ocultar capas'}
+              >
+                {capasColapsadas ? <IconChevronDown size={18} /> : <IconChevronUp size={18} />}
+              </ActionIcon>
+            </Group>
+            <Collapse in={!capasColapsadas}>
+              <Stack gap="xs">
+                {capas.map(capa => (
+                  <CapaItem
+                    key={capa.id}
+                    capa={capa}
+                    handleToggleCapa={handleToggleCapa}
+                    handleEditarCapa={handleEditarCapa}
+                    handleEliminarCapa={handleEliminarCapa}
+                  />
+                ))}
+                {capas.length === 0 && (
+                  <Text size="sm" c="dimmed" ta="center" py="md">No hay capas creadas. Aplica un filtro y guárdalo en una capa.</Text>
+                )}
+              </Stack>
+            </Collapse>
+          </Paper>
+        </Stack>
       </div>
     </Box>
   );
