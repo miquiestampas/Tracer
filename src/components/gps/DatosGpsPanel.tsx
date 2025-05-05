@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Paper, Text, Group, Button, TextInput, Select, Stack, ActionIcon, Tooltip } from '@mantine/core';
+import { Box, Paper, Text, Group, Button, TextInput, Select, Stack, ActionIcon, Tooltip, Loader } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconSearch, IconClearAll, IconEye, IconCar, IconBookmark, IconRefresh, IconFilter } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
@@ -155,9 +155,16 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
                 .mantine-DataTable-noRecordsIcon {
                     display: none !important;
                 }
+                .mantine-DataTable-pagination {
+                    margin-top: 0 !important;
+                    justify-content: center !important;
+                }
+                .mantine-DataTable-pagination .mantine-Text-root {
+                    display: none !important;
+                }
             `}</style>
-            <Paper shadow="xs" p="md" withBorder>
-                <Stack gap="md">
+            <Paper shadow="xs" p="md" withBorder style={{ height: 'auto', minHeight: 0 }}>
+                <Stack gap={0}>
                     {/* Filtros */}
                     <Group gap="xs" align="flex-end" grow>
                         <Select
@@ -219,30 +226,51 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
                         </Button>
                     </Group>
 
-                    {/* Tabla de datos */}
-                    <DataTable<GpsLectura>
-                        records={gpsData}
-                        columns={columns}
-                        withTableBorder
-                        borderRadius="sm"
-                        striped
-                        highlightOnHover
-                        idAccessor="ID_Lectura"
-                        selectedRecords={gpsData.filter(r => selectedRecordIds.includes(r.ID_Lectura))}
-                        onSelectedRecordsChange={(records) => setSelectedRecordIds(records.map(r => r.ID_Lectura))}
-                        sortStatus={sortStatus}
-                        onSortStatusChange={setSortStatus}
-                        page={page}
-                        onPageChange={setPage}
-                        totalRecords={totalRecords}
-                        recordsPerPage={pageSize}
-                        onRecordsPerPageChange={setPageSize}
-                        recordsPerPageOptions={[10, 15, 20, 25, 50]}
-                        fetching={loading}
-                        noRecordsText=""
-                        verticalSpacing="xs"
-                        fontSize="xs"
-                    />
+                    {/* Overlay Loader al estilo LPR */}
+                    <Box style={{ position: 'relative', height: 'auto', minHeight: 0 }}>
+                        {/* Texto custom de registros por página */}
+                        <Box style={{ width: '100%', textAlign: 'center', fontSize: 14, color: '#666', marginBottom: 4 }}>
+                            Registros por página
+                        </Box>
+                        {loading && (
+                            <Box style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                background: 'rgba(255,255,255,0.7)',
+                                zIndex: 10,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: 8
+                            }}>
+                                <Loader size="lg" color="#234be7" />
+                            </Box>
+                        )}
+                        <DataTable<GpsLectura>
+                            records={gpsData}
+                            columns={columns}
+                            withTableBorder
+                            borderRadius="sm"
+                            striped
+                            highlightOnHover
+                            idAccessor="ID_Lectura"
+                            selectedRecords={gpsData.filter(r => selectedRecordIds.includes(r.ID_Lectura))}
+                            onSelectedRecordsChange={(records) => setSelectedRecordIds(records.map(r => r.ID_Lectura))}
+                            sortStatus={sortStatus}
+                            onSortStatusChange={setSortStatus}
+                            page={page}
+                            onPageChange={setPage}
+                            totalRecords={totalRecords}
+                            recordsPerPage={pageSize}
+                            onRecordsPerPageChange={setPageSize}
+                            recordsPerPageOptions={[10, 15, 20, 25, 50]}
+                            noRecordsText=""
+                            verticalSpacing="xs"
+                        />
+                    </Box>
                 </Stack>
             </Paper>
         </>

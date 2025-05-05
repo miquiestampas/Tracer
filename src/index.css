@@ -22,4 +22,20 @@ svg > path[d="M3 3l18 18"] {
 }
 svg:has(> path[d="M3 3l18 18"]) {
   display: none !important;
-} 
+}
+
+/* Fuerza que el DataTable y sus wrappers no tengan min-height ni height forzados */
+.mantine-DataTable-root,
+.mantine-DataTable,
+.mantine-DataTable-table,
+.mantine-DataTable-wrapper,
+.mantine-DataTable-pagination,
+.mantine-DataTable-noRecords {
+  min-height: 0 !important;
+  height: auto !important;
+  flex-grow: 0 !important;
+  flex-shrink: 1 !important;
+}
+
+/* Elimina el CSS agresivo que afecta a todos los hijos de Paper */
+/* .mantine-Paper-root, .mantine-Paper-root * { ... } */ 

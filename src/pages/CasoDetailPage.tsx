@@ -608,7 +608,7 @@ const handleDeleteArchivo = async (archivoId: number) => {
                   </Box>
                   <Divider orientation="vertical" mx="md" />
                   <Box>
-                      <Text fw={500} c="gray" mb="xs">Archivos</Text>
+                      <Text fw={500} mb="xs" style={{ color: '#15803d' }}>Archivos</Text>
                       <Group gap="xs">
                           {caseSections.filter(section => section.section === 'archivos').map((section) => (
                               <Button
@@ -616,7 +616,7 @@ const handleDeleteArchivo = async (archivoId: number) => {
                                   variant={activeMainTab === section.id ? 'filled' : 'light'}
                                   leftSection={<section.icon size={16} />}
                                   onClick={() => setActiveMainTab(section.id)}
-                                  color="gray"
+                                  color="#22c55e"
                               >
                                   {section.label}
                               </Button>
