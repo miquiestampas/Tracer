@@ -662,32 +662,45 @@ function ImportarPage() {
 
       {/* Formulario de importación principal */}
       <Stack gap="lg">
-        {/* Selector de Caso */}
-        <Select
-          label="Selecciona un Caso"
-          placeholder="Elige el caso al que importar el archivo"
-          data={casosList}
-          value={selectedCasoId}
-          onChange={(value) => {
-            setSelectedCasoId(value);
-            // --- Buscar y guardar el nombre del caso ---
-            const selectedOption = casosList.find(option => option.value === value);
-            setSelectedCasoName(selectedOption ? selectedOption.label.split(' - ')[1].split(' (')[0] : null);
-            // --- Fin Buscar y guardar el nombre ---
-            // Limpiar errores y estado del archivo al cambiar de caso
-            setSelectedFile(null);
-            setExcelHeaders([]);
-            setColumnMapping({});
-            setUploadError(null);
-            setMappingError(null);
-          }}
-          searchable
-          nothingFoundMessage="No se encontraron casos"
-          disabled={loadingCasos || isUploading}
-          error={errorCasos}
-          mb="md"
-          required
-        />
+        {/* Selector de Caso y botón Ir al Caso */}
+        <Group align="flex-end" justify="space-between" mb="md">
+          <Box style={{ flex: 1 }}>
+            <Select
+              label="Selecciona un Caso"
+              placeholder="Elige el caso al que importar el archivo"
+              data={casosList}
+              value={selectedCasoId}
+              onChange={(value) => {
+                setSelectedCasoId(value);
+                // --- Buscar y guardar el nombre del caso ---
+                const selectedOption = casosList.find(option => option.value === value);
+                setSelectedCasoName(selectedOption ? selectedOption.label.split(' - ')[1].split(' (')[0] : null);
+                // --- Fin Buscar y guardar el nombre ---
+                // Limpiar errores y estado del archivo al cambiar de caso
+                setSelectedFile(null);
+                setExcelHeaders([]);
+                setColumnMapping({});
+                setUploadError(null);
+                setMappingError(null);
+              }}
+              searchable
+              nothingFoundMessage="No se encontraron casos"
+              disabled={loadingCasos || isUploading}
+              error={errorCasos}
+              required
+            />
+          </Box>
+          <Button
+            leftSection={<IconFileSpreadsheet size={18} />}
+            onClick={() => navigate(`/casos/detalle/${selectedCasoId}`)}
+            disabled={!selectedCasoId}
+            variant="filled"
+            color="#234be7"
+            style={{ minWidth: 160 }}
+          >
+            Ir al Caso
+          </Button>
+        </Group>
 
         {/* Tipo de Archivo */}
         <Radio.Group
