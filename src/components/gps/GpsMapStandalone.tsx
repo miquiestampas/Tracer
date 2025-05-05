@@ -1,9 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
 import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/core';
-import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX } from '@tabler/icons-react';
+import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronUp, IconChevronDown } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import HeatmapLayer from './HeatmapLayer';
 
@@ -15,6 +15,7 @@ interface GpsMapStandaloneProps {
     visualizationType: 'standard' | 'satellite' | 'toner';
     showHeatmap: boolean;
     showPoints: boolean;
+    optimizePoints: boolean;
   };
   mostrarLocalizaciones: boolean;
   onGuardarLocalizacion: (lectura: GpsLectura) => void;
@@ -32,11 +33,12 @@ const ICONOS = [
 ];
 
 // Banner de información
-const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion }: {
+const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion, onNavigate }: {
   info: any;
   onClose: () => void;
   onEditLocalizacion?: () => void;
   isLocalizacion?: boolean;
+  onNavigate?: (direction: 'prev' | 'next') => void;
 }) => {
   if (!info) return null;
   return (
@@ -116,32 +118,56 @@ const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion }: {
             }</span>
           </div>
         </div>
-        {isLocalizacion && onEditLocalizacion && (
-          <Button 
-            size="xs" 
-            variant="light" 
-            color="blue" 
-            fullWidth
-            mt="xs"
-            leftSection={<IconMapPin size={12} />}
-            onClick={onEditLocalizacion}
-          >
-            Editar Localización
-          </Button>
-        )}
-        {!isLocalizacion && (
-          <Button 
-            size="xs" 
-            variant="light" 
-            color="blue" 
-            fullWidth
-            mt="xs"
-            leftSection={<IconMapPin size={12} />}
-            onClick={info.onGuardarLocalizacion}
-          >
-            Guardar Localización
-          </Button>
-        )}
+        <Group mt="xs" gap="xs">
+          {!isLocalizacion && onNavigate && (
+            <>
+              <Button 
+                size="xs" 
+                variant="light" 
+                color="blue" 
+                leftSection={<IconChevronUp size={12} />}
+                onClick={() => onNavigate('prev')}
+                style={{ flex: 1 }}
+              >
+                Anterior
+              </Button>
+              <Button 
+                size="xs" 
+                variant="light" 
+                color="blue" 
+                leftSection={<IconChevronDown size={12} />}
+                onClick={() => onNavigate('next')}
+                style={{ flex: 1 }}
+              >
+                Siguiente
+              </Button>
+            </>
+          )}
+          {isLocalizacion && onEditLocalizacion && (
+            <Button 
+              size="xs" 
+              variant="light" 
+              color="blue" 
+              fullWidth
+              leftSection={<IconMapPin size={12} />}
+              onClick={onEditLocalizacion}
+            >
+              Editar Localización
+            </Button>
+          )}
+          {!isLocalizacion && (
+            <Button 
+              size="xs" 
+              variant="light" 
+              color="blue" 
+              fullWidth
+              leftSection={<IconMapPin size={12} />}
+              onClick={info.onGuardarLocalizacion}
+            >
+              Guardar Localización
+            </Button>
+          )}
+        </Group>
       </Card>
       <style>{`
         @keyframes slideDown {
@@ -151,6 +177,107 @@ const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion }: {
       `}</style>
     </div>
   );
+};
+
+// Función para calcular la distancia entre dos puntos usando la fórmula de Haversine
+const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+  const R = 6371; // Radio de la Tierra en km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+// Función para calcular el ángulo entre tres puntos
+const calculateAngle = (p1: GpsLectura, p2: GpsLectura, p3: GpsLectura) => {
+  const lat1 = p1.Coordenada_Y;
+  const lon1 = p1.Coordenada_X;
+  const lat2 = p2.Coordenada_Y;
+  const lon2 = p2.Coordenada_X;
+  const lat3 = p3.Coordenada_Y;
+  const lon3 = p3.Coordenada_X;
+
+  const angle1 = Math.atan2(lon2 - lon1, lat2 - lat1);
+  const angle2 = Math.atan2(lon3 - lon2, lat3 - lat2);
+  let angle = Math.abs(angle1 - angle2) * 180 / Math.PI;
+  return angle > 180 ? 360 - angle : angle;
+};
+
+// Función para decimar puntos GPS
+const decimatePoints = (points: GpsLectura[], options = {
+  minDistance: 0.05, // km
+  maxAngle: 30, // grados
+  keepStops: true,
+  keepSpeedChanges: true,
+  speedThreshold: 10 // km/h
+}) => {
+  if (points.length <= 2) return points;
+
+  const result: GpsLectura[] = [points[0]]; // Siempre mantener el primer punto
+  let lastKeptPoint = points[0];
+  let isLinearMovement = false; // Flag para detectar movimiento lineal
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const currentPoint = points[i];
+    const nextPoint = points[i + 1];
+    
+    // Calcular distancias
+    const distanceToLast = haversineDistance(
+      lastKeptPoint.Coordenada_Y,
+      lastKeptPoint.Coordenada_X,
+      currentPoint.Coordenada_Y,
+      currentPoint.Coordenada_X
+    );
+
+    // Calcular ángulo con el siguiente punto
+    const angle = i > 0 && i < points.length - 1 ? 
+      calculateAngle(points[i-1], currentPoint, nextPoint) : 0;
+
+    // Detectar movimiento lineal
+    const isMoving = (currentPoint.Velocidad || 0) > 5; // Considerar en movimiento si velocidad > 5 km/h
+    const isLinear = angle < options.maxAngle && isMoving;
+    
+    // Actualizar estado de movimiento lineal
+    if (isLinear) {
+      isLinearMovement = true;
+    } else {
+      isLinearMovement = false;
+    }
+
+    // Mantener puntos importantes
+    const isStop = currentPoint.duracion_parada_min && currentPoint.duracion_parada_min > 0;
+    const hasSignificantSpeedChange = Math.abs(
+      (currentPoint.Velocidad || 0) - (lastKeptPoint.Velocidad || 0)
+    ) > options.speedThreshold;
+
+    // Usar distancia mínima mayor para movimiento lineal
+    const effectiveMinDistance = isLinearMovement ? 0.1 : options.minDistance;
+
+    if (
+      // Mantener si es una parada
+      (options.keepStops && isStop) ||
+      // Mantener si hay cambio significativo de velocidad
+      (options.keepSpeedChanges && hasSignificantSpeedChange) ||
+      // Mantener si la distancia es mayor que el mínimo (ajustado según movimiento)
+      distanceToLast > effectiveMinDistance ||
+      // Mantener si hay un cambio de dirección significativo
+      (i > 0 && i < points.length - 1 && angle > options.maxAngle)
+    ) {
+      result.push(currentPoint);
+      lastKeptPoint = currentPoint;
+    }
+  }
+
+  // Siempre mantener el último punto
+  if (points.length > 1) {
+    result.push(points[points.length - 1]);
+  }
+
+  return result;
 };
 
 const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
@@ -163,6 +290,12 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
 }) => {
   const mapRef = useRef<L.Map | null>(null);
   const [infoBanner, setInfoBanner] = useState<{ info: any; isLocalizacion: boolean } | null>(null);
+
+  // Optimizar puntos si está activado
+  const optimizedLecturas = useMemo(() => {
+    if (!mapControls.optimizePoints || !Array.isArray(lecturas)) return lecturas;
+    return decimatePoints(lecturas);
+  }, [lecturas, mapControls.optimizePoints]);
 
   // Solo calcula el centro y zoom inicial una vez
   const primeraLectura = Array.isArray(lecturas) && lecturas.length > 0
@@ -217,6 +350,41 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
       typeof p[2] === 'number' && !isNaN(p[2]) && p[2] > 0
   );
 
+  // Función para navegar entre puntos
+  const handleNavigate = (direction: 'prev' | 'next') => {
+    if (!infoBanner || infoBanner.isLocalizacion) return;
+
+    const currentIndex = optimizedLecturas.findIndex(
+      l => l.ID_Lectura === infoBanner.info.ID_Lectura
+    );
+
+    if (currentIndex === -1) return;
+
+    let newIndex: number;
+    if (direction === 'prev') {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : optimizedLecturas.length - 1;
+    } else {
+      newIndex = currentIndex < optimizedLecturas.length - 1 ? currentIndex + 1 : 0;
+    }
+
+    const newPoint = optimizedLecturas[newIndex];
+    setInfoBanner({ 
+      info: { 
+        ...newPoint, 
+        onGuardarLocalizacion: () => onGuardarLocalizacion(newPoint) 
+      }, 
+      isLocalizacion: false 
+    });
+
+    // Centrar el mapa en el nuevo punto
+    if (mapRef.current) {
+      mapRef.current.setView(
+        [newPoint.Coordenada_Y, newPoint.Coordenada_X],
+        mapRef.current.getZoom()
+      );
+    }
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
@@ -235,7 +403,7 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
           <HeatmapLayer points={validHeatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
         )}
         {/* Renderizar puntos individuales */}
-        {mapControls.showPoints && lecturas.map((lectura, idx) => {
+        {mapControls.showPoints && optimizedLecturas.map((lectura, idx) => {
           const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
           const color = capa ? capa.color : '#228be6';
           const isSelected = infoBanner && !infoBanner.isLocalizacion && infoBanner.info?.ID_Lectura === lectura.ID_Lectura;
@@ -325,6 +493,7 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
         isLocalizacion={infoBanner?.isLocalizacion}
         onClose={() => setInfoBanner(null)}
         onEditLocalizacion={infoBanner?.isLocalizacion ? () => onGuardarLocalizacion(infoBanner.info) : undefined}
+        onNavigate={handleNavigate}
       />
     </div>
   );

@@ -224,7 +224,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [mapControls, setMapControls] = useState({
     visualizationType: 'toner' as 'standard' | 'satellite' | 'toner',
     showHeatmap: false,
-    showPoints: true
+    showPoints: true,
+    optimizePoints: false
   });
 
   const [vehiculosDisponibles, setVehiculosDisponibles] = useState<{ value: string; label: string }[]>([]);
@@ -913,6 +914,12 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
                   label="Mostrar puntos individuales"
                   checked={mapControls.showPoints}
                   onChange={(e) => setMapControls(prev => ({ ...prev, showPoints: e.currentTarget.checked }))}
+                />
+                <Switch
+                  label="Optimizar puntos (reduce densidad)"
+                  checked={mapControls.optimizePoints}
+                  onChange={(e) => setMapControls(prev => ({ ...prev, optimizePoints: e.currentTarget.checked }))}
+                  description="Elimina puntos redundantes manteniendo los importantes"
                 />
                 <Divider my="xs" />
                 <Button 
