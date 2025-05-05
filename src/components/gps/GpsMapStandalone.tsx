@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
 import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/core';
@@ -19,6 +19,8 @@ interface GpsMapStandaloneProps {
   };
   mostrarLocalizaciones: boolean;
   onGuardarLocalizacion: (lectura: GpsLectura) => void;
+  playbackLayer?: GpsCapa | null;
+  currentPlaybackIndex?: number;
 }
 
 const ICONOS = [
@@ -286,7 +288,9 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
   localizaciones,
   mapControls,
   mostrarLocalizaciones,
-  onGuardarLocalizacion
+  onGuardarLocalizacion,
+  playbackLayer,
+  currentPlaybackIndex
 }, ref): React.ReactElement => {
   const mapRef = useRef<L.Map | null>(null);
   const [infoBanner, setInfoBanner] = useState<{ info: any; isLocalizacion: boolean } | null>(null);
@@ -298,10 +302,16 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
     }, 350);
   }, []);
 
-  // Exponer función refrescarMapa
+  // Exponer funciones del mapa
   useImperativeHandle(ref, () => ({
     refrescarMapa: () => {
       window.dispatchEvent(new Event('resize'));
+    },
+    getMap: () => mapRef.current,
+    setView: (lat: number, lng: number, zoom?: number) => {
+      if (mapRef.current) {
+        mapRef.current.setView([lat, lng], zoom || mapRef.current.getZoom());
+      }
     }
   }));
 
@@ -412,6 +422,42 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
     }
   };
 
+  // Renderizar puntos del recorrido
+  const renderRoutePoints = useMemo(() => {
+    if (!playbackLayer || currentPlaybackIndex === undefined) return null;
+    
+    return playbackLayer.lecturas.map((lectura, index) => {
+      const isVisited = index <= currentPlaybackIndex;
+      return (
+        <Marker
+          key={`route-point-${index}`}
+          position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
+          icon={L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div style="
+              background: ${isVisited ? playbackLayer.color : '#adb5bd'};
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              border: 2px solid white;
+              box-shadow: 0 0 4px rgba(0,0,0,0.2);
+              opacity: ${isVisited ? 0.15 : 1};
+              transition: opacity 0.2s ease-in-out;
+            "></div>`,
+            iconSize: [8, 8],
+            iconAnchor: [4, 4]
+          })}
+        />
+      );
+    });
+  }, [playbackLayer, currentPlaybackIndex]);
+
+  // Obtener el punto actual para el reproductor
+  const currentPlaybackPoint = useMemo(() => {
+    if (!playbackLayer || currentPlaybackIndex === undefined || currentPlaybackIndex < 0) return null;
+    return playbackLayer.lecturas[currentPlaybackIndex];
+  }, [playbackLayer, currentPlaybackIndex]);
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
@@ -425,6 +471,23 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
           attribution={tileLayerAttribution}
           url={tileLayerUrl}
         />
+        {/* Renderizar puntos del recorrido */}
+        {renderRoutePoints}
+        {/* Renderizar punto actual del reproductor */}
+        {currentPlaybackPoint && playbackLayer && (
+          <Marker
+            position={[currentPlaybackPoint.Coordenada_Y, currentPlaybackPoint.Coordenada_X]}
+            icon={L.divIcon({
+              className: 'custom-div-icon',
+              html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
+                <div style="position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${playbackLayer.color}20; border: 2.5px solid ${playbackLayer.color}40; box-shadow: 0 0 12px ${playbackLayer.color};"></div>
+                <div style="background: ${playbackLayer.color}; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${playbackLayer.color}; outline: 3px solid ${playbackLayer.color};"></div>
+              </div>`,
+              iconSize: [44, 44],
+              iconAnchor: [22, 22]
+            })}
+          />
+        )}
         {/* Renderizar heatmap si está activado */}
         {mapControls.showHeatmap && validHeatmapPoints.length > 0 && (
           <HeatmapLayer points={validHeatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
