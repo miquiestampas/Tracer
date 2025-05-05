@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
@@ -280,16 +280,30 @@ const decimatePoints = (points: GpsLectura[], options = {
   return result;
 };
 
-const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
+const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
   lecturas,
   capas,
   localizaciones,
   mapControls,
   mostrarLocalizaciones,
   onGuardarLocalizacion
-}) => {
+}, ref): React.ReactElement => {
   const mapRef = useRef<L.Map | null>(null);
   const [infoBanner, setInfoBanner] = useState<{ info: any; isLocalizacion: boolean } | null>(null);
+
+  // Disparar resize al montar
+  useEffect(() => {
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 350);
+  }, []);
+
+  // Exponer función refrescarMapa
+  useImperativeHandle(ref, () => ({
+    refrescarMapa: () => {
+      window.dispatchEvent(new Event('resize'));
+    }
+  }));
 
   // Optimizar puntos si está activado
   const optimizedLecturas = useMemo(() => {
@@ -497,6 +511,6 @@ const GpsMapStandalone: React.FC<GpsMapStandaloneProps> = React.memo(({
       />
     </div>
   );
-});
+}));
 
 export default GpsMapStandalone; 
