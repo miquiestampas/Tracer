@@ -79,40 +79,69 @@ interface LectorConCoordenadas {
 // --- Objeto con Textos de Ayuda ---
 const helpTexts: { [key: string]: React.ReactNode } = {
   'analisis-lpr': (
-    <Box maw={400}> 
-      <Text fw={500} mb="sm">Ayuda: Lecturas LPR</Text>
-      <Stack gap="xs"> 
-        <Text size="xs">
-          Esta pestaña muestra las lecturas LPR del caso.
+    <Box maw={900}>
+      <Text fw={500} mb="sm" size="lg" c="blue.8">¿Cómo funciona la pestaña Lecturas LPR?</Text>
+      <Stack gap="xs">
+        <Text size="sm" mb="xs">
+          <b>¿Qué es esta pestaña?</b><br />
+          Aquí puedes consultar y filtrar todas las lecturas LPR asociadas al caso. Utiliza los filtros avanzados para acotar por matrícula (con comodines), fechas, horas, lector, carretera, etc.
         </Text>
-        <Text size="xs">
-          <strong>Filtros (izquierda):</strong>
+        <Text size="sm" mb="xs">
+          <b>Guardar búsquedas y uso cruzado</b><br />
+          Puedes guardar cualquier búsqueda que realices (con los filtros aplicados) para consultarla más adelante o cruzarla con otras búsquedas. Esta funcionalidad es especialmente útil para:
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li>Se usa para matrícula, fechas, horas, lector, carretera, etc.</li>
-            <li><strong>Búsqueda por Matrícula:</strong> Usa comodines para búsquedas parciales:
-              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-                <li><code>?</code> coincide con UN carácter cualquiera</li>
-                <li><code>*</code> coincide con CERO O MÁS caracteres</li>
-              </ul>
-            </li>
-            <li><strong>Ejemplos:</strong>
-              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-                <li><code>??98M*</code> → Encuentra matrículas que tienen "98M" en las posiciones 3-5, con cualquier carácter en las posiciones 1-2 y cualquier cosa después</li>
-                <li><code>98*</code> → Encuentra matrículas que empiezan por "98"</li>
-                <li><code>?98*</code> → Encuentra matrículas con "98" en la posición 2-3</li>
-                <li><code>*98*</code> → Encuentra matrículas que contienen "98" en cualquier posición</li>
-                <li><code>98??AB</code> → Encuentra matrículas que empiezan por "98", seguidas de dos caracteres cualquiera, y terminan en "AB"</li>
-              </ul>
-            </li>
+            <li><b>Comparar patrones de movimiento</b> de diferentes vehículos.</li>
+            <li><b>Localizar coincidencias</b> entre vehículos en distintos puntos geográficos y temporales.</li>
+            <li><b>Investigar vehículos lanzadera</b> que acompañan a un objetivo en diferentes momentos y ubicaciones.</li>
           </ul>
         </Text>
-        <Text size="xs">
-          <strong>Tabla de Resultados:</strong>
+        <Text size="sm" mb="xs">
+          <b>¿Cómo guardar una búsqueda?</b><br />
+          <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li>Aplica los filtros que te interesen (matrícula, fechas, lector, etc.).</li>
+            <li>Haz clic en el botón "Guardar búsqueda".</li>
+            <li>Asigna un nombre descriptivo para identificarla fácilmente.</li>
+            <li>Accede a tus búsquedas guardadas desde el panel correspondiente para consultarlas o cruzarlas con otras.</li>
+          </ol>
+        </Text>
+        <Text size="sm" mb="xs">
+          <b>Ejemplos de uso avanzado:</b>
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li>Muestra lecturas que coinciden con filtros.</li>
-            <li>Ordena haciendo clic en cabeceras.</li>
-            <li>Acciones: Marcar/desmarcar relevante (<IconBookmark size="0.8rem" />), guardar vehículo para comprobaciones posteriores(<IconCar size="0.8rem" />).</li>
+            <li><b>Localizar vehículos en varios puntos:</b> Filtra por una matrícula o patrón y guarda la búsqueda. Luego, filtra por otra ubicación o rango temporal y guarda esa búsqueda. Puedes comparar ambas para ver si hay vehículos que aparecen en ambos contextos.</li>
+            <li><b>Buscar vehículos lanzadera:</b> Filtra por la matrícula del vehículo objetivo y guarda la búsqueda. Después, filtra por intervalos de tiempo y ubicaciones donde el objetivo fue detectado, y guarda esas búsquedas. Cruza los resultados para identificar matrículas que aparecen repetidamente junto al objetivo en diferentes lugares y momentos.</li>
+            <li><b>Análisis de acompañamiento:</b> Guarda búsquedas de diferentes eventos (por ejemplo, entradas y salidas de una ciudad) y analiza qué vehículos coinciden en ambos eventos, lo que puede indicar acompañamiento o patrones sospechosos.</li>
           </ul>
+        </Text>
+        <Text size="sm" mb="xs">
+          <b>Comodines para búsqueda parcial de matrículas</b><br />
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><code>?</code> coincide con UN carácter cualquiera</li>
+            <li><code>*</code> coincide con CERO O MÁS caracteres</li>
+          </ul>
+          <b>Ejemplos prácticos:</b>
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><code>??98M*</code> → Matrículas con "98M" en posiciones 3-5</li>
+            <li><code>98*</code> → Matrículas que empiezan por "98"</li>
+            <li><code>?98*</code> → Matrículas con "98" en posición 2-3</li>
+            <li><code>*98*</code> → Matrículas que contienen "98" en cualquier posición</li>
+            <li><code>98??AB</code> → Matrículas que empiezan por "98", dos caracteres cualquiera, y terminan en "AB"</li>
+          </ul>
+        </Text>
+        <Text size="sm" mb="xs">
+          <b>Consejos:</b>
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li>Usa nombres descriptivos al guardar búsquedas (ejemplo: "Matrícula 1234ABC en Madrid 01/05/2024").</li>
+            <li>Cruza búsquedas para descubrir relaciones ocultas entre vehículos y eventos.</li>
+            <li>Aprovecha los filtros avanzados y los comodines para búsquedas flexibles y potentes.</li>
+          </ul>
+        </Text>
+        <Text size="sm" mb="xs">
+          <b>Flujo de trabajo habitual</b><br />
+          <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><b>Análisis de lecturas:</b> Aplica filtros para explorar el conjunto de lecturas y detectar patrones o eventos relevantes.</li>
+            <li><b>Localización de lecturas o vehículos interesantes:</b> Marca como relevantes las lecturas clave o guarda vehículos sospechosos para su seguimiento.</li>
+            <li><b>Guardado en paneles correspondientes:</b> Accede a las pestañas de "Lecturas Relevantes" o "Vehículos" para analizar en detalle y documentar los hallazgos.</li>
+          </ol>
         </Text>
       </Stack>
     </Box>
