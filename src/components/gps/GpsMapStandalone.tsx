@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
 import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/core';
-import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronUp, IconChevronDown } from '@tabler/icons-react';
+import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronUp, IconChevronDown, IconDownload } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import HeatmapLayer from './HeatmapLayer';
 
@@ -280,6 +280,80 @@ const decimatePoints = (points: GpsLectura[], options = {
   }
 
   return result;
+};
+
+// Utility functions for KML and GPX export
+const generateKML = (lecturas: GpsLectura[], nombre: string) => {
+  const kmlHeader = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${nombre}</name>
+    <Style id="track">
+      <LineStyle>
+        <color>ff0000ff</color>
+        <width>4</width>
+      </LineStyle>
+    </Style>
+    <Placemark>
+      <name>${nombre}</name>
+      <styleUrl>#track</styleUrl>
+      <LineString>
+        <coordinates>`;
+
+  const coordinates = lecturas
+    .filter(l => typeof l.Coordenada_X === 'number' && typeof l.Coordenada_Y === 'number' && !isNaN(l.Coordenada_X) && !isNaN(l.Coordenada_Y))
+    .map(l => `${l.Coordenada_X},${l.Coordenada_Y},0`)
+    .join('\n');
+
+  const kmlFooter = `</coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+
+  return kmlHeader + coordinates + kmlFooter;
+};
+
+const generateGPX = (lecturas: GpsLectura[], nombre: string) => {
+  const gpxHeader = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Tracer GPS Export"
+     xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>${nombre}</name>
+    <time>${new Date().toISOString()}</time>
+  </metadata>
+  <trk>
+    <name>${nombre}</name>
+    <trkseg>`;
+
+  const trackpoints = lecturas
+    .filter(l => typeof l.Coordenada_X === 'number' && typeof l.Coordenada_Y === 'number' && !isNaN(l.Coordenada_X) && !isNaN(l.Coordenada_Y))
+    .map(l => `    <trkpt lat="${l.Coordenada_Y}" lon="${l.Coordenada_X}">
+      <time>${l.Fecha_y_Hora}</time>
+      ${l.Velocidad ? `<speed>${l.Velocidad}</speed>` : ''}
+    </trkpt>`)
+    .join('\n');
+
+  const gpxFooter = `
+    </trkseg>
+  </trk>
+</gpx>`;
+
+  return gpxHeader + trackpoints + gpxFooter;
+};
+
+const downloadFile = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
 };
 
 const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({

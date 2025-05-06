@@ -1204,76 +1204,74 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       }
     };
 
-    if (lecturasOrdenadas.length === 0) {
-      return (
-        <Paper p="md" withBorder style={{ height: 'calc(100vh - 300px)' }}>
-          <Text c="dimmed" ta="center">No hay lecturas LPR filtradas para mostrar</Text>
-        </Paper>
-      );
-    }
-
     return (
       <Paper p="md" withBorder style={{ height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column' }}>
         <Title order={3} mb="md">Lecturas LPR Filtradas</Title>
-        <ScrollArea style={{ flex: 1 }}>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th 
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => handleSort('Fecha_y_Hora')}
-                >
-                  Fecha/Hora
-                  {sortBy === 'Fecha_y_Hora' && (
-                    <span style={{ marginLeft: 8 }}>
-                      {sortDirection === 'asc' ? '↑' : '↓'}
-                    </span>
-                  )}
-                </Table.Th>
-                <Table.Th 
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => handleSort('Matricula')}
-                >
-                  Matrícula
-                  {sortBy === 'Matricula' && (
-                    <span style={{ marginLeft: 8 }}>
-                      {sortDirection === 'asc' ? '↑' : '↓'}
-                    </span>
-                  )}
-                </Table.Th>
-                <Table.Th 
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => handleSort('ID_Lector')}
-                >
-                  Lector
-                  {sortBy === 'ID_Lector' && (
-                    <span style={{ marginLeft: 8 }}>
-                      {sortDirection === 'asc' ? '↑' : '↓'}
-                    </span>
-                  )}
-                </Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {lecturasOrdenadas.map((lectura) => (
-                <Table.Tr 
-                  key={lectura.ID_Lectura}
-                  style={{ 
-                    cursor: 'pointer',
-                    backgroundColor: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? 'var(--mantine-color-blue-1)' : undefined,
-                    fontWeight: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? 'bold' : 'normal',
-                    borderLeft: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? '4px solid var(--mantine-color-blue-6)' : undefined
-                  }}
-                  onClick={() => centerMapOnLectura(lectura)}
-                >
-                  <Table.Td>{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Table.Td>
-                  <Table.Td>{lectura.Matricula}</Table.Td>
-                  <Table.Td>{lectura.ID_Lector || '-'}</Table.Td>
+        {lecturasOrdenadas.length === 0 ? (
+          <Text c="dimmed" ta="center" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            No hay lecturas LPR filtradas para mostrar
+          </Text>
+        ) : (
+          <ScrollArea style={{ flex: 1 }}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th 
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleSort('Fecha_y_Hora')}
+                  >
+                    Fecha/Hora
+                    {sortBy === 'Fecha_y_Hora' && (
+                      <span style={{ marginLeft: 8 }}>
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </Table.Th>
+                  <Table.Th 
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleSort('Matricula')}
+                  >
+                    Matrícula
+                    {sortBy === 'Matricula' && (
+                      <span style={{ marginLeft: 8 }}>
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </Table.Th>
+                  <Table.Th 
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => handleSort('ID_Lector')}
+                  >
+                    Lector
+                    {sortBy === 'ID_Lector' && (
+                      <span style={{ marginLeft: 8 }}>
+                        {sortDirection === 'asc' ? '↑' : '↓'}
+                      </span>
+                    )}
+                  </Table.Th>
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+              </Table.Thead>
+              <Table.Tbody>
+                {lecturasOrdenadas.map((lectura) => (
+                  <Table.Tr 
+                    key={lectura.ID_Lectura}
+                    style={{ 
+                      cursor: 'pointer',
+                      backgroundColor: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? 'var(--mantine-color-blue-1)' : undefined,
+                      fontWeight: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? 'bold' : 'normal',
+                      borderLeft: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? '4px solid var(--mantine-color-blue-6)' : undefined
+                    }}
+                    onClick={() => centerMapOnLectura(lectura)}
+                  >
+                    <Table.Td>{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Table.Td>
+                    <Table.Td>{lectura.Matricula}</Table.Td>
+                    <Table.Td>{lectura.ID_Lector || '-'}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </ScrollArea>
+        )}
       </Paper>
     );
   };
