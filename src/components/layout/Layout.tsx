@@ -21,7 +21,7 @@ function Layout() {
         style={{
           width: 280,
           padding: 16,
-          background: 'rgba(20, 40, 120, 0.95)',
+          background: '#2b4fcf',
           borderRight: `1px solid ${theme.colors.tracerBlue?.[2] || '#223'}`,
           display: 'flex',
           flexDirection: 'column',
@@ -31,7 +31,7 @@ function Layout() {
       >
         <Stack gap={32} style={{ height: '100%' }}>
           <Text fw={700} size="xl" style={{ color: '#fff', textAlign: 'center' }}>
-            Tracer LPR
+            LPR Tracer
           </Text>
           <Stack gap={8} style={{ flex: 1 }}>
             {navItems.map((item) => (

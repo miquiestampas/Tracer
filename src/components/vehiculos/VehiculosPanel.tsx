@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper, Collapse } from '@mantine/core';
+import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper, Collapse, Global } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconEye, IconPencil, IconTrash, IconCircleCheck, IconAlertTriangle, IconX, IconRefresh, IconCheck, IconBan } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -277,88 +277,240 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
             {
                 accessor: 'select',
                 title: (
-                    <Checkbox
-                        aria-label="Seleccionar todas las filas"
-                        checked={allSelected}
-                        indeterminate={someSelected}
-                        onChange={(e) => {
-                            setSelectedRecords(e.currentTarget.checked ? vehiculos : []);
-                        }}
-                    />
+                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
+                        <Checkbox
+                            aria-label="Seleccionar todas las filas"
+                            checked={allSelected}
+                            indeterminate={someSelected}
+                            onChange={(e) => {
+                                setSelectedRecords(e.currentTarget.checked ? vehiculos : []);
+                            }}
+                        />
+                    </Box>
                 ),
                 width: '0%',
+                textAlignment: 'center',
                 styles: {
                     cell: {
                         paddingLeft: 'var(--mantine-spacing-xs)',
                         paddingRight: 'var(--mantine-spacing-xs)',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
                     }
                 },
                 render: (vehiculo) => (
-                    <Checkbox
-                        aria-label={`Seleccionar fila ${vehiculo.ID_Vehiculo}`}
-                        checked={selectedRecords.some(v => v.ID_Vehiculo === vehiculo.ID_Vehiculo)}
-                        onChange={(e) => {
-                            const isChecked = e.currentTarget.checked;
-                            setSelectedRecords(currentSelected =>
-                                isChecked
-                                    ? [...currentSelected, vehiculo]
-                                    : currentSelected.filter(v => v.ID_Vehiculo !== vehiculo.ID_Vehiculo)
-                            );
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    />
+                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
+                        <Checkbox
+                            aria-label={`Seleccionar fila ${vehiculo.ID_Vehiculo}`}
+                            checked={selectedRecords.some(v => v.ID_Vehiculo === vehiculo.ID_Vehiculo)}
+                            onChange={(e) => {
+                                const isChecked = e.currentTarget.checked;
+                                setSelectedRecords(currentSelected =>
+                                    isChecked
+                                        ? [...currentSelected, vehiculo]
+                                        : currentSelected.filter(v => v.ID_Vehiculo !== vehiculo.ID_Vehiculo)
+                                );
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </Box>
                 ),
             },
             // --- Columnas existentes (marcar como sortable) ---
-            { accessor: 'Matricula', title: 'Matrícula', sortable: true },
-            { accessor: 'Marca', title: 'Marca', sortable: true },
-            { accessor: 'Modelo', title: 'Modelo', sortable: true },
-            { accessor: 'Color', title: 'Color', sortable: true },
-            { accessor: 'Propiedad', title: 'Propiedad', sortable: true },
-            {
-                accessor: 'totalLecturasLprCaso', // Usar el nombre exacto del campo de la API
-                title: 'Lecturas LPR',
-                width: 110, // Ajustar ancho si es necesario
+            { 
+                accessor: 'Matricula', 
+                title: 'Matrícula', 
+                sortable: true, 
                 textAlignment: 'center',
-                sortable: true, // Hacer sortable
-                // Usar el conteo de la API si existe, si no, mostrar conteo de expandidas o '...'
+                width: 120,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                },
+                render: (vehiculo) => (
+                    <Box
+                        component="span"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            background: '#fff',
+                            border: '2px solid #222',
+                            borderRadius: 4,
+                            padding: '1px 6px',
+                            fontWeight: 700,
+                            fontSize: 14,
+                            letterSpacing: 0.5,
+                            color: '#222',
+                            fontFamily: 'monospace',
+                            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                            minWidth: 80,
+                            textAlign: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Box style={{ width: 6, height: 20, background: '#2b4fcf', borderRadius: '3px 0 0 3px', marginRight: 6 }} />
+                        {vehiculo.Matricula}
+                    </Box>
+                )
+            },
+            { 
+                accessor: 'Marca', 
+                title: 'Marca', 
+                sortable: true, 
+                textAlignment: 'center',
+                width: 100,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                }
+            },
+            { 
+                accessor: 'Modelo', 
+                title: 'Modelo', 
+                sortable: true, 
+                textAlignment: 'center',
+                width: 100,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                }
+            },
+            { 
+                accessor: 'Color', 
+                title: 'Color', 
+                sortable: true, 
+                textAlignment: 'center',
+                width: 100,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                }
+            },
+            { 
+                accessor: 'Propiedad', 
+                title: 'Propiedad', 
+                sortable: true, 
+                textAlignment: 'center',
+                width: 120,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                }
+            },
+            {
+                accessor: 'totalLecturasLprCaso',
+                title: 'Lecturas LPR',
+                width: 110,
+                textAlignment: 'center',
+                sortable: true,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                },
                 render: (vehiculo) => typeof vehiculo.total_lecturas_lpr_caso === 'number'
                                        ? vehiculo.total_lecturas_lpr_caso
                                        : (expandedRecordIds.includes(vehiculo.ID_Vehiculo) && lecturasExpandidas[vehiculo.ID_Vehiculo]
                                            ? lecturasExpandidas[vehiculo.ID_Vehiculo].length
                                            : '...'),
             },
-            { accessor: 'Observaciones', title: 'Observaciones' },
+            { 
+                accessor: 'Observaciones', 
+                title: 'Observaciones', 
+                textAlignment: 'center',
+                width: 200,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                }
+            },
             {
-                accessor: 'Comprobado', title: 'Comp.', width: 70, textAlignment: 'center', sortable: true,
+                accessor: 'Comprobado',
+                title: 'Comp.',
+                width: 70,
+                textAlignment: 'center',
+                sortable: true,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                },
                 render: (v) => (
-                     <Tooltip label={v.Comprobado ? 'Desmarcar Comprobado' : 'Marcar Comprobado'}>
-                        <ActionIcon 
-                            variant="subtle" 
-                            color={v.Comprobado ? 'teal' : 'gray'} 
-                            onClick={() => handleToggleBoolean(v, 'Comprobado')}
-                        >
-                            {v.Comprobado ? <IconCircleCheck size={18} /> : <IconX size={18}/>}
-                        </ActionIcon>
-                    </Tooltip>
+                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
+                        <Tooltip label={v.Comprobado ? 'Desmarcar Comprobado' : 'Marcar Comprobado'}>
+                            <ActionIcon 
+                                variant="subtle" 
+                                color={v.Comprobado ? 'teal' : 'gray'} 
+                                onClick={() => handleToggleBoolean(v, 'Comprobado')}
+                            >
+                                {v.Comprobado ? <IconCircleCheck size={18} /> : <IconX size={18}/>}
+                            </ActionIcon>
+                        </Tooltip>
+                    </Box>
                 )
             },
             {
-                accessor: 'Sospechoso', title: 'Sosp.', width: 70, textAlignment: 'center', sortable: true,
-                 render: (v) => (
-                     <Tooltip label={v.Sospechoso ? 'Desmarcar Sospechoso' : 'Marcar Sospechoso'}>
-                        <ActionIcon 
-                            variant="subtle" 
-                            color={v.Sospechoso ? 'red' : 'gray'} 
-                            onClick={() => handleToggleBoolean(v, 'Sospechoso')}
-                        >
-                             {v.Sospechoso ? <IconAlertTriangle size={18} /> : <IconX size={18}/>}
-                        </ActionIcon>
-                    </Tooltip>
+                accessor: 'Sospechoso',
+                title: 'Sosp.',
+                width: 70,
+                textAlignment: 'center',
+                sortable: true,
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                },
+                render: (v) => (
+                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
+                        <Tooltip label={v.Sospechoso ? 'Desmarcar Sospechoso' : 'Marcar Sospechoso'}>
+                            <ActionIcon 
+                                variant="subtle" 
+                                color={v.Sospechoso ? 'red' : 'gray'} 
+                                onClick={() => handleToggleBoolean(v, 'Sospechoso')}
+                            >
+                                {v.Sospechoso ? <IconAlertTriangle size={18} /> : <IconX size={18}/>}
+                            </ActionIcon>
+                        </Tooltip>
+                    </Box>
                 )
             },
             {
-                accessor: 'actions', title: 'Acciones', width: 100, textAlignment: 'center',
+                accessor: 'actions',
+                title: 'Acciones',
+                width: 100,
+                textAlignment: 'center',
+                styles: {
+                    cell: {
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center'
+                    }
+                },
                 render: (vehiculo) => (
                     <Group gap="xs" justify="center" wrap="nowrap">
                         <Tooltip label="Editar Vehículo">
@@ -371,7 +523,6 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                                 variant="subtle" 
                                 color="red" 
                                 onClick={() => handleDeleteVehiculo(vehiculo)}
-                                // Deshabilitar si hay selección para evitar confusión?
                                 disabled={selectedRecords.length > 0} 
                             >
                                 <IconTrash size={16} />
@@ -385,6 +536,16 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
 
     return (
         <Box style={{ position: 'relative' }}>
+            {/* Estilo global para centrar todas las celdas de la tabla de vehículos */}
+            <Global styles={{
+                '.vehiculos-table-centered td, .vehiculos-table-centered th': {
+                    textAlign: 'center',
+                    verticalAlign: 'middle',
+                },
+                '.vehiculos-table-centered .mantine-Checkbox-root': {
+                    margin: '0 auto',
+                }
+            }} />
             <Group justify="flex-end" mb="xs">
                 <Button
                     variant="light"
@@ -441,7 +602,7 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                 </Group>
                 {error && <Alert color="red" title="Error" mb="md">{error}</Alert>}
                 <DataTable<Vehiculo>
-                    // Usar datos ordenados y paginados
+                    className="vehiculos-table-centered"
                     records={sortedAndPaginatedVehiculos}
                     columns={columns}
                     minHeight={200}
@@ -454,8 +615,7 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                     noRecordsText=""
                     noRecordsIcon={<></>}
                     fetching={loading}
-                    // --- Props de Paginación y Ordenación ---
-                    totalRecords={vehiculos.length} // Total real, no el paginado
+                    totalRecords={vehiculos.length}
                     recordsPerPage={PAGE_SIZE}
                     page={page}
                     onPageChange={setPage}
