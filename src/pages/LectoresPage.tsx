@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
     Box, Title, Table, Loader, Alert, Pagination, Select, Group, Text, ActionIcon, Tooltip, Button, Tabs, SimpleGrid, MultiSelect, Space, Checkbox, LoadingOverlay,
-    Autocomplete, ScrollArea, Collapse
+    Autocomplete, ScrollArea, Collapse, Paper, Stack, Grid
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
@@ -911,160 +911,136 @@ function LectoresPage() {
         <Tabs.Panel value="mapa" pt="xs" style={{ position: 'relative', zIndex: 1 }}>
           {mapLoading && <Loader my="xl" />}
           {mapError && <Alert color="red" title="Error en Mapa">{mapError}</Alert>}
-          
           {!mapLoading && !mapError && (
-            <>
-              <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 5 }} mb="md">
-                <MultiSelect
-                    label="Filtrar por Provincia"
-                    placeholder="Todas las provincias"
-                    data={provinciasUnicas}
-                    value={filtroProvincia}
-                    onChange={setFiltroProvincia}
-                    searchable clearable disabled={mapLoading}
-                    styles={{ dropdown: { zIndex: 1050 } }}
-                />
-                 <MultiSelect
-                    label="Filtrar por Carretera"
-                    placeholder="Todas las carreteras"
-                    data={carreterasUnicas}
-                    value={filtroCarretera}
-                    onChange={setFiltroCarretera}
-                    searchable clearable disabled={mapLoading}
-                    styles={{ dropdown: { zIndex: 1050 } }}
-                />
-                 <MultiSelect
-                    label="Filtrar por Organismo"
-                    placeholder="Todos los organismos"
-                    data={organismosUnicos}
-                    value={filtroOrganismo}
-                    onChange={setFiltroOrganismo}
-                    searchable clearable disabled={mapLoading}
-                    styles={{ dropdown: { zIndex: 1050 } }}
-                />
-                <Autocomplete
-                    label="Buscar por ID/Nombre"
-                    placeholder="Escribe para buscar..."
-                    data={lectorSearchSuggestions}
-                    value={filtroTextoLibre}
-                    onChange={setFiltroTextoLibre}
-                    limit={10}
-                    maxDropdownHeight={200}
-                    leftSection={<IconSearch size={16} />}
-                    rightSection={
-                      filtroTextoLibre ? (
-                        <ActionIcon variant="subtle" color="gray" onClick={() => setFiltroTextoLibre('')} aria-label="Limpiar búsqueda">
-                          <IconX size={16} />
-                        </ActionIcon>
-                      ) : null
-                    }
-                    disabled={mapLoading}
-                    comboboxProps={{ dropdownPadding: 'sm', shadow: 'md', zIndex: 1051 }}
-                />
-                <Select
-                    label="Filtrar por Sentido"
-                    placeholder="Ambos sentidos"
-                    data={SENTIDO_OPTIONS}
-                    value={filtroSentido}
-                    onChange={setFiltroSentido} 
-                    clearable
-                    disabled={mapLoading}
-                    styles={{ dropdown: { zIndex: 1050 } }}
-                />
-              </SimpleGrid>
-              
-              <Group justify="space-between" mb="md">
-                  <Text size="sm">
-                     Mostrando {lectoresFiltradosMapa.length} de {mapLectores.length} lectores con coordenadas.
-                     {drawnShape && <span style={{ color: 'blue' }}> (Filtrados por área dibujada)</span>}
-                  </Text>
-                  {lectoresFiltradosMapa.length > 0 && (
-                       <Button
-                           leftSection={resultsListOpened ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
-                           onClick={toggleResultsList}
-                           variant="light"
-                           size="xs"
-                           disabled={mapLoading}
-                       >
-                           {resultsListOpened ? 'Ocultar' : 'Ver'} Lista Filtrada ({lectoresFiltradosMapa.length})
-                       </Button>
+            <Grid gutter="md">
+              {/* Columna izquierda: Filtros + Tabla de lectores filtrados */}
+              <Grid.Col span={{ base: 12, md: 4 }}>
+                <Paper p="md" withBorder style={{ height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column' }}>
+                  <Title order={4} mb="md">Filtros de Lectores</Title>
+                  <Stack gap="sm" mb="md">
+                    <SimpleGrid cols={2} spacing="sm">
+                      <MultiSelect
+                        label="Provincia"
+                        placeholder="Todas"
+                        data={provinciasUnicas}
+                        value={filtroProvincia}
+                        onChange={setFiltroProvincia}
+                        searchable clearable
+                      />
+                      <MultiSelect
+                        label="Carretera"
+                        placeholder="Todas"
+                        data={carreterasUnicas}
+                        value={filtroCarretera}
+                        onChange={setFiltroCarretera}
+                        searchable clearable
+                      />
+                      <MultiSelect
+                        label="Organismo"
+                        placeholder="Todos"
+                        data={organismosUnicos}
+                        value={filtroOrganismo}
+                        onChange={setFiltroOrganismo}
+                        searchable clearable
+                      />
+                      <Select
+                        label="Sentido"
+                        placeholder="Ambos"
+                        data={SENTIDO_OPTIONS}
+                        value={filtroSentido}
+                        onChange={setFiltroSentido}
+                        clearable
+                      />
+                    </SimpleGrid>
+                    <Group grow>
+                      <Autocomplete
+                        label="ID / Nombre"
+                        placeholder="Buscar..."
+                        data={lectorSearchSuggestions}
+                        value={filtroTextoLibre}
+                        onChange={setFiltroTextoLibre}
+                        limit={10}
+                        clearable
+                      />
+                      <Button mt={22} variant="light" color="gray" onClick={handleClearFilters}>
+                        Limpiar Filtros
+                      </Button>
+                    </Group>
+                  </Stack>
+                  <Title order={4} mb="md">Lista de Lectores Filtrados</Title>
+                  <ScrollArea style={{ flex: 1 }}>
+                    <Table striped highlightOnHover withTableBorder>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th>ID Lector</Table.Th>
+                          <Table.Th>Nombre</Table.Th>
+                          <Table.Th>Carretera</Table.Th>
+                          <Table.Th>Provincia</Table.Th>
+                          <Table.Th>Sentido</Table.Th>
+                          <Table.Th>Organismo</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {lectoresFiltradosMapa.length > 0 ? (
+                          lectoresFiltradosMapa.map((lector) => (
+                            <Table.Tr key={`list-${lector.ID_Lector}`}>
+                              <Table.Td>{lector.ID_Lector}</Table.Td>
+                              <Table.Td>{lector.Nombre || '-'}</Table.Td>
+                              <Table.Td>{lector.Carretera || '-'}</Table.Td>
+                              <Table.Td>{lector.Provincia || '-'}</Table.Td>
+                              <Table.Td>{lector.Sentido || '-'}</Table.Td>
+                              <Table.Td>{lector.Organismo_Regulador || '-'}</Table.Td>
+                            </Table.Tr>
+                          ))
+                        ) : (
+                          <Table.Tr>
+                            <Table.Td colSpan={6} style={{ textAlign: 'center', color: '#888' }}>
+                              No hay lectores que coincidan con los filtros actuales.
+                            </Table.Td>
+                          </Table.Tr>
+                        )}
+                      </Table.Tbody>
+                    </Table>
+                  </ScrollArea>
+                </Paper>
+              </Grid.Col>
+              {/* Columna central: Mapa */}
+              <Grid.Col span={{ base: 12, md: 8 }}>
+                <Box style={{ height: 'calc(100vh - 300px)', minHeight: '450px', position: 'relative' }}>
+                  {mapLectores.length > 0 ? (
+                    <MapContainer 
+                      center={[40.416775, -3.703790]} 
+                      zoom={6} 
+                      scrollWheelZoom={true} 
+                      style={{ height: '100%', width: '100%' }}
+                    >
+                      <TileLayer
+                        url="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png"
+                        attribution='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://www.stamen.com/" target="_blank">Stamen Design</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
+                      />
+                      <DrawControl 
+                        onShapeDrawn={handleShapeDrawn}
+                        onShapeDeleted={handleShapeDeleted}
+                      />
+                      {lectoresFiltradosMapa.map(lector => {
+                        const useFuchsiaIcon = lector.Organismo_Regulador === 'ZBE Madrid';
+                        const isActive = infoBanner && infoBanner.ID_Lector === lector.ID_Lector;
+                        return (
+                          <Marker 
+                            key={lector.ID_Lector} 
+                            position={[lector.Coordenada_Y, lector.Coordenada_X]}
+                            icon={isActive ? activeLectorIcon : (useFuchsiaIcon ? fuchsiaPointIcon : undefined)}
+                            eventHandlers={{ click: () => setInfoBanner(lector) }}
+                          />
+                        );
+                      })}
+                    </MapContainer>
+                  ) : (
+                    <Text>No hay lectores con coordenadas para mostrar en el mapa.</Text>
                   )}
-              </Group>
-
-              <Box style={{ 
-                height: 'calc(100vh - 300px)', 
-                width: '100%',
-                minHeight: '450px',
-                position: 'relative'
-              }}>
-                {infoBanner && (
-                  <InfoBanner open={true} onClose={() => setInfoBanner(null)}>
-                    <div>
-                      <b>{infoBanner.ID_Lector}</b><br />
-                      {infoBanner.Nombre || '-'}<br />
-                      {infoBanner.Carretera || '-'} ({infoBanner.Provincia || '-'}) <br />
-                      Organismo: {infoBanner.Organismo_Regulador || '-'}
-                    </div>
-                  </InfoBanner>
-                )}
-                {mapLectores.length > 0 ? (
-                  <MapContainer 
-                    center={[40.416775, -3.703790]} 
-                    zoom={6} 
-                    scrollWheelZoom={true} 
-                    style={{ height: '100%', width: '100%' }}
-                  >
-                    <TileLayer
-                      url="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png"
-                      attribution='&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://www.stamen.com/" target="_blank">Stamen Design</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
-                    />
-                    <DrawControl 
-                      onShapeDrawn={handleShapeDrawn}
-                      onShapeDeleted={handleShapeDeleted}
-                    />
-                    {lectoresFiltradosMapa.map(lector => {
-                      const useFuchsiaIcon = lector.Organismo_Regulador === 'ZBE Madrid';
-                      const isActive = infoBanner && infoBanner.ID_Lector === lector.ID_Lector;
-                      return (
-                        <Marker 
-                          key={lector.ID_Lector} 
-                          position={[lector.Coordenada_Y, lector.Coordenada_X]}
-                          icon={isActive ? activeLectorIcon : (useFuchsiaIcon ? fuchsiaPointIcon : undefined)}
-                          eventHandlers={{ click: () => setInfoBanner(lector) }}
-                        />
-                      );
-                    })}
-                  </MapContainer>
-                ) : (
-                  <Text>No hay lectores con coordenadas para mostrar en el mapa.</Text>
-                )}
-              </Box>
-
-              <Collapse in={resultsListOpened} transitionDuration={200}>
-                  <Box mt="md" pt="md" style={{ borderTop: '1px solid var(--mantine-color-gray-3)' }}>
-                      <ScrollArea h={300}>
-                          {drawerRows.length > 0 ? (
-                              <Table striped highlightOnHover withTableBorder>
-                                  <Table.Thead>
-                                      <Table.Tr>
-                                          <Table.Th>ID Lector</Table.Th>
-                                          <Table.Th>Nombre</Table.Th>
-                                          <Table.Th>Carretera</Table.Th>
-                                          <Table.Th>Provincia</Table.Th>
-                                          <Table.Th>Sentido</Table.Th>
-                                          <Table.Th>Organismo</Table.Th>
-                                      </Table.Tr>
-                                  </Table.Thead>
-                                  <Table.Tbody>{drawerRows}</Table.Tbody>
-                              </Table>
-                          ) : (
-                              <Text>No hay lectores que coincidan con los filtros actuales.</Text>
-                          )}
-                      </ScrollArea>
-                  </Box>
-              </Collapse>
-
-            </>
+                </Box>
+              </Grid.Col>
+            </Grid>
           )}
         </Tabs.Panel>
       </Tabs>
