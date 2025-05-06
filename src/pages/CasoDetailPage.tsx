@@ -79,39 +79,71 @@ interface LectorConCoordenadas {
 // --- Objeto con Textos de Ayuda ---
 const helpTexts: { [key: string]: React.ReactNode } = {
   'analisis-lpr': (
-    <Box maw={400}> 
-      <Text fw={500} mb="sm">Ayuda: Lecturas LPR</Text>
-      <Stack gap="xs"> 
-        <Text size="xs">
-          Esta pestaña muestra las lecturas LPR del caso.
+    <Box maw={900}>
+      <Text fw={500} mb="sm" size="lg" c="blue.8">¿Cómo funciona la pestaña Lecturas LPR?</Text>
+      <Stack gap="xs">
+        <Text size="sm" mb="xs">
+          <b>¿Qué es esta pestaña?</b><br />
+          Aquí puedes consultar, filtrar y analizar todas las lecturas LPR asociadas al caso. El panel ofrece herramientas avanzadas para acotar por matrícula (con comodines), fechas, horas, lector, carretera, y más. Permite identificar patrones, localizar vehículos de interés y documentar hallazgos relevantes para la investigación.
         </Text>
-        <Text size="xs">
-          <strong>Filtros (izquierda):</strong>
+        <Text size="sm" mb="xs">
+          <b>Funciones principales del panel:</b>
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li>Se usa para matrícula, fechas, horas, lector, carretera, etc.</li>
-            <li><strong>Búsqueda por Matrícula:</strong> Usa comodines para búsquedas parciales:
+            <li><b>Filtros avanzados:</b> Filtra por matrícula (exacta o parcial con comodines), fechas, horas, lector, carretera, sentido, y relevancia.</li>
+            <li><b>Búsqueda parcial de matrículas:</b> Utiliza comodines para búsquedas flexibles:
               <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
                 <li><code>?</code> coincide con UN carácter cualquiera</li>
                 <li><code>*</code> coincide con CERO O MÁS caracteres</li>
               </ul>
-            </li>
-            <li><strong>Ejemplos:</strong>
+              <b>Ejemplos prácticos:</b>
               <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-                <li><code>??98M*</code> → Encuentra matrículas que tienen "98M" en las posiciones 3-5, con cualquier carácter en las posiciones 1-2 y cualquier cosa después</li>
-                <li><code>98*</code> → Encuentra matrículas que empiezan por "98"</li>
-                <li><code>?98*</code> → Encuentra matrículas con "98" en la posición 2-3</li>
-                <li><code>*98*</code> → Encuentra matrículas que contienen "98" en cualquier posición</li>
-                <li><code>98??AB</code> → Encuentra matrículas que empiezan por "98", seguidas de dos caracteres cualquiera, y terminan en "AB"</li>
+                <li><code>??98M*</code> → Matrículas con "98M" en posiciones 3-5</li>
+                <li><code>98*</code> → Matrículas que empiezan por "98"</li>
+                <li><code>?98*</code> → Matrículas con "98" en posición 2-3</li>
+                <li><code>*98*</code> → Matrículas que contienen "98" en cualquier posición</li>
+                <li><code>98??AB</code> → Matrículas que empiezan por "98", dos caracteres cualquiera, y terminan en "AB"</li>
               </ul>
             </li>
+            <li><b>Gestión de búsquedas:</b> Guarda cualquier búsqueda realizada (con los filtros aplicados) para consultarla más adelante o cruzarla con otras búsquedas.</li>
+            <li><b>Búsqueda cruzada:</b> Combina resultados de diferentes búsquedas para descubrir relaciones y patrones entre vehículos.
+              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+                <li><b>Ejemplo 1:</b> Búsqueda 1: Vehículos detectados en la entrada de una ciudad. Búsqueda 2: Vehículos detectados en la salida de la ciudad. Cruza ambas para ver qué vehículos aparecen en ambos eventos (posibles acompañamientos o rutas completas).</li>
+                <li><b>Ejemplo 2:</b> Búsqueda 1: Vehículo objetivo "1234ABC" en Madrid. Búsqueda 2: Vehículos detectados en el mismo rango horario y diferentes lectores. Cruza para identificar posibles vehículos lanzadera o escoltas.</li>
+              </ul>
+            </li>
+            <li><b>Marcado de lecturas relevantes:</b> Marca lecturas clave para su seguimiento y análisis posterior en el panel de "Lecturas Relevantes".</li>
+            <li><b>Guardado de vehículos:</b> Guarda matrículas de interés directamente en el panel de "Vehículos" para su análisis detallado y seguimiento.</li>
+            <li><b>Exportación de resultados:</b> Exporta los datos filtrados para informes o análisis externos.</li>
+            <li><b>Historial y gestión de búsquedas guardadas:</b> Accede y gestiona búsquedas previas para reutilizarlas o cruzarlas.</li>
           </ul>
         </Text>
-        <Text size="xs">
-          <strong>Tabla de Resultados:</strong>
+        <Text size="sm" mb="xs">
+          <b>¿Cómo guardar una búsqueda?</b><br />
+          <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li>Aplica los filtros que te interesen (matrícula, fechas, lector, etc.).</li>
+            <li>Haz clic en el botón "Guardar búsqueda".</li>
+            <li>Asigna un nombre descriptivo para identificarla fácilmente.</li>
+            <li>Accede a tus búsquedas guardadas desde el panel correspondiente para consultarlas o cruzarlas con otras.</li>
+          </ol>
+        </Text>
+        <Text size="sm" mb="xs">
+          <b>Flujo de trabajo habitual:</b>
+          <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li><b>Análisis de lecturas:</b> Aplica filtros para explorar el conjunto de lecturas y detectar patrones, trayectorias o eventos relevantes.</li>
+            <li><b>Localización de lecturas o vehículos interesantes:</b> Marca como relevantes las lecturas clave o guarda vehículos sospechosos para su seguimiento.</li>
+            <li><b>Guardado en paneles correspondientes:</b> Accede a las pestañas de "Lecturas Relevantes" o "Vehículos" para analizar en detalle y documentar los hallazgos.</li>
+            <li><b>Búsqueda cruzada:</b> Cruza búsquedas guardadas para descubrir relaciones ocultas entre vehículos, trayectorias y eventos.</li>
+            <li><b>Exportación y documentación:</b> Exporta los resultados relevantes y documenta los hallazgos para informes o análisis posteriores.</li>
+          </ol>
+        </Text>
+        <Text size="sm" mb="xs">
+          <b>Consejos:</b>
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li>Muestra lecturas que coinciden con filtros.</li>
-            <li>Ordena haciendo clic en cabeceras.</li>
-            <li>Acciones: Marcar/desmarcar relevante (<IconBookmark size="0.8rem" />), guardar vehículo para comprobaciones posteriores(<IconCar size="0.8rem" />).</li>
+            <li>Usa nombres descriptivos al guardar búsquedas (ejemplo: "Matricula 1234ABC en Madrid 01/05/2024").</li>
+            <li>Cruza búsquedas para descubrir relaciones ocultas entre vehículos y eventos.</li>
+            <li>Aprovecha los filtros avanzados y los comodines para búsquedas flexibles y potentes.</li>
+            <li>Marca solo las lecturas realmente relevantes para mantener el foco en lo importante.</li>
+            <li>Revisa periódicamente tus búsquedas y lecturas guardadas para optimizar la investigación.</li>
           </ul>
         </Text>
       </Stack>
