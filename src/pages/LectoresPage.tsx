@@ -116,7 +116,13 @@ const InfoBanner = ({ open, onClose, children }) => (
   </Box>
 );
 
-// --- NUEVO: Panel de filtros para la pestaña Mapa ---
+// --- NUEVO: Definir las secciones/botones ---
+const lectorSections = [
+    { id: 'tabla', label: 'Tabla', icon: IconList, section: 'vista' },
+    { id: 'mapa', label: 'Mapa', icon: IconMap, section: 'vista' },
+];
+
+// --- Panel de filtros para la pestaña Mapa ---
 function FiltrosMapaLectoresPanel({
   provinciasUnicas,
   carreterasUnicas,
@@ -185,7 +191,7 @@ function FiltrosMapaLectoresPanel({
   );
 }
 
-// --- NUEVO: Panel lateral de lectores filtrados para la pestaña Mapa ---
+// --- Panel lateral de lectores filtrados para la pestaña Mapa ---
 function LectoresFiltradosPanel({ lectores }) {
   return (
     <Paper p="md" shadow="xs" radius="md" withBorder style={{ height: 520, display: 'flex', flexDirection: 'column' }}>
@@ -796,12 +802,6 @@ function LectoresPage() {
     // Función vacía por ahora
   };
 
-  // --- Sustituir Tabs de navegación por grupo de botones estilo CasoDetailPage ---
-  const lectorSections = [
-    { id: 'tabla', label: 'Tabla', icon: IconList },
-    { id: 'mapa', label: 'Mapa', icon: IconMap },
-  ];
-
   return (
     <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
       <Group justify="space-between" mb="xl">
@@ -1062,10 +1062,10 @@ function LectoresPage() {
                 {infoBanner && (
                   <InfoBanner open={true} onClose={() => setInfoBanner(null)}>
                     <div>
-                      <b>{infoBanner.ID_Lector}</b><br />
-                      {infoBanner.Nombre || '-'}<br />
-                      {infoBanner.Carretera || '-'} ({infoBanner.Provincia || '-'}) <br />
-                      Organismo: {infoBanner.Organismo_Regulador || '-'}
+                      <b>{infoBanner?.ID_Lector}</b><br />
+                      {infoBanner?.Nombre || '-'}<br />
+                      {infoBanner?.Carretera || '-'} ({infoBanner?.Provincia || '-'}) <br />
+                      Organismo: {infoBanner?.Organismo_Regulador || '-'}
                     </div>
                   </InfoBanner>
                 )}
