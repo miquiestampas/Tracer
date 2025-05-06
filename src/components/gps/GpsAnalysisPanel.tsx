@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
-import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh, IconPlayerPlay, IconPlayerPause, IconPlayerStop, IconPlayerTrackNext, IconPlayerTrackPrev, IconPlayerSkipForward, IconPlayerSkipBack, IconCamera } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh, IconPlayerPlay, IconPlayerPause, IconPlayerStop, IconPlayerTrackNext, IconPlayerTrackPrev, IconPlayerSkipForward, IconPlayerSkipBack, IconCamera, IconDownload } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
@@ -417,6 +417,80 @@ const RoutePlayer = React.memo(({ capas, onPlay, onPause, onStop, onSpeedChange,
     </Paper>
   );
 });
+
+// Utility functions for KML and GPX export
+const generateKML = (lecturas: GpsLectura[], nombre: string) => {
+  const kmlHeader = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>${nombre}</name>
+    <Style id="track">
+      <LineStyle>
+        <color>ff0000ff</color>
+        <width>4</width>
+      </LineStyle>
+    </Style>
+    <Placemark>
+      <name>${nombre}</name>
+      <styleUrl>#track</styleUrl>
+      <LineString>
+        <coordinates>`;
+
+  const coordinates = lecturas
+    .filter(l => typeof l.Coordenada_X === 'number' && typeof l.Coordenada_Y === 'number' && !isNaN(l.Coordenada_X) && !isNaN(l.Coordenada_Y))
+    .map(l => `${l.Coordenada_X},${l.Coordenada_Y},0`)
+    .join('\n');
+
+  const kmlFooter = `</coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>`;
+
+  return kmlHeader + coordinates + kmlFooter;
+};
+
+const generateGPX = (lecturas: GpsLectura[], nombre: string) => {
+  const gpxHeader = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Tracer GPS Export"
+     xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+     xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>${nombre}</name>
+    <time>${new Date().toISOString()}</time>
+  </metadata>
+  <trk>
+    <name>${nombre}</name>
+    <trkseg>`;
+
+  const trackpoints = lecturas
+    .filter(l => typeof l.Coordenada_X === 'number' && typeof l.Coordenada_Y === 'number' && !isNaN(l.Coordenada_X) && !isNaN(l.Coordenada_Y))
+    .map(l => `    <trkpt lat="${l.Coordenada_Y}" lon="${l.Coordenada_X}">
+      <time>${l.Fecha_y_Hora}</time>
+      ${l.Velocidad ? `<speed>${l.Velocidad}</speed>` : ''}
+    </trkpt>`)
+    .join('\n');
+
+  const gpxFooter = `
+    </trkseg>
+  </trk>
+</gpx>`;
+
+  return gpxHeader + trackpoints + gpxFooter;
+};
+
+const downloadFile = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
 
 const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   // Estados principales
@@ -857,6 +931,27 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   useEffect(() => {
     centerMapOnCurrentPoint();
   }, [currentIndex, centerMapOnCurrentPoint]);
+
+  // Add useEffect to set filters.fechaInicio and filters.fechaFin when vehiculoObjetivo changes
+  useEffect(() => {
+    if (!vehiculoObjetivo || !casoId) return;
+    (async () => {
+      try {
+        const data = await getLecturasGps(casoId, { matricula: vehiculoObjetivo });
+        if (data && data.length > 0) {
+          // Ordenar por fecha ascendente
+          const sorted = [...data].sort((a, b) => new Date(a.Fecha_y_Hora).getTime() - new Date(b.Fecha_y_Hora).getTime());
+          setFilters(prev => ({
+            ...prev,
+            fechaInicio: sorted[0].Fecha_y_Hora.slice(0, 10),
+            fechaFin: sorted[sorted.length - 1].Fecha_y_Hora.slice(0, 10)
+          }));
+        }
+      } catch (e) {
+        // Si hay error, no modificar filtros
+      }
+    })();
+  }, [vehiculoObjetivo, casoId]);
 
   // --- Renderizado principal ---
   if (fullscreenMap) {
@@ -1328,6 +1423,36 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             selectedLayerId={selectedLayerForPlayback}
             onLayerChange={setSelectedLayerForPlayback}
           />
+
+          {/* Always render the export buttons below RoutePlayer, but disable them if lecturas.length === 0 */}
+          <Group justify="center" mt="md">
+            <Button
+              leftSection={<IconDownload size={18} />}
+              color="blue"
+              variant="filled"
+              style={{ minWidth: 120, fontWeight: 600 }}
+              onClick={() => {
+                const kml = generateKML(lecturas, `GPS_Track_${new Date().toISOString().split('T')[0]}`);
+                downloadFile(kml, `gps_track_${new Date().toISOString().split('T')[0]}.kml`);
+              }}
+              disabled={lecturas.length === 0}
+            >
+              Exportar KML
+            </Button>
+            <Button
+              leftSection={<IconDownload size={18} />}
+              color="blue"
+              variant="light"
+              style={{ minWidth: 120, fontWeight: 600 }}
+              onClick={() => {
+                const gpx = generateGPX(lecturas, `GPS_Track_${new Date().toISOString().split('T')[0]}`);
+                downloadFile(gpx, `gps_track_${new Date().toISOString().split('T')[0]}.gpx`);
+              }}
+              disabled={lecturas.length === 0}
+            >
+              Exportar GPX
+            </Button>
+          </Group>
         </Stack>
       </div>
     </Box>
