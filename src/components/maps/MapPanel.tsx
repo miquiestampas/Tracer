@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal, Alert, Card } from '@mantine/core';
-import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal, Alert, Card, Table, ScrollArea } from '@mantine/core';
+import { MapContainer, TileLayer, Marker, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import LecturaFilters from '../filters/LecturaFilters';
@@ -290,6 +290,9 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
   const [infoBanner, setInfoBanner] = useState<any | null>(null);
 
+  const [selectedLectura, setSelectedLectura] = useState<Lectura | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+
   // Manejar la tecla Escape
   useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
 
@@ -544,6 +547,9 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     const lecturasLPR = resultadosFiltro.lecturas.filter(l => l.Tipo_Fuente !== 'GPS');
     if (lecturasLPR.length === 0) return null;
 
+    console.log('Renderizando resultados. Lectura seleccionada:', selectedLectura);
+    console.log('Total lecturas LPR:', lecturasLPR.length);
+
     return (
       <>
         {/* Renderizar lectores con lecturas */}
@@ -562,18 +568,110 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           );
         })}
 
-        {/* Renderizar lecturas individuales */}
-        {lecturasLPR.filter(l => !l.ID_Lector).map((lectura) => (
-          <Marker 
-            key={`filtro-lectura-${lectura.ID_Lectura}`}
-            position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
-            icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', '#228be6')}
-            zIndexOffset={600}
-            eventHandlers={{
-              click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
-            }}
-          />
-        ))}
+        {/* Primero renderizar lecturas no seleccionadas */}
+        {lecturasLPR
+          .filter(l => !l.ID_Lector && l.ID_Lectura !== selectedLectura?.ID_Lectura)
+          .map((lectura) => (
+            <Marker 
+              key={`filtro-lectura-${lectura.ID_Lectura}`}
+              position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
+              icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', '#228be6')}
+              zIndexOffset={600}
+              eventHandlers={{
+                click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
+              }}
+            />
+          ))}
+
+        {/* Luego renderizar la lectura seleccionada para que esté por encima */}
+        {selectedLectura && lecturasLPR.some(l => l.ID_Lectura === selectedLectura.ID_Lectura) && (
+          <>
+            <Circle
+              center={[selectedLectura.Coordenada_Y!, selectedLectura.Coordenada_X!]}
+              radius={50}
+              pathOptions={{
+                color: '#228be6',
+                fillColor: '#228be6',
+                fillOpacity: 0.2,
+                weight: 2
+              }}
+            />
+            <Marker 
+              key={`filtro-lectura-selected-${selectedLectura.ID_Lectura}`}
+              position={[selectedLectura.Coordenada_Y!, selectedLectura.Coordenada_X!]}
+              icon={L.divIcon({
+                className: 'custom-div-icon',
+                html: `
+                  <div style="
+                    position: relative;
+                    width: 45px;
+                    height: 45px;
+                    z-index: 1000;
+                  ">
+                    <div style="
+                      position: absolute;
+                      top: 50%;
+                      left: 50%;
+                      transform: translate(-50%, -50%);
+                      width: 45px;
+                      height: 45px;
+                      background-color: #fa5252;
+                      border: 3px solid white;
+                      border-radius: 50%;
+                      box-shadow: 0 0 12px rgba(0,0,0,0.5);
+                      animation: pulse 1.5s infinite;
+                    "></div>
+                    <div style="
+                      position: absolute;
+                      top: 50%;
+                      left: 50%;
+                      transform: translate(-50%, -50%);
+                      width: 22px;
+                      height: 22px;
+                      background-color: white;
+                      border-radius: 50%;
+                      animation: pulse-inner 1.5s infinite;
+                    "></div>
+                    <div style="
+                      position: absolute;
+                      top: 50%;
+                      left: 50%;
+                      transform: translate(-50%, -50%);
+                      width: 11px;
+                      height: 11px;
+                      background-color: #fa5252;
+                      border-radius: 50%;
+                      animation: pulse-core 1.5s infinite;
+                    "></div>
+                  </div>
+                  <style>
+                    @keyframes pulse {
+                      0% { transform: translate(-50%, -50%) scale(1); }
+                      50% { transform: translate(-50%, -50%) scale(1.15); }
+                      100% { transform: translate(-50%, -50%) scale(1); }
+                    }
+                    @keyframes pulse-inner {
+                      0% { transform: translate(-50%, -50%) scale(1); }
+                      50% { transform: translate(-50%, -50%) scale(1.1); }
+                      100% { transform: translate(-50%, -50%) scale(1); }
+                    }
+                    @keyframes pulse-core {
+                      0% { transform: translate(-50%, -50%) scale(1); }
+                      50% { transform: translate(-50%, -50%) scale(1.05); }
+                      100% { transform: translate(-50%, -50%) scale(1); }
+                    }
+                  </style>
+                `,
+                iconSize: [45, 45],
+                iconAnchor: [22, 22]
+              })}
+              zIndexOffset={1000}
+              eventHandlers={{
+                click: () => setInfoBanner({ ...selectedLectura, tipo: 'lectura' })
+              }}
+            />
+          </>
+        )}
       </>
     );
   };
@@ -916,6 +1014,27 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     setMapKey(prev => prev + 1);
   }, [handleMapControlChange]);
 
+  // Función para centrar el mapa en una lectura específica
+  const centerMapOnLectura = useCallback((lectura: Lectura) => {
+    if (!mapRef.current || !lectura.Coordenada_X || !lectura.Coordenada_Y) return;
+    
+    console.log('Centrando mapa en lectura:', lectura);
+    
+    // Centrar el mapa y hacer zoom
+    mapRef.current.setView(
+      [lectura.Coordenada_Y, lectura.Coordenada_X],
+      18, // Zoom más cercano para mejor detalle
+      {
+        animate: true,
+        duration: 1 // Duración de la animación en segundos
+      }
+    );
+    
+    // Actualizar la lectura seleccionada
+    setSelectedLectura(lectura);
+    console.log('Lectura seleccionada actualizada:', lectura);
+  }, []);
+
   // Componente del mapa para reutilizar
   const MapComponent = ({ isFullscreen = false }) => (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -935,6 +1054,9 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           .lectura-popup {
             max-height: ${isFullscreen ? '400px' : '200px'};
             overflow-y: auto;
+          }
+          canvas {
+            will-read-frequently: true;
           }
         `}
       </style>
@@ -971,7 +1093,11 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             const cameraBtn = document.getElementById('camera-capture-btn-lpr');
             if (cameraBtn) cameraBtn.style.visibility = 'hidden';
             await new Promise(r => setTimeout(r, 50));
-            html2canvas(mapContainer, { useCORS: true, backgroundColor: null }).then(canvas => {
+            html2canvas(mapContainer, { 
+              useCORS: true, 
+              backgroundColor: null,
+              willReadFrequently: true 
+            }).then(canvas => {
               if (cameraBtn) cameraBtn.style.visibility = 'visible';
               const link = document.createElement('a');
               link.download = `captura-mapa-lpr.png`;
@@ -1015,10 +1141,22 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           ...mapContainerStyle,
           height: isFullscreen ? '100vh' : '100%',
         }}
+        ref={(map) => {
+          if (map) {
+            mapRef.current = map;
+          }
+        }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url={getTileLayerUrl()}
+          maxZoom={19}
+          errorTileUrl="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/0/0/0.png"
+          tileSize={256}
+          zoomOffset={0}
+          updateWhenIdle={true}
+          updateWhenZooming={false}
+          keepBuffer={2}
         />
         
         {renderReaderLayers()}
@@ -1032,6 +1170,113 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       </MapContainer>
     </div>
   );
+
+  // Componente para el panel de lecturas filtradas
+  const LecturasFiltradasPanel = () => {
+    const [sortBy, setSortBy] = useState<keyof Lectura>('Fecha_y_Hora');
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+    const lecturasOrdenadas = useMemo(() => {
+      return [...resultadosFiltro.lecturas]
+        .filter(lectura => lectura.Tipo_Fuente !== 'GPS')
+        .sort((a, b) => {
+          const aValue = a[sortBy];
+          const bValue = b[sortBy];
+          
+          if (sortBy === 'Fecha_y_Hora') {
+            const dateA = new Date(aValue as string).getTime();
+            const dateB = new Date(bValue as string).getTime();
+            return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+          }
+          
+          // Para otros campos, ordenación alfabética
+          const comparison = String(aValue).localeCompare(String(bValue));
+          return sortDirection === 'asc' ? comparison : -comparison;
+        });
+    }, [resultadosFiltro.lecturas, sortBy, sortDirection]);
+
+    const handleSort = (column: keyof Lectura) => {
+      if (sortBy === column) {
+        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+      } else {
+        setSortBy(column);
+        setSortDirection('asc');
+      }
+    };
+
+    if (lecturasOrdenadas.length === 0) {
+      return (
+        <Paper p="md" withBorder style={{ height: 'calc(100vh - 300px)' }}>
+          <Text c="dimmed" ta="center">No hay lecturas LPR filtradas para mostrar</Text>
+        </Paper>
+      );
+    }
+
+    return (
+      <Paper p="md" withBorder style={{ height: 'calc(100vh - 300px)', display: 'flex', flexDirection: 'column' }}>
+        <Title order={3} mb="md">Lecturas LPR Filtradas</Title>
+        <ScrollArea style={{ flex: 1 }}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('Fecha_y_Hora')}
+                >
+                  Fecha/Hora
+                  {sortBy === 'Fecha_y_Hora' && (
+                    <span style={{ marginLeft: 8 }}>
+                      {sortDirection === 'asc' ? '↑' : '↓'}
+                    </span>
+                  )}
+                </Table.Th>
+                <Table.Th 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('Matricula')}
+                >
+                  Matrícula
+                  {sortBy === 'Matricula' && (
+                    <span style={{ marginLeft: 8 }}>
+                      {sortDirection === 'asc' ? '↑' : '↓'}
+                    </span>
+                  )}
+                </Table.Th>
+                <Table.Th 
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleSort('ID_Lector')}
+                >
+                  Lector
+                  {sortBy === 'ID_Lector' && (
+                    <span style={{ marginLeft: 8 }}>
+                      {sortDirection === 'asc' ? '↑' : '↓'}
+                    </span>
+                  )}
+                </Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {lecturasOrdenadas.map((lectura) => (
+                <Table.Tr 
+                  key={lectura.ID_Lectura}
+                  style={{ 
+                    cursor: 'pointer',
+                    backgroundColor: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? 'var(--mantine-color-blue-1)' : undefined,
+                    fontWeight: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? 'bold' : 'normal',
+                    borderLeft: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? '4px solid var(--mantine-color-blue-6)' : undefined
+                  }}
+                  onClick={() => centerMapOnLectura(lectura)}
+                >
+                  <Table.Td>{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Table.Td>
+                  <Table.Td>{lectura.Matricula}</Table.Td>
+                  <Table.Td>{lectura.ID_Lector || '-'}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
+      </Paper>
+    );
+  };
 
   if (fullscreenMap) {
     return (
@@ -1088,7 +1333,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
         </Alert>
       </Collapse>
       <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 4 }}>
+        <Grid.Col span={{ base: 12, md: 3 }}>
           <Stack>
             {/* Panel de Filtros */}
             <Paper p="md" withBorder>
@@ -1283,8 +1528,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           </Stack>
         </Grid.Col>
 
-        <Grid.Col span={{ base: 12, md: 8 }}>
-          <Paper p="md" withBorder style={{ height: 'calc(100vh - 200px)', position: 'relative' }}>
+        <Grid.Col span={{ base: 12, md: 6 }}>
+          <Paper p="md" withBorder style={{ height: 'calc(100vh - 300px)', position: 'relative' }}>
             {lectores.length === 0 ? (
               <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Text c="dimmed">No hay lectores con coordenadas válidas para mostrar en el mapa.</Text>
@@ -1293,6 +1538,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               <MapComponent isFullscreen={false} />
             )}
           </Paper>
+        </Grid.Col>
+
+        <Grid.Col span={{ base: 12, md: 3 }}>
+          <LecturasFiltradasPanel />
         </Grid.Col>
       </Grid>
     </Box>
