@@ -2161,3 +2161,27 @@ def buscar_vehiculos_multicaso(request: BusquedaMulticasoRequest, db: Session = 
 
     return coincidencias
 # --- Fin Endpoint ---
+
+@app.get("/archivos/recientes", response_model=List[schemas.ArchivoExcel])
+def read_archivos_recientes(
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene los archivos más recientemente importados, incluyendo el caso asociado y el número real de registros importados.
+    """
+    archivos = (
+        db.query(models.ArchivoExcel)
+        .join(models.Caso)
+        .options(joinedload(models.ArchivoExcel.caso))
+        .order_by(models.ArchivoExcel.Fecha_de_Importacion.desc())
+        .limit(limit)
+        .all()
+    )
+    # Para cada archivo, contar el número de lecturas asociadas
+    resultado = []
+    for archivo in archivos:
+        total_registros = db.query(func.count(models.Lectura.ID_Lectura)).filter(models.Lectura.ID_Archivo == archivo.ID_Archivo).scalar() or 0
+        archivo.Total_Registros = total_registros
+        resultado.append(archivo)
+    return resultado

@@ -7,6 +7,7 @@ interface ImportEvent {
   timestamp: string;
   status: 'success' | 'error';
   recordsCount?: number;
+  caseName?: string;
 }
 
 interface ReaderAlert {
@@ -74,7 +75,7 @@ export const getArchivosRecientes = async (): Promise<RecentFile[]> => {
       type: archivo.Tipo_de_Archivo === 'GPS' || archivo.Tipo_de_Archivo === 'LPR' ? 'excel' : 'other',
       size: 'N/A', // TODO: Implementar tamaño real
       lastModified: new Date(archivo.Fecha_de_Importacion).toLocaleString('es-ES'),
-      caseName: archivo.caso?.Nombre_del_Caso || archivo.ID_Caso || 'Sin caso'
+      caseName: archivo.caso?.Nombre_del_Caso || String(archivo.ID_Caso) || 'Sin caso'
     }));
   } catch (error) {
     console.error('Error al obtener archivos recientes:', error);
@@ -88,31 +89,13 @@ export const getImportacionesRecientes = async (): Promise<ImportEvent[]> => {
     return response.data.map(archivo => ({
       id: archivo.ID_Archivo,
       fileName: archivo.Nombre_del_Archivo,
-      timestamp: new Date(archivo.Fecha_de_Importacion).toLocaleString('es-ES'),
+      timestamp: archivo.Fecha_de_Importacion,
       status: 'success',
-      recordsCount: archivo.Total_Registros
+      recordsCount: archivo.Total_Registros,
+      caseName: archivo.caso?.Nombre_del_Caso || `Caso ${archivo.ID_Caso}`
     }));
   } catch (error) {
     console.error('Error al obtener importaciones recientes:', error);
-    throw error;
-  }
-};
-
-export const getLectoresIncompletos = async (): Promise<ReaderAlert[]> => {
-  try {
-    const response = await apiClient.get('/lectores/incompletos');
-    return response.data.map((lector: any) => ({
-      id: lector.ID_Lector,
-      name: lector.Nombre || lector.ID_Lector,
-      issues: [
-        ...(!lector.Coordenada_X || !lector.Coordenada_Y ? ['Falta configuración GPS'] : []),
-        ...(!lector.Carretera ? ['Sin carretera definida'] : []),
-        ...(!lector.Provincia ? ['Sin provincia definida'] : []),
-        ...(!lector.Sentido ? ['Sin sentido definido'] : [])
-      ]
-    })).filter((lector: ReaderAlert) => lector.issues.length > 0);
-  } catch (error) {
-    console.error('Error al obtener lectores incompletos:', error);
     throw error;
   }
 }; 
