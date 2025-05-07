@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Imports necesarios, incluyendo Select
 import { Tabs, Text, Box, Table, Button, Modal, TextInput, Textarea, Group, Loader, Alert, NumberInput, ActionIcon, Tooltip, Select, Card, SimpleGrid, SegmentedControl, Input, Title, Stack, ThemeIcon, Divider } from '@mantine/core';
-import { IconList, IconPlus, IconAlertCircle, IconEye, IconTrash, IconLayoutGrid, IconSortAscending, IconSortDescending, IconSearch, IconPencil, IconArrowsUpDown } from '@tabler/icons-react'; // Icono Kanban eliminado
+import { IconList, IconPlus, IconAlertCircle, IconEye, IconTrash, IconLayoutGrid, IconSortAscending, IconSortDescending, IconSearch, IconPencil, IconArrowsUpDown, IconRefresh } from '@tabler/icons-react'; // Icono Kanban eliminado
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -45,6 +45,7 @@ function CasosPage() {
   const [deletingCasoId, setDeletingCasoId] = useState<number | null>(null);
   const [updatingEstadoCasoId, setUpdatingEstadoCasoId] = useState<number | null>(null);
   const [editingCasoId, setEditingCasoId] = useState<number | null>(null);
+  const [reactivatingCasoId, setReactivatingCasoId] = useState<number | null>(null);
   const navigate = useNavigate();
 
   // --- NUEVO: Estados para Filtro y Ordenación ---
@@ -166,6 +167,27 @@ function CasosPage() {
       } finally {
           setUpdatingEstadoCasoId(null); // Finalizar carga
       }
+  };
+
+  const handleReactivateCaso = async (casoId: number) => {
+    setReactivatingCasoId(casoId);
+    try {
+      await updateCasoEstado(casoId, "Nuevo");
+      notifications.show({
+        title: 'Caso Reactivado',
+        message: 'El caso ha sido reactivado exitosamente.',
+        color: 'green'
+      });
+      fetchCasos(); // Recargar la lista para ver los cambios
+    } catch (error: any) {
+      notifications.show({
+        title: 'Error al Reactivar',
+        message: 'No se pudo reactivar el caso.',
+        color: 'red'
+      });
+    } finally {
+      setReactivatingCasoId(null);
+    }
   };
 
   // --- NUEVO: Lógica de Filtrado y Ordenación ---
@@ -319,6 +341,7 @@ function CasosPage() {
               <SimpleGrid
                   cols={{ base: 1, sm: 2, md: 3, lg: 4 }}
                   spacing="lg"
+                  mt={0}
                   mb="xl"
               >
                   {filteredAndSortedCasos.active?.map((caso) => (
@@ -330,7 +353,11 @@ function CasosPage() {
                           withBorder 
                           style={{
                               cursor: 'pointer',
-                              borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`
+                              borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`,
+                              minHeight: 220,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'space-between'
                           }}
                       >
                           <Link to={`/casos/detalle/${caso.ID_Caso}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
@@ -380,7 +407,8 @@ function CasosPage() {
                       <Divider 
                           label="Casos Cerrados" 
                           labelPosition="center" 
-                          my="xl"
+                          mt="md"
+                          mb="md"
                           styles={{
                               label: {
                                   fontSize: 'var(--mantine-font-size-sm)',
@@ -391,6 +419,7 @@ function CasosPage() {
                       <SimpleGrid
                           cols={{ base: 1, sm: 2, md: 4, lg: 6 }}
                           spacing="md"
+                          mt={0}
                       >
                           {filteredAndSortedCasos.closed?.map((caso) => (
                               <Card 
@@ -401,7 +430,11 @@ function CasosPage() {
                                   withBorder 
                                   style={{
                                       cursor: 'pointer',
-                                      borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`
+                                      borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`,
+                                      minHeight: 220,
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      justifyContent: 'space-between'
                                   }}
                               >
                                   <Link to={`/casos/detalle/${caso.ID_Caso}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
@@ -419,6 +452,17 @@ function CasosPage() {
                                   </Link>
 
                                   <Group justify="flex-end" mt="xs">
+                                      <Tooltip label="Reactivar Caso">
+                                          <ActionIcon 
+                                            variant="light" 
+                                            color="green" 
+                                            size="xs" 
+                                            onClick={() => handleReactivateCaso(caso.ID_Caso)} 
+                                            loading={reactivatingCasoId === caso.ID_Caso}
+                                          >
+                                            <IconRefresh size={14} />
+                                          </ActionIcon>
+                                      </Tooltip>
                                       <Tooltip label="Editar Caso">
                                           <ActionIcon variant="light" color="gray" size="xs" onClick={() => openEditModal(caso)}>
                                               <IconPencil size={14} />
