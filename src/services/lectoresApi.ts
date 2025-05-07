@@ -156,6 +156,18 @@ interface ImportResult {
 }
 
 /**
+ * Normaliza el valor del campo Sentido a "Decreciente" o "Creciente"
+ */
+const normalizarSentido = (sentido: string | null | undefined): string | null => {
+  if (!sentido) return null;
+  
+  const sentidoLower = sentido.toLowerCase().trim();
+  if (sentidoLower === 'decreciente') return 'Decreciente';
+  if (sentidoLower === 'creciente') return 'Creciente';
+  return null;
+};
+
+/**
  * Importa múltiples lectores al sistema.
  * Intenta actualizar si el lector tiene ID, si falla por no encontrado (404), intenta crearlo.
  * @param lectores Array de objetos con los datos de lectores a importar.
@@ -174,6 +186,8 @@ export const importarLectores = async (lectores: any[]): Promise<ImportResult> =
       const lectorData = {
         ...lector,
         ID_Lector: lector.ID_Lector ? String(lector.ID_Lector).trim() : undefined,
+        // Normalizar el campo Sentido
+        Sentido: normalizarSentido(lector.Sentido),
         // Asegurar que las coordenadas sean números si existen
         Coordenada_X: lector.Coordenada_X ? Number(lector.Coordenada_X) : undefined,
         Coordenada_Y: lector.Coordenada_Y ? Number(lector.Coordenada_Y) : undefined
@@ -197,7 +211,7 @@ export const importarLectores = async (lectores: any[]): Promise<ImportResult> =
               Carretera: lectorData.Carretera || existingLector.data.Carretera,
               Provincia: lectorData.Provincia || existingLector.data.Provincia,
               Localidad: lectorData.Localidad || existingLector.data.Localidad,
-              Sentido: lectorData.Sentido || existingLector.data.Sentido,
+              Sentido: lectorData.Sentido || normalizarSentido(existingLector.data.Sentido),
               Orientacion: lectorData.Orientacion || existingLector.data.Orientacion,
               Organismo_Regulador: lectorData.Organismo_Regulador || existingLector.data.Organismo_Regulador,
               Contacto: lectorData.Contacto || existingLector.data.Contacto,
@@ -231,7 +245,7 @@ export const importarLectores = async (lectores: any[]): Promise<ImportResult> =
                     Carretera: lectorData.Carretera || existingLector.data.Carretera,
                     Provincia: lectorData.Provincia || existingLector.data.Provincia,
                     Localidad: lectorData.Localidad || existingLector.data.Localidad,
-                    Sentido: lectorData.Sentido || existingLector.data.Sentido,
+                    Sentido: lectorData.Sentido || normalizarSentido(existingLector.data.Sentido),
                     Orientacion: lectorData.Orientacion || existingLector.data.Orientacion,
                     Organismo_Regulador: lectorData.Organismo_Regulador || existingLector.data.Organismo_Regulador,
                     Contacto: lectorData.Contacto || existingLector.data.Contacto,

@@ -998,6 +998,7 @@ function LectoresPage() {
                    },
                    { accessor: 'ID_Lector', title: 'ID Lector', sortable: true },
                    { accessor: 'Nombre', title: 'Nombre', sortable: true },
+                   { accessor: 'Sentido', title: 'Sentido', sortable: true },
                    { accessor: 'Carretera', title: 'Carretera', sortable: true },
                    { accessor: 'Provincia', title: 'Provincia', sortable: true },
                    { accessor: 'Localidad', title: 'Localidad', sortable: true },
