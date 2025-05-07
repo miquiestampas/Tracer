@@ -145,8 +145,28 @@ function FiltrosMapaLectoresPanel({
   setFiltroSentido,
   mapLoading
 }) {
+  const handleLimpiarFiltros = () => {
+    setFiltroProvincia([]);
+    setFiltroCarretera([]);
+    setFiltroOrganismo([]);
+    setFiltroTextoLibre('');
+    setFiltroSentido(null);
+  };
+
   return (
     <Paper p="md" shadow="xs" radius="md" mb="md" withBorder>
+      <Group justify="space-between" mb="md">
+        <Title order={4}>Filtros</Title>
+        <Button
+          variant="light"
+          color="blue"
+          size="xs"
+          onClick={handleLimpiarFiltros}
+          leftSection={<IconX size={14} />}
+        >
+          Limpiar Filtros
+        </Button>
+      </Group>
       <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 1 }} spacing="xs">
         <MultiSelect
           label="Filtrar por Provincia"
@@ -283,6 +303,22 @@ function LectoresPage() {
   // --- Añadir estado infoBanner ---
   const [infoBanner, setInfoBanner] = useState<LectorCoordenadas | null>(null);
 
+  // Resetear filtros cuando se abre la pestaña del mapa
+  useEffect(() => {
+    if (activeTab === 'mapa') {
+      setFiltroProvincia([]);
+      setFiltroCarretera([]);
+      setFiltroOrganismo([]);
+      setFiltroTextoLibre('');
+      setFiltroSentido(null);
+      setMapLectores(lectores.map(lector => ({
+        ...lector,
+        Coordenada_X: lector.Coordenada_X ?? 0,
+        Coordenada_Y: lector.Coordenada_Y ?? 0
+      })));
+    }
+  }, [activeTab, lectores]);
+
   // Función para cargar los lectores
   const fetchLectores = useCallback(async () => {
     setLoading(true);
@@ -320,26 +356,23 @@ function LectoresPage() {
 
   // Efecto para recargar cuando cambian los filtros
   useEffect(() => {
-    fetchLectores();
-  }, [fetchLectores]);
+    if (activeTab === 'tabla') {
+      fetchLectores();
+    }
+  }, [fetchLectores, activeTab]);
 
   // Efecto para recargar cuando cambia la ordenación
   useEffect(() => {
-    setPagination(prev => ({ ...prev, page: 1 }));
-    fetchLectores();
-  }, [sortStatus, fetchLectores]);
+    if (activeTab === 'tabla') {
+      setPagination(prev => ({ ...prev, page: 1 }));
+      fetchLectores();
+    }
+  }, [sortStatus, fetchLectores, activeTab]);
 
-  // Manejador para limpiar filtros
-  const handleClearFilters = useCallback(() => {
-    setFiltroProvincia([]);
-    setFiltroCarretera([]);
-    setFiltroOrganismo([]);
-    setFiltroSentido(null);
-    setFiltroTextoLibre('');
-    setPagination(prev => ({ ...prev, page: 1 }));
-  }, []);
-
+  // Función para cargar datos del mapa
   const fetchMapData = useCallback(async () => {
+    if (activeTab !== 'mapa') return;
+    
     setMapLoading(true);
     setMapError(null);
     try {
@@ -351,17 +384,25 @@ function LectoresPage() {
     } finally {
       setMapLoading(false);
     }
-  }, []);
+  }, [activeTab]);
 
-  // Ajustar useEffect para cargar datos de mapa si la pestaña inicial es 'mapa'
+  // Efecto para cargar datos del mapa cuando se abre la pestaña
   useEffect(() => {
-    if (activeTab === 'mapa' && mapLectores.length === 0 && !mapLoading && mapError === null) {
+    if (activeTab === 'mapa') {
       fetchMapData();
     }
-    // No necesitamos dependencia de mapLectores.length, mapLoading, mapError aquí
-    // porque fetchMapData se encarga de no recargar innecesariamente si ya está cargando.
-    // La dependencia clave es activeTab y fetchMapData
   }, [activeTab, fetchMapData]);
+
+  // Resetear filtros cuando se abre la pestaña del mapa
+  useEffect(() => {
+    if (activeTab === 'mapa') {
+      setFiltroProvincia([]);
+      setFiltroCarretera([]);
+      setFiltroOrganismo([]);
+      setFiltroTextoLibre('');
+      setFiltroSentido(null);
+    }
+  }, [activeTab]);
 
   console.log("[MapFilters] Datos base mapLectores:", mapLectores);
   

@@ -152,7 +152,7 @@ export const getLectorSugerencias = async (): Promise<LectorSugerenciasResponse>
 interface ImportResult {
   imported: number;
   updated: number;
-  errors: string[];
+  errores: string[];
 }
 
 /**
@@ -170,82 +170,105 @@ export const importarLectores = async (lectores: any[]): Promise<ImportResult> =
   
   const results = await Promise.allSettled(
     lectores.map(async (lector) => {
+      // Limpiar y preparar los datos del Excel
       const lectorData = {
         ...lector,
-        ID_Lector: lector.ID_Lector ? String(lector.ID_Lector) : undefined
+        ID_Lector: lector.ID_Lector ? String(lector.ID_Lector).trim() : undefined,
+        // Asegurar que las coordenadas sean números si existen
+        Coordenada_X: lector.Coordenada_X ? Number(lector.Coordenada_X) : undefined,
+        Coordenada_Y: lector.Coordenada_Y ? Number(lector.Coordenada_Y) : undefined
       };
       
       console.log(`Procesando lector:`, lectorData);
       
       try {
         if (lectorData.ID_Lector) {
-          console.log(`Intentando actualizar (PUT) /lectores/${lectorData.ID_Lector}`);
+          // Primero intentamos obtener el lector existente
           try {
-            const response = await apiClient.put(`/lectores/${lectorData.ID_Lector}`, lectorData);
+            const existingLector = await apiClient.get<Lector>(`/lectores/${lectorData.ID_Lector}`);
+            
+            // Crear objeto con datos actualizados, manteniendo los existentes solo si no hay nuevos
+            const updatedData = {
+              ...existingLector.data,
+              // Actualizar solo si hay nuevos datos
+              Coordenada_X: lectorData.Coordenada_X !== undefined ? lectorData.Coordenada_X : existingLector.data.Coordenada_X,
+              Coordenada_Y: lectorData.Coordenada_Y !== undefined ? lectorData.Coordenada_Y : existingLector.data.Coordenada_Y,
+              Nombre: lectorData.Nombre || existingLector.data.Nombre,
+              Carretera: lectorData.Carretera || existingLector.data.Carretera,
+              Provincia: lectorData.Provincia || existingLector.data.Provincia,
+              Localidad: lectorData.Localidad || existingLector.data.Localidad,
+              Sentido: lectorData.Sentido || existingLector.data.Sentido,
+              Orientacion: lectorData.Orientacion || existingLector.data.Orientacion,
+              Organismo_Regulador: lectorData.Organismo_Regulador || existingLector.data.Organismo_Regulador,
+              Contacto: lectorData.Contacto || existingLector.data.Contacto,
+              Texto_Libre: lectorData.Texto_Libre || existingLector.data.Texto_Libre,
+              Imagen_Path: lectorData.Imagen_Path || existingLector.data.Imagen_Path
+            };
+
+            console.log(`Actualizando lector ${lectorData.ID_Lector} con datos:`, updatedData);
+            
+            // Actualizar con datos combinados
+            const response = await apiClient.put(`/lectores/${lectorData.ID_Lector}`, updatedData);
             console.log(`Respuesta actualización (PUT):`, response.data);
             return { status: 'updated', id: lectorData.ID_Lector, data: response.data };
-          } catch (putError) {
-            if (axios.isAxiosError(putError) && putError.response?.status === 404) {
-              console.log(`Lector ${lectorData.ID_Lector} no encontrado, intentando crear (POST)...`);
-              const { ID_Lector, ...dataToCreate } = lectorData; // Usar los datos originales para POST
-              const response = await apiClient.post('/lectores', lectorData);
-              console.log(`Respuesta creación (POST tras PUT fallido):`, response.data);
-              return { status: 'created', id: response.data.ID_Lector, data: response.data };
-            } else {
-              throw putError; // Lanzar otros errores del PUT
+          } catch (getError) {
+            if (axios.isAxiosError(getError) && getError.response?.status === 404) {
+              // Si no existe, intentamos crear
+              try {
+                const response = await apiClient.post('/lectores', lectorData);
+                console.log(`Respuesta creación (POST):`, response.data);
+                return { status: 'created', id: response.data.ID_Lector, data: response.data };
+              } catch (postError) {
+                if (axios.isAxiosError(postError) && postError.response?.status === 400) {
+                  // Si falla por ID duplicado, intentamos obtener y actualizar de nuevo
+                  const existingLector = await apiClient.get<Lector>(`/lectores/${lectorData.ID_Lector}`);
+                  const updatedData = {
+                    ...existingLector.data,
+                    // Actualizar solo si hay nuevos datos
+                    Coordenada_X: lectorData.Coordenada_X !== undefined ? lectorData.Coordenada_X : existingLector.data.Coordenada_X,
+                    Coordenada_Y: lectorData.Coordenada_Y !== undefined ? lectorData.Coordenada_Y : existingLector.data.Coordenada_Y,
+                    Nombre: lectorData.Nombre || existingLector.data.Nombre,
+                    Carretera: lectorData.Carretera || existingLector.data.Carretera,
+                    Provincia: lectorData.Provincia || existingLector.data.Provincia,
+                    Localidad: lectorData.Localidad || existingLector.data.Localidad,
+                    Sentido: lectorData.Sentido || existingLector.data.Sentido,
+                    Orientacion: lectorData.Orientacion || existingLector.data.Orientacion,
+                    Organismo_Regulador: lectorData.Organismo_Regulador || existingLector.data.Organismo_Regulador,
+                    Contacto: lectorData.Contacto || existingLector.data.Contacto,
+                    Texto_Libre: lectorData.Texto_Libre || existingLector.data.Texto_Libre,
+                    Imagen_Path: lectorData.Imagen_Path || existingLector.data.Imagen_Path
+                  };
+                  const response = await apiClient.put(`/lectores/${lectorData.ID_Lector}`, updatedData);
+                  console.log(`Respuesta actualización (PUT tras POST fallido):`, response.data);
+                  return { status: 'updated', id: lectorData.ID_Lector, data: response.data };
+                }
+                throw postError;
+              }
             }
+            throw getError;
           }
         } else {
-          console.log(`Intentando crear (POST) /lectores`);
-          const response = await apiClient.post('/lectores', lectorData);
-          console.log(`Respuesta creación (POST):`, response.data);
-          return { status: 'created', id: response.data.ID_Lector, data: response.data };
+          throw new Error('ID de lector no proporcionado');
         }
       } catch (error) {
-        // Captura errores del POST inicial, POST tras PUT fallido, o errores no-404 del PUT
-        console.error(`Error procesando lector ID=${lectorData.ID_Lector || 'N/A'}:`, error);
-        let errorMessage = 'Error desconocido';
+        console.error(`Error procesando lector ${lectorData.ID_Lector}:`, error);
         if (axios.isAxiosError(error)) {
-          const errorData = error.response?.data;
-          errorMessage = `API (${error.response?.status}): ${errorData?.detail || error.message}`;
-          console.error(`Error API detalle:`, errorData);
-        } else if (error instanceof Error) {
-          errorMessage = error.message;
+          errores.push(`Error con lector ${lectorData.ID_Lector}: ${error.response?.data?.detail || error.message}`);
+        } else {
+          errores.push(`Error con lector ${lectorData.ID_Lector}: ${error instanceof Error ? error.message : 'Error desconocido'}`);
         }
-        // Registrar el error y devolver un estado de error
-        const errorMsg = `ID=${lectorData.ID_Lector || 'Nuevo (falló creación)'}: ${errorMessage}`;
-        errores.push(errorMsg);
-        return { 
-          status: 'error', 
-          id: lectorData.ID_Lector,
-          error: errorMsg // Devolver el mensaje de error formateado
-        };
+        throw error;
       }
     })
   );
-  
-  // Contar resultados y recopilar errores finales
-  results.forEach(result => {
+
+  // Procesar resultados
+  results.forEach((result) => {
     if (result.status === 'fulfilled') {
       if (result.value.status === 'created') imported++;
-      else if (result.value.status === 'updated') updated++;
-      // Si el estado fue 'error', ya se añadió a 'errores' dentro del catch
-    } else {
-      // Capturar rechazos de Promise.allSettled (errores inesperados)
-      console.error("Error no manejado en Promise.allSettled:", result.reason);
-      errores.push(`Error inesperado en procesamiento: ${result.reason}`);
+      if (result.value.status === 'updated') updated++;
     }
   });
 
-  console.warn(`Errores durante la importación:`, errores);
-  
-  // Lanzar error solo si NINGUNO se importó/actualizó
-  if (imported === 0 && updated === 0 && errores.length > 0) {
-    const errorDetails = errores.length <= 5 ? errores.join("; ") : `${errores.slice(0, 5).join("; ")} y ${errores.length - 5} más...`;
-    throw new Error(`Ningún lector pudo ser importado o actualizado. Errores: ${errorDetails}`);
-  } 
-  
-  console.log(`Importación finalizada: ${imported} nuevos, ${updated} actualizados, ${errores.length} errores`);
-  // Devolver siempre la estructura completa, incluyendo la lista de errores
-  return { imported, updated, errors: errores }; 
+  return { imported, updated, errores };
 }; 
