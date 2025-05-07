@@ -25,23 +25,28 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
 
-// *** NUEVO: Crear icono personalizado para ZBE Madrid ***
-const fuchsiaPointIcon = new L.DivIcon({
+// Create custom icons
+const fuchsiaPointIcon = L.divIcon({
   html: `<span style="background-color: fuchsia; width: 8px; height: 8px; border-radius: 50%; display: inline-block; border: 1px solid darkmagenta;"></span>`,
-  className: '', // Necesario para evitar estilos por defecto de divIcon si no los queremos
-  iconSize: [8, 8], // Tamaño del icono
-  iconAnchor: [4, 4] // Punto de anclaje (centro del punto)
+  className: 'custom-div-icon',
+  iconSize: [8, 8],
+  iconAnchor: [4, 4]
 });
-// *** FIN: Crear icono personalizado ***
 
-// *** NUEVO: Crear icono personalizado para marcador activo ***
-const activeLectorIcon = new L.DivIcon({
+const activeLectorIcon = L.divIcon({
   html: `<span style="background-color: fuchsia; width: 16px; height: 16px; border-radius: 50%; display: inline-block; border: 3px solid #222; box-shadow: 0 0 0 4px rgba(120,0,120,0.15);"></span>`,
-  className: '',
+  className: 'custom-div-icon',
   iconSize: [16, 16],
   iconAnchor: [8, 8]
 });
-// *** FIN: Crear icono personalizado ***
+
+// Default marker icon
+const defaultMarkerIcon = L.divIcon({
+  html: `<span style="background-color: #3388ff; width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></span>`,
+  className: 'custom-div-icon',
+  iconSize: [12, 12],
+  iconAnchor: [6, 6]
+});
 
 // Opciones para el filtro de Sentido
 const SENTIDO_OPTIONS = [
@@ -1091,7 +1096,7 @@ function LectoresPage() {
                         <Marker 
                           key={lector.ID_Lector} 
                           position={[lector.Coordenada_Y, lector.Coordenada_X]}
-                          icon={isActive ? activeLectorIcon : (useFuchsiaIcon ? fuchsiaPointIcon : undefined)}
+                          icon={isActive ? activeLectorIcon : (useFuchsiaIcon ? fuchsiaPointIcon : defaultMarkerIcon)}
                           eventHandlers={{ click: () => setInfoBanner(lector) }}
                         />
                       );
