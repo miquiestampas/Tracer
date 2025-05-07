@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper, Collapse, Global } from '@mantine/core';
+import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper, Collapse, MantineProvider } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconEye, IconPencil, IconTrash, IconCircleCheck, IconAlertTriangle, IconX, IconRefresh, IconCheck, IconBan } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -536,16 +536,6 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
 
     return (
         <Box style={{ position: 'relative' }}>
-            {/* Estilo global para centrar todas las celdas de la tabla de vehículos */}
-            <Global styles={{
-                '.vehiculos-table-centered td, .vehiculos-table-centered th': {
-                    textAlign: 'center',
-                    verticalAlign: 'middle',
-                },
-                '.vehiculos-table-centered .mantine-Checkbox-root': {
-                    margin: '0 auto',
-                }
-            }} />
             <Group justify="flex-end" mb="xs">
                 <Button
                     variant="light"
@@ -601,72 +591,95 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                     </Group>
                 </Group>
                 {error && <Alert color="red" title="Error" mb="md">{error}</Alert>}
-                <DataTable<Vehiculo>
-                    className="vehiculos-table-centered"
-                    records={sortedAndPaginatedVehiculos}
-                    columns={columns}
-                    minHeight={200}
-                    withTableBorder
-                    borderRadius="sm"
-                    withColumnBorders
-                    striped
-                    highlightOnHover
-                    idAccessor="ID_Vehiculo"
-                    noRecordsText=""
-                    noRecordsIcon={<></>}
-                    fetching={loading}
-                    totalRecords={vehiculos.length}
-                    recordsPerPage={PAGE_SIZE}
-                    page={page}
-                    onPageChange={setPage}
-                    sortStatus={sortStatus}
-                    onSortStatusChange={handleSortStatusChange}
-                    rowExpansion={{
-                        expanded: { 
-                            recordIds: expandedRecordIds,
-                            onRecordIdsChange: setExpandedRecordIds
-                        },
-                        allowMultiple: true,
-                        content: ({ record }) => (
-                            <Box p="md" style={{ background: '#f9f9f9' }}>
-                                 <LoadingOverlay visible={loadingLecturas[record.ID_Vehiculo] ?? false} />
-                                {/* Mostrar tabla solo si hay lecturas LPR */}
-                                {lecturasExpandidas[record.ID_Vehiculo] && lecturasExpandidas[record.ID_Vehiculo].length > 0 ? (
-                                    <>
-                                    <Text fw={500} mb="xs">Lecturas LPR ({lecturasExpandidas[record.ID_Vehiculo].length}) para Matrícula: {record.Matricula}</Text>
-                                    <DataTable<Lectura>
-                                        records={lecturasExpandidas[record.ID_Vehiculo]} // Solo LPR
-                                        columns={lecturaColumns}
-                                        minHeight={100}
-                                        noRecordsText=""
-                                        noRecordsIcon={<></>}
-                                        withTableBorder={false}
-                                    />
-                                    </>
-                                ) : (
-                                    // Mostrar texto si no hay LPR (y no está cargando)
-                                    !loadingLecturas[record.ID_Vehiculo] && 
-                                    <Text c="dimmed" size="sm">No hay lecturas LPR registradas para este vehículo en este caso.</Text>
-                                )}
-                                {/* Mostrar botón GPS si existen */}
-                                {(gpsLecturasExist[record.ID_Vehiculo] ?? false) && (
-                                    <Button 
-                                        mt="sm" 
-                                        size="xs" 
-                                        variant="outline"
-                                        // onClick={() => { /* TODO: Implementar navegación/modal */ }}
-                                    >
-                                        Lecturas GPS
-                                    </Button>
-                                )}
-                                {/* Mensaje de carga si aplica */}
-                                {(loadingLecturas[record.ID_Vehiculo] ?? false) && (
-                                     <Text c="dimmed" size="sm">Cargando lecturas...</Text>
-                                )}
-                            </Box>
-                        ),
+                <MantineProvider
+                    theme={{
+                        components: {
+                            DataTable: {
+                                styles: {
+                                    table: {
+                                        '& td, & th': {
+                                            textAlign: 'center',
+                                            verticalAlign: 'middle',
+                                        }
+                                    }
+                                }
+                            },
+                            Checkbox: {
+                                styles: {
+                                    root: {
+                                        margin: '0 auto'
+                                    }
+                                }
+                            }
+                        }
                     }}
-                />
+                >
+                    <DataTable<Vehiculo>
+                        records={sortedAndPaginatedVehiculos}
+                        columns={columns}
+                        minHeight={200}
+                        withTableBorder
+                        borderRadius="sm"
+                        withColumnBorders
+                        striped
+                        highlightOnHover
+                        idAccessor="ID_Vehiculo"
+                        noRecordsText=""
+                        noRecordsIcon={<></>}
+                        fetching={loading}
+                        totalRecords={vehiculos.length}
+                        recordsPerPage={PAGE_SIZE}
+                        page={page}
+                        onPageChange={setPage}
+                        sortStatus={sortStatus}
+                        onSortStatusChange={handleSortStatusChange}
+                        rowExpansion={{
+                            expanded: { 
+                                recordIds: expandedRecordIds,
+                                onRecordIdsChange: setExpandedRecordIds
+                            },
+                            allowMultiple: true,
+                            content: ({ record }) => (
+                                <Box p="md" style={{ background: '#f9f9f9' }}>
+                                     <LoadingOverlay visible={loadingLecturas[record.ID_Vehiculo] ?? false} />
+                                    {/* Mostrar tabla solo si hay lecturas LPR */}
+                                    {lecturasExpandidas[record.ID_Vehiculo] && lecturasExpandidas[record.ID_Vehiculo].length > 0 ? (
+                                        <>
+                                        <Text fw={500} mb="xs">Lecturas LPR ({lecturasExpandidas[record.ID_Vehiculo].length}) para Matrícula: {record.Matricula}</Text>
+                                        <DataTable<Lectura>
+                                            records={lecturasExpandidas[record.ID_Vehiculo]} // Solo LPR
+                                            columns={lecturaColumns}
+                                            minHeight={100}
+                                            noRecordsText=""
+                                            noRecordsIcon={<></>}
+                                            withTableBorder={false}
+                                        />
+                                        </>
+                                    ) : (
+                                        // Mostrar texto si no hay LPR (y no está cargando)
+                                        !loadingLecturas[record.ID_Vehiculo] && 
+                                        <Text c="dimmed" size="sm">No hay lecturas LPR registradas para este vehículo en este caso.</Text>
+                                    )}
+                                    {/* Mostrar botón GPS si existen */}
+                                    {(gpsLecturasExist[record.ID_Vehiculo] ?? false) && (
+                                        <Button 
+                                            mt="sm" 
+                                            size="xs" 
+                                            variant="outline"
+                                            // onClick={() => { /* TODO: Implementar navegación/modal */ }}
+                                        >
+                                            Lecturas GPS
+                                        </Button>
+                                    )}
+                                    {/* Mensaje de carga si aplica */}
+                                    {(loadingLecturas[record.ID_Vehiculo] ?? false) && (
+                                         <Text c="dimmed" size="sm">Cargando lecturas...</Text>
+                                    )}
+                                </Box>
+                            ),
+                        }}
+                    />
+                </MantineProvider>
             </Paper>
 
             <Modal

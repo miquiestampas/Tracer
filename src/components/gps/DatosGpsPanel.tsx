@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Paper, Text, Group, Button, TextInput, Select, Stack, ActionIcon, Tooltip, Loader } from '@mantine/core';
 import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
 import { IconSearch, IconClearAll, IconEye, IconCar, IconBookmark, IconRefresh, IconFilter } from '@tabler/icons-react';
@@ -14,6 +14,8 @@ interface FilterState {
     horaInicio: string;
     fechaFin: string;
     horaFin: string;
+    velocidadMin: string;
+    velocidadMax: string;
 }
 
 const initialFilterState: FilterState = {
@@ -22,6 +24,8 @@ const initialFilterState: FilterState = {
     horaInicio: '',
     fechaFin: '',
     horaFin: '',
+    velocidadMin: '',
+    velocidadMax: '',
 };
 
 interface DatosGpsPanelProps {
@@ -83,7 +87,7 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
     ];
 
     // Cargar datos GPS
-    const fetchGpsData = async () => {
+    const fetchGpsData = useCallback(async () => {
         setLoading(true);
         try {
             const data = await getLecturasGps(casoId, {
@@ -91,7 +95,9 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
                 fecha_inicio: filters.fechaInicio || undefined,
                 hora_inicio: filters.horaInicio || undefined,
                 fecha_fin: filters.fechaFin || undefined,
-                hora_fin: filters.horaFin || undefined
+                hora_fin: filters.horaFin || undefined,
+                velocidad_min: filters.velocidadMin ? parseFloat(filters.velocidadMin) : undefined,
+                velocidad_max: filters.velocidadMax ? parseFloat(filters.velocidadMax) : undefined
             });
             
             // Extraer matrículas únicas y ordenarlas
@@ -116,14 +122,14 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [casoId, filters, page, pageSize]);
 
     // Cargar datos iniciales
     useEffect(() => {
         if (casoId) {
             fetchGpsData();
         }
-    }, [casoId, page, pageSize, filters]);
+    }, [casoId, page, pageSize, fetchGpsData]);
 
     // Handlers
     const handleFilterChange = (key: keyof FilterState, value: string) => {
@@ -132,11 +138,6 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
 
     const handleClearFilters = () => {
         setFilters(initialFilterState);
-        setPage(1);
-        fetchGpsData();
-    };
-
-    const handleRefresh = () => {
         setPage(1);
         fetchGpsData();
     };
@@ -200,6 +201,20 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
                             value={filters.horaFin}
                             onChange={(e) => handleFilterChange('horaFin', e.target.value)}
                         />
+                        <TextInput
+                            label="Velocidad Mínima"
+                            type="number"
+                            placeholder="km/h"
+                            value={filters.velocidadMin}
+                            onChange={(e) => handleFilterChange('velocidadMin', e.target.value)}
+                        />
+                        <TextInput
+                            label="Velocidad Máxima"
+                            type="number"
+                            placeholder="km/h"
+                            value={filters.velocidadMax}
+                            onChange={(e) => handleFilterChange('velocidadMax', e.target.value)}
+                        />
                         <Button
                             variant="filled"
                             color="#234be7"
@@ -215,14 +230,6 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
                             onClick={handleClearFilters}
                         >
                             Limpiar
-                        </Button>
-                        <Button
-                            variant="light"
-                            color="blue"
-                            leftSection={<IconRefresh size={16} />}
-                            onClick={handleRefresh}
-                        >
-                            Actualizar
                         </Button>
                     </Group>
 
