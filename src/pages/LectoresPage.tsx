@@ -864,7 +864,7 @@ function LectoresPage() {
                 variant={activeTab === section.id ? 'filled' : 'light'}
                 leftSection={<section.icon size={16} />}
                 onClick={() => setActiveTab(section.id)}
-                color="blue"
+                color="#2b4fcf"
               >
                 {section.label}
               </Button>
