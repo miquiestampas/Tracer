@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box, Stack, Paper, Grid, RingProgress, Center, Loader, Alert } from '@mantine/core';
+import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box, Stack, Paper, Grid, RingProgress, Center, Loader, Alert, Title } from '@mantine/core';
 import { IconFolder, IconDeviceCctv, IconMap2, IconSearch, IconFileImport, IconDatabase } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { getEstadisticasGlobales } from '../services/estadisticasApi';
 import { getArchivosRecientes, getImportacionesRecientes } from '../services/dashboardApi';
+import { getCasos } from '../services/casosApi';
 import { QuickSearch } from '../components/dashboard/QuickSearch';
 import { ImportTimeline } from '../components/dashboard/ImportTimeline';
-import { RecentFiles } from '../components/dashboard/RecentFiles';
+import { RecentCases } from '../components/dashboard/RecentCases';
 
 // Datos de ejemplo para las tarjetas de acción
 const actionCardsData = [
@@ -52,7 +53,7 @@ function HomePage() {
   const [estadisticas, setEstadisticas] = useState<{ total_casos: number; total_lecturas: number; total_vehiculos: number; tamanio_bd: string } | null>(null);
   const [estadisticasLoading, setEstadisticasLoading] = useState(true);
   const [estadisticasError, setEstadisticasError] = useState<string | null>(null);
-  const [recentFiles, setRecentFiles] = useState<any[]>([]);
+  const [recentCases, setRecentCases] = useState<any[]>([]);
   const [importEvents, setImportEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState({
     files: true,
@@ -75,11 +76,11 @@ function HomePage() {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const [files, imports] = await Promise.all([
-        getArchivosRecientes(),
+      const [cases, imports] = await Promise.all([
+        getCasos(),
         getImportacionesRecientes()
       ]);
-      setRecentFiles(files);
+      setRecentCases(cases);
       setImportEvents(imports);
     } catch (error) {
       console.error('Error al cargar datos del dashboard:', error);
@@ -106,6 +107,13 @@ function HomePage() {
       <Grid>
         {/* Columna Izquierda */}
         <Grid.Col span={{ base: 12, md: 8 }}>
+          {/* Casos Recientes - ahora arriba */}
+          <Box mb="xl">
+            <RecentCases cases={recentCases} />
+          </Box>
+
+          {/* Título para el buscador de matrículas */}
+          <Title order={3} mb="sm">Búsqueda Rápida</Title>
           {/* Buscador Rápido */}
           <QuickSearch onSearch={handleQuickSearch} />
 
@@ -143,11 +151,6 @@ function HomePage() {
               </Card>
             ))}
           </SimpleGrid>
-
-          {/* Archivos Recientes */}
-          <Box mt="xl">
-            <RecentFiles files={recentFiles} />
-          </Box>
         </Grid.Col>
 
         {/* Columna Derecha */}
@@ -184,7 +187,7 @@ function HomePage() {
 
           {/* Timeline de Importaciones */}
           <Box mt="xl">
-            <ImportTimeline events={importEvents} />
+            <ImportTimeline events={importEvents.slice(0, 6)} />
           </Box>
         </Grid.Col>
       </Grid>
