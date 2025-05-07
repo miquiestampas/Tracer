@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Query, Body
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -1862,21 +1862,22 @@ def read_lecturas_por_filtros(
     caso_ids: Optional[List[int]] = Query(None), 
     carretera_ids: Optional[List[str]] = Query(None),
     sentido: Optional[List[str]] = Query(None),
-    matricula: Optional[str] = None,
+    matricula: Optional[str] = Body(None),
+    matriculas: Optional[List[str]] = Body(None),
     tipo_fuente: Optional[str] = Query(None),
     solo_relevantes: Optional[bool] = False,
     min_pasos: Optional[int] = None,
     max_pasos: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    logger.info(f"POST /lecturas/por_filtros - Filtros: min_pasos={min_pasos} max_pasos={max_pasos} carreteras={carretera_ids}")
+    logger.info(f"POST /lecturas/por_filtros - Filtros: matricula={matricula} matriculas={matriculas} min_pasos={min_pasos} max_pasos={max_pasos} carreteras={carretera_ids}")
     
     # Base query
-    base_query = db.query(models.Lectura).join(models.Lector)
+    base_query = db.query(models.Lectura).join(models.Lector).join(models.ArchivoExcel)
     
     # --- Aplicar filtros comunes ---
     if caso_ids:
-        base_query = base_query.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
+        base_query = base_query.filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
     if lector_ids:
         base_query = base_query.filter(models.Lectura.ID_Lector.in_(lector_ids))
     if carretera_ids:
@@ -1906,73 +1907,28 @@ def read_lecturas_por_filtros(
         logger.warning("Formato de fecha/hora inválido recibido.")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
 
-    # Filtro por matrícula (usando el nuevo sistema de patrones)
+    # Filtro por matrícula (string o lista)
+    from sqlalchemy import or_
+    condiciones = []
     if matricula:
         sql_pattern = matricula.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
-        base_query = base_query.filter(models.Lectura.Matricula.ilike(sql_pattern))
-
-    # Filtro por número de pasos (lecturas por matrícula)
-    if min_pasos is not None or max_pasos is not None:
-        # Crear una subconsulta con los mismos filtros para contar pasos
-        pasos_subquery = (
-            db.query(models.Lectura.Matricula, func.count('*').label('num_pasos'))
-            .join(models.Lector)
-        )
-        
-        # Aplicar los mismos filtros a la subconsulta
-        if caso_ids:
-            pasos_subquery = pasos_subquery.join(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
-        if lector_ids:
-            pasos_subquery = pasos_subquery.filter(models.Lectura.ID_Lector.in_(lector_ids))
-        if carretera_ids:
-            pasos_subquery = pasos_subquery.filter(models.Lector.Carretera.in_(carretera_ids))
-        if sentido:
-            pasos_subquery = pasos_subquery.filter(models.Lector.Sentido.in_(sentido))
-        if tipo_fuente:
-            pasos_subquery = pasos_subquery.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
-        if solo_relevantes:
-            pasos_subquery = pasos_subquery.join(models.LecturaRelevante)
-            
-        # Aplicar los mismos filtros de fecha/hora
-        try:
-            if fecha_inicio:
-                fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
-                pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
-            if fecha_fin:
-                fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
-                pasos_subquery = pasos_subquery.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
-            if hora_inicio:
-                hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
-                pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
-            if hora_fin:
-                hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
-                pasos_subquery = pasos_subquery.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
-        except ValueError:
-            logger.warning("Formato de fecha/hora inválido recibido en subconsulta de pasos.")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
-
-        if matricula:
-            pasos_subquery = pasos_subquery.filter(models.Lectura.Matricula.ilike(sql_pattern))
-
-        # Agrupar y filtrar por número de pasos
-        pasos_subquery = (
-            pasos_subquery.group_by(models.Lectura.Matricula)
-            .having(and_(
-                func.count('*') >= min_pasos if min_pasos is not None else True,
-                func.count('*') <= max_pasos if max_pasos is not None else True
-            ))
-        )
-
-        # Filtrar la consulta principal para incluir solo las matrículas que cumplen con los criterios de pasos
-        base_query = base_query.filter(
-            models.Lectura.Matricula.in_(
-                pasos_subquery.with_entities(models.Lectura.Matricula)
-            )
-        )
+        if '*' in matricula or '%' in matricula or '?' in matricula or '_' in matricula:
+            condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
+        else:
+            condiciones.append(models.Lectura.Matricula == matricula)
+    if matriculas:
+        for m in matriculas:
+            sql_pattern = m.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+            if '*' in m or '%' in m or '?' in m or '_' in m:
+                condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
+            else:
+                condiciones.append(models.Lectura.Matricula == m)
+    if condiciones:
+        base_query = base_query.filter(or_(*condiciones))
 
     # Ordenar y aplicar paginación
     query = base_query.order_by(models.Lectura.Fecha_y_Hora.desc())
-    query = query.options(joinedload(models.Lectura.lector))
+    query = query.options(joinedload(models.Lectura.lector), joinedload(models.Lectura.archivo).joinedload(models.ArchivoExcel.caso))
     lecturas = query.all()
 
     logger.info(f"POST /lecturas/por_filtros - Encontradas {len(lecturas)} lecturas tras aplicar filtros.")
