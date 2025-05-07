@@ -3,9 +3,8 @@ import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box, Stack, Paper, Grid,
 import { IconFolder, IconDeviceCctv, IconMap2, IconSearch, IconFileImport, IconDatabase } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { getEstadisticasGlobales } from '../services/estadisticasApi';
-import { getArchivosRecientes, getImportacionesRecientes, getLectoresIncompletos } from '../services/dashboardApi';
+import { getArchivosRecientes, getImportacionesRecientes } from '../services/dashboardApi';
 import { QuickSearch } from '../components/dashboard/QuickSearch';
-import { ReaderAlerts } from '../components/dashboard/ReaderAlerts';
 import { ImportTimeline } from '../components/dashboard/ImportTimeline';
 import { RecentFiles } from '../components/dashboard/RecentFiles';
 
@@ -55,11 +54,9 @@ function HomePage() {
   const [estadisticasError, setEstadisticasError] = useState<string | null>(null);
   const [recentFiles, setRecentFiles] = useState<any[]>([]);
   const [importEvents, setImportEvents] = useState<any[]>([]);
-  const [readerAlerts, setReaderAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState({
     files: true,
-    imports: true,
-    alerts: true
+    imports: true
   });
 
   const fetchEstadisticas = useCallback(async () => {
@@ -78,21 +75,18 @@ function HomePage() {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const [files, imports, alerts] = await Promise.all([
+      const [files, imports] = await Promise.all([
         getArchivosRecientes(),
-        getImportacionesRecientes(),
-        getLectoresIncompletos()
+        getImportacionesRecientes()
       ]);
       setRecentFiles(files);
       setImportEvents(imports);
-      setReaderAlerts(alerts);
     } catch (error) {
       console.error('Error al cargar datos del dashboard:', error);
     } finally {
       setLoading({
         files: false,
-        imports: false,
-        alerts: false
+        imports: false
       });
     }
   }, []);
@@ -114,49 +108,6 @@ function HomePage() {
         <Grid.Col span={{ base: 12, md: 8 }}>
           {/* Buscador Rápido */}
           <QuickSearch onSearch={handleQuickSearch} />
-
-          {/* Archivos Recientes */}
-          <Box mt="xl">
-            <RecentFiles files={recentFiles} />
-          </Box>
-
-          {/* Timeline de Importaciones */}
-          <Box mt="xl">
-            <ImportTimeline events={importEvents} />
-          </Box>
-        </Grid.Col>
-
-        {/* Columna Derecha */}
-        <Grid.Col span={{ base: 12, md: 4 }}>
-          {/* Contadores */}
-          <SimpleGrid cols={2} spacing="lg">
-            {summaryData.map((stat) => (
-              <Paper key={stat.title} p="lg" withBorder>
-                <Group>
-                  <ThemeIcon size="xl" color={stat.color} variant="light">
-                    <stat.icon size={24} />
-                  </ThemeIcon>
-                  <div>
-                    <Text size="sm" c="dimmed">
-                      {stat.title}
-                    </Text>
-                    <Text fw={500} size="xl">
-                      {estadisticasLoading ? (
-                        <Loader size="xs" />
-                      ) : estadisticas ? (
-                        stat.title === 'Base de Datos' ? estadisticas.tamanio_bd :
-                        stat.title === 'Casos Activos' ? estadisticas.total_casos :
-                        stat.title === 'Lecturas Totales' ? estadisticas.total_lecturas :
-                        estadisticas.total_vehiculos
-                      ) : (
-                        '-'
-                      )}
-                    </Text>
-                  </div>
-                </Group>
-              </Paper>
-            ))}
-          </SimpleGrid>
 
           {/* Tarjetas de Acción */}
           <SimpleGrid cols={1} spacing="lg" mt="xl">
@@ -193,9 +144,47 @@ function HomePage() {
             ))}
           </SimpleGrid>
 
-          {/* Alertas de Lectores */}
+          {/* Archivos Recientes */}
           <Box mt="xl">
-            <ReaderAlerts alerts={readerAlerts} />
+            <RecentFiles files={recentFiles} />
+          </Box>
+        </Grid.Col>
+
+        {/* Columna Derecha */}
+        <Grid.Col span={{ base: 12, md: 4 }}>
+          {/* Contadores */}
+          <SimpleGrid cols={2} spacing="lg">
+            {summaryData.map((stat) => (
+              <Paper key={stat.title} p="lg" withBorder>
+                <Group>
+                  <ThemeIcon size="xl" color={stat.color} variant="light">
+                    <stat.icon size={24} />
+                  </ThemeIcon>
+                  <div>
+                    <Text size="sm" c="dimmed">
+                      {stat.title}
+                    </Text>
+                    <Text fw={500} size="xl">
+                      {estadisticasLoading ? (
+                        <Loader size="xs" />
+                      ) : estadisticas ? (
+                        stat.title === 'Base de Datos' ? estadisticas.tamanio_bd :
+                        stat.title === 'Casos Activos' ? estadisticas.total_casos :
+                        stat.title === 'Lecturas Totales' ? estadisticas.total_lecturas :
+                        estadisticas.total_vehiculos
+                      ) : (
+                        '-'
+                      )}
+                    </Text>
+                  </div>
+                </Group>
+              </Paper>
+            ))}
+          </SimpleGrid>
+
+          {/* Timeline de Importaciones */}
+          <Box mt="xl">
+            <ImportTimeline events={importEvents} />
           </Box>
         </Grid.Col>
       </Grid>

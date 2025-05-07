@@ -40,7 +40,11 @@ export interface ArchivoExcel {
     Nombre_del_Archivo: string;
     Tipo_de_Archivo: 'LPR' | 'GPS';
     Fecha_de_Importacion: string; // Fecha como string ISO
-    Total_Registros: number; // <-- Añadir campo para el conteo
+    Total_Registros: number;
+    caso?: {
+        ID_Caso: number;
+        Nombre_del_Caso: string;
+    };
 }
 
 // --- NUEVA INTERFAZ LECTURA ---
