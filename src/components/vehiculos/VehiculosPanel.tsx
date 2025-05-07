@@ -1,47 +1,55 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper, Collapse, MantineProvider } from '@mantine/core';
-import { DataTable, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
-import { IconEye, IconPencil, IconTrash, IconCircleCheck, IconAlertTriangle, IconX, IconRefresh, IconCheck, IconBan } from '@tabler/icons-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Box, LoadingOverlay, Alert, Stack, Text, Title, Badge, ActionIcon, Tooltip, Group, Modal, TextInput, Textarea, Checkbox, Button, Paper, Collapse, SimpleGrid, Card, Image, Avatar, Divider, Select, Menu } from '@mantine/core';
+import { IconEye, IconPencil, IconTrash, IconCircleCheck, IconAlertTriangle, IconX, IconRefresh, IconCheck, IconBan, IconCar, IconMapPin, IconClock, IconInfoCircle } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import type { Vehiculo, Lectura } from '../../types/data'; // Asegúrate que Vehiculo y Lectura estén definidos
+import type { Vehiculo, Lectura } from '../../types/data';
 import apiClient from '../../services/api';
 import { notifications } from '@mantine/notifications';
 import { openConfirmModal } from '@mantine/modals';
-import appEventEmitter from '../../utils/eventEmitter'; // <-- Nueva importación
-import _ from 'lodash'; // Importar lodash para ordenar
+import appEventEmitter from '../../utils/eventEmitter';
+import _ from 'lodash';
 
 interface VehiculosPanelProps {
     casoId: number;
 }
 
-// Columnas para la tabla de lecturas expandida
-const lecturaColumns: DataTableColumn<Lectura>[] = [
-    { accessor: 'Fecha_y_Hora', title: 'Fecha y Hora', render: (l) => dayjs(l.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'), width: 160 },
-    { accessor: 'ID_Lector', title: 'ID Lector', width: 120 },
-    { accessor: 'Tipo_Fuente', title: 'Tipo', width: 80 },
-    { accessor: 'Carril', title: 'Carril', width: 80 },
-    // Puedes añadir más columnas de Lectura si es necesario
-];
-
 function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [expandedRecordIds, setExpandedRecordIds] = useState<number[]>([]);
-    // Estado para almacenar las lecturas de cada fila expandida
+    const [selectedVehiculo, setSelectedVehiculo] = useState<Vehiculo | null>(null);
+    const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
     const [lecturasExpandidas, setLecturasExpandidas] = useState<Record<number, Lectura[]>>({});
-    // Estado para controlar la carga de las lecturas de cada fila
     const [loadingLecturas, setLoadingLecturas] = useState<Record<number, boolean>>({});
-    // --- NUEVO: Estado para saber si hay GPS para un vehículo expandido ---
-    const [gpsLecturasExist, setGpsLecturasExist] = useState<Record<number, boolean>>({});
-    // --- AÑADIR ESTADO PARA SELECCIÓN ---
-    const [selectedRecords, setSelectedRecords] = useState<Vehiculo[]>([]);
-    // --- NUEVO: Estados para Paginación y Ordenación ---
-    const [page, setPage] = useState(1);
-    const PAGE_SIZE = 15; // O el valor que prefieras
-    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<Vehiculo>>({ columnAccessor: 'Matricula', direction: 'asc' });
-    // --- NUEVO: Estados para ayuda ---
-    const [ayudaAbierta, setAyudaAbierta] = useState(false);
+    const [sortBy, setSortBy] = useState<string>('sospechoso');
+
+    // Estados para el modal de edición
+    const [marcaEdit, setMarcaEdit] = useState('');
+    const [modeloEdit, setModeloEdit] = useState('');
+    const [colorEdit, setColorEdit] = useState('');
+    const [propiedadEdit, setPropiedadEdit] = useState('');
+    const [alquilerEdit, setAlquilerEdit] = useState(false);
+    const [observacionesEdit, setObservacionesEdit] = useState('');
+    const [comprobadoEdit, setComprobadoEdit] = useState(false);
+    const [sospechosoEdit, setSospechosoEdit] = useState(false);
+    const [loadingEdit, setLoadingEdit] = useState(false);
+
+    const sortOptions = [
+        { value: 'sospechoso', label: 'Sospechosos primero' },
+        { value: 'matricula-az', label: 'Matrícula (A-Z)' },
+        { value: 'matricula-za', label: 'Matrícula (Z-A)' },
+        { value: 'marca-az', label: 'Marca (A-Z)' },
+        { value: 'marca-za', label: 'Marca (Z-A)' },
+    ];
+    const sortLabels: Record<string, string> = {
+        'sospechoso': 'Sospechosos primero',
+        'matricula-az': 'Matrícula (A-Z)',
+        'matricula-za': 'Matrícula (Z-A)',
+        'marca-az': 'Marca (A-Z)',
+        'marca-za': 'Marca (Z-A)',
+    };
 
     // Cargar vehículos del caso
     const fetchVehiculos = useCallback(async () => {
@@ -66,125 +74,47 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
 
     useEffect(() => {
         fetchVehiculos();
-    }, [fetchVehiculos]); // Dependencia fetchVehiculos
-
-    // --- NUEVO: useEffect para escuchar cambios externos en vehículos ---
-    // Usar emitter.off con handler inline
-    useEffect(() => {
-        const handler = () => {
-            console.log('[VehiculosPanel (vehiculos)]: Evento listaVehiculosCambiada recibido (handler inline), recargando...');
-            fetchVehiculos();
-        };
-
-        console.log("[VehiculosPanel (vehiculos)]: Suscribiéndose a 'listaVehiculosCambiada' (inline)");
-        appEventEmitter.on('listaVehiculosCambiada', handler);
-
-        // Limpiar usando emitter.off con la misma referencia de handler
-        return () => {
-            console.log("[VehiculosPanel (vehiculos)]: Desuscribiéndose de 'listaVehiculosCambiada' (inline)");
-            appEventEmitter.off('listaVehiculosCambiada', handler); 
-        };
     }, [fetchVehiculos]);
 
-    // --- NUEVO: useEffect para cargar lecturas al cambiar la expansión (MODIFICADO para filtrar LPR/GPS) --- 
+    // Escuchar cambios externos en vehículos
     useEffect(() => {
-        // Identificar los nuevos IDs que se están expandiendo
-        const newIdsToFetch = expandedRecordIds.filter(id => 
-            !(id in lecturasExpandidas) && 
-            !loadingLecturas[id]
-        );
+        const handler = () => {
+            console.log('[VehiculosPanel]: Evento listaVehiculosCambiada recibido, recargando...');
+            fetchVehiculos();
+        };
+        appEventEmitter.on('listaVehiculosCambiada', handler);
+        return () => appEventEmitter.off('listaVehiculosCambiada', handler);
+    }, [fetchVehiculos]);
 
-        if (newIdsToFetch.length > 0) {
-            // Marcar como cargando
-            setLoadingLecturas(prev => {
-                const newState = { ...prev };
-                newIdsToFetch.forEach(id => { newState[id] = true; });
-                return newState;
-            });
-
-            // Realizar las peticiones
-            Promise.allSettled(newIdsToFetch.map(async (vehiculoId) => {
-                try {
-                    // Fetch ALL lectures for the vehicle in this case
-                    const response = await apiClient.get<Lectura[]>(`/vehiculos/${vehiculoId}/lecturas?caso_id=${casoId}`);
-                    const allLecturas = response.data || [];
-                    
-                    // Filter LPR and check for GPS
-                    const lprLecturas = allLecturas.filter(l => l.Tipo_Fuente === 'LPR');
-                    const hasGps = allLecturas.some(l => l.Tipo_Fuente === 'GPS');
-
-                    // Store only LPR lectures and the GPS flag
-                    setLecturasExpandidas(prev => ({ ...prev, [vehiculoId]: lprLecturas }));
-                    setGpsLecturasExist(prev => ({ ...prev, [vehiculoId]: hasGps }));
-
-                } catch (err: any) {
-                    console.error(`Error fetching lecturas for vehiculo ${vehiculoId}:`, err);
-                    notifications.show({
-                        title: `Error Lecturas Vehículo ${vehiculoId}`,
-                        message: err.response?.data?.detail || 'No se pudieron cargar las lecturas.',
-                        color: 'red',
-                    });
-                    setLecturasExpandidas(prev => ({ ...prev, [vehiculoId]: [] })); // Dejar vacío en caso de error
-                    setGpsLecturasExist(prev => ({ ...prev, [vehiculoId]: false })); // Marcar como sin GPS en error
-                } finally {
-                    setLoadingLecturas(prev => ({ ...prev, [vehiculoId]: false }));
-                }
-            }));
-        }
-    // Dependencias: Ejecutar cuando cambien los IDs expandidos o el ID del caso
-    // Quitar lecturasExpandidas y loadingLecturas para evitar bucle si se actualizan dentro
-    }, [expandedRecordIds, casoId]); 
-
-    // --- NUEVO: Handler para edición inline de booleanos ---
-    const handleToggleBoolean = useCallback(async (vehiculo: Vehiculo, field: 'Alquiler' | 'Comprobado' | 'Sospechoso') => {
-        const currentValue = vehiculo[field];
-        const newValue = !currentValue;
-
-        // Actualización optimista del estado local
-        setVehiculos(currentVehiculos => 
-            currentVehiculos.map(v => 
-                v.ID_Vehiculo === vehiculo.ID_Vehiculo ? { ...v, [field]: newValue } : v
-            )
-        );
-
-        // Llamada a la API en segundo plano
+    // Cargar lecturas al expandir una card
+    const fetchLecturas = useCallback(async (vehiculoId: number) => {
+        if (loadingLecturas[vehiculoId]) return;
+        
+        setLoadingLecturas(prev => ({ ...prev, [vehiculoId]: true }));
         try {
-            await apiClient.put(`/vehiculos/${vehiculo.ID_Vehiculo}`, { [field]: newValue });
-            // No es necesario notificar éxito en la actualización optimista, pero sí loguear o manejar errores específicos si quieres
-            console.log(`Vehículo ${vehiculo.Matricula}, campo ${field} actualizado a ${newValue}`);
+            const response = await apiClient.get<Lectura[]>(`/vehiculos/${vehiculoId}/lecturas?caso_id=${casoId}`);
+            setLecturasExpandidas(prev => ({ ...prev, [vehiculoId]: response.data || [] }));
         } catch (err: any) {
-            console.error(`Error actualizando ${field} para vehículo ${vehiculo.ID_Vehiculo}:`, err);
+            console.error(`Error fetching lecturas for vehiculo ${vehiculoId}:`, err);
             notifications.show({
-                title: `Error al actualizar ${field}`,
-                message: err.response?.data?.detail || 'No se pudo guardar el cambio.',
+                title: 'Error',
+                message: 'No se pudieron cargar las lecturas.',
                 color: 'red',
             });
-            // Revertir el cambio en el estado local si la API falla
-            setVehiculos(currentVehiculos => 
-                currentVehiculos.map(v => 
-                    v.ID_Vehiculo === vehiculo.ID_Vehiculo ? { ...v, [field]: currentValue } : v // Volver al valor original
-                )
-            );
+        } finally {
+            setLoadingLecturas(prev => ({ ...prev, [vehiculoId]: false }));
         }
-    }, []); // Dependencia vacía por ahora, ya que setVehiculos es estable
+    }, [casoId]);
 
-    // ---- MOVER DEFINICIONES DE HANDLERS AQUÍ (ANTES DE useMemo para columns) ----
+    // Handlers para las cards
+    const handleCardClick = useCallback((vehiculo: Vehiculo) => {
+        setSelectedVehiculo(vehiculo);
+        setIsDetailModalOpen(true);
+    }, []);
 
-    // ---- ESTADOS Y HANDLERS PARA MODAL DE EDICIÓN ----
-    const [editingVehiculo, setEditingVehiculo] = useState<Vehiculo | null>(null);
-    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [marcaEdit, setMarcaEdit] = useState('');
-    const [modeloEdit, setModeloEdit] = useState('');
-    const [colorEdit, setColorEdit] = useState('');
-    const [propiedadEdit, setPropiedadEdit] = useState('');
-    const [alquilerEdit, setAlquilerEdit] = useState(false);
-    const [observacionesEdit, setObservacionesEdit] = useState('');
-    const [comprobadoEdit, setComprobadoEdit] = useState(false);
-    const [sospechosoEdit, setSospechosoEdit] = useState(false);
-    const [loadingEdit, setLoadingEdit] = useState(false);
-
-    const handleEditVehiculo = useCallback((vehiculo: Vehiculo) => {
-        setEditingVehiculo(vehiculo);
+    const handleEditClick = useCallback((vehiculo: Vehiculo, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedVehiculo(vehiculo);
         setMarcaEdit(vehiculo.Marca || '');
         setModeloEdit(vehiculo.Modelo || '');
         setColorEdit(vehiculo.Color || '');
@@ -194,519 +124,368 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
         setComprobadoEdit(vehiculo.Comprobado);
         setSospechosoEdit(vehiculo.Sospechoso);
         setIsEditModalOpen(true);
-    }, []); // Dependencias vacías si no usa nada externo excepto setters
-
-    const handleCloseEditModal = useCallback(() => {
-        setIsEditModalOpen(false);
-        setEditingVehiculo(null);
     }, []);
 
+    const handleDeleteClick = useCallback((vehiculo: Vehiculo, e: React.MouseEvent) => {
+        e.stopPropagation();
+        openConfirmModal({
+            title: `Eliminar Vehículo ${vehiculo.Matricula}`,
+            centered: true,
+            children: <Text size="sm">¿Estás seguro de eliminar este vehículo? Esta acción no se puede deshacer.</Text>,
+            labels: { confirm: 'Eliminar', cancel: 'Cancelar' },
+            confirmProps: { color: 'red' },
+            onConfirm: async () => {
+                try {
+                    await apiClient.delete(`/vehiculos/${vehiculo.ID_Vehiculo}`);
+                    notifications.show({ 
+                        title: 'Vehículo Eliminado', 
+                        message: `Vehículo ${vehiculo.Matricula} eliminado.`, 
+                        color: 'green' 
+                    });
+                    fetchVehiculos();
+                } catch (err: any) {
+                    notifications.show({ 
+                        title: 'Error al Eliminar', 
+                        message: err.response?.data?.detail || 'No se pudo eliminar.', 
+                        color: 'red' 
+                    });
+                }
+            },
+        });
+    }, [fetchVehiculos]);
+
+    // Handler para guardar cambios en el modal de edición
     const handleSaveChanges = useCallback(async () => {
-        if (!editingVehiculo) return;
+        if (!selectedVehiculo) return;
         setLoadingEdit(true);
-        const updatePayload = {
-            Marca: marcaEdit || null, Modelo: modeloEdit || null, Color: colorEdit || null,
-            Propiedad: propiedadEdit || null, Alquiler: alquilerEdit, Observaciones: observacionesEdit || null,
-            Comprobado: comprobadoEdit, Sospechoso: sospechosoEdit,
-        };
         try {
-            await apiClient.put(`/vehiculos/${editingVehiculo.ID_Vehiculo}`, updatePayload);
-            notifications.show({ title: 'Éxito', message: `Vehículo ${editingVehiculo.Matricula} actualizado.`, color: 'green' });
-            handleCloseEditModal();
+            await apiClient.put(`/vehiculos/${selectedVehiculo.ID_Vehiculo}`, {
+                Marca: marcaEdit || null,
+                Modelo: modeloEdit || null,
+                Color: colorEdit || null,
+                Propiedad: propiedadEdit || null,
+                Alquiler: alquilerEdit,
+                Observaciones: observacionesEdit || null,
+                Comprobado: comprobadoEdit,
+                Sospechoso: sospechosoEdit,
+            });
+            notifications.show({ 
+                title: 'Éxito', 
+                message: `Vehículo ${selectedVehiculo.Matricula} actualizado.`, 
+                color: 'green' 
+            });
+            setIsEditModalOpen(false);
             fetchVehiculos();
         } catch (err: any) {
-            console.error("Error updating vehiculo:", err);
-            notifications.show({ title: 'Error al Actualizar', message: err.response?.data?.detail || 'No se pudo guardar los cambios.', color: 'red' });
+            notifications.show({ 
+                title: 'Error al Actualizar', 
+                message: err.response?.data?.detail || 'No se pudo guardar los cambios.', 
+                color: 'red' 
+            });
         } finally {
              setLoadingEdit(false);
         }
-    }, [editingVehiculo, marcaEdit, modeloEdit, colorEdit, propiedadEdit, alquilerEdit, observacionesEdit, comprobadoEdit, sospechosoEdit, fetchVehiculos, handleCloseEditModal]);
+    }, [selectedVehiculo, marcaEdit, modeloEdit, colorEdit, propiedadEdit, alquilerEdit, observacionesEdit, comprobadoEdit, sospechosoEdit, fetchVehiculos]);
 
-    // ---- HANDLER PARA ELIMINAR ----
-    const handleDeleteVehiculo = useCallback((vehiculo: Vehiculo) => {
-        openConfirmModal({
-             title: `Eliminar Vehículo ${vehiculo.Matricula}`,
-             centered: true,
-             children: <Text size="sm">¿Estás seguro...? Esta acción no se puede deshacer.</Text>,
-             labels: { confirm: 'Eliminar', cancel: 'Cancelar' },
-             confirmProps: { color: 'red' },
-             onConfirm: async () => {
-                 setLoading(true);
-                 try {
-                     await apiClient.delete(`/vehiculos/${vehiculo.ID_Vehiculo}`);
-                     notifications.show({ title: 'Vehículo Eliminado', message: `Vehículo ${vehiculo.Matricula} eliminado.`, color: 'green' });
-                     fetchVehiculos();
-                 } catch (err: any) {
-                     console.error("Error deleting vehiculo:", err);
-                     notifications.show({ title: 'Error al Eliminar', message: err.response?.data?.detail || 'No se pudo eliminar.', color: 'red' });
-                 } finally {
-                      setLoading(false);
-                 }
-             },
-         });
-    }, [fetchVehiculos]); // fetchVehiculos como dependencia
-
-    // --- NUEVO: Handler para cambio de ordenación ---
-    const handleSortStatusChange = (status: DataTableSortStatus<Vehiculo>) => {
-        setPage(1); // Volver a la primera página al cambiar orden
-        setSortStatus(status);
-    };
-
-    // --- NUEVO: Procesar vehículos para la tabla (ordenar y paginar) ---
-    const sortedAndPaginatedVehiculos = useMemo(() => {
-        let data = [...vehiculos]; // Copiar para no mutar
-        // Ordenar
-        const { columnAccessor, direction } = sortStatus;
-        if (columnAccessor) {
-            data = _.orderBy(data, [columnAccessor], [direction]);
+    // Ordenar vehículos según el criterio seleccionado
+    const sortedVehiculos = React.useMemo(() => {
+        let data = [...vehiculos];
+        switch (sortBy) {
+            case 'matricula-az':
+                return _.orderBy(data, ['Matricula'], ['asc']);
+            case 'matricula-za':
+                return _.orderBy(data, ['Matricula'], ['desc']);
+            case 'marca-az':
+                return _.orderBy(data, [v => v.Marca?.toLowerCase() || ''], ['asc']);
+            case 'marca-za':
+                return _.orderBy(data, [v => v.Marca?.toLowerCase() || ''], ['desc']);
+            case 'sospechoso':
+            default:
+                // Sospechosos primero, luego por matrícula ascendente
+                return _.orderBy(data, [v => !v.Sospechoso, 'Matricula'], ['asc', 'asc']);
         }
-        // Paginar
-        const from = (page - 1) * PAGE_SIZE;
-        const to = from + PAGE_SIZE;
-        return data.slice(from, to);
-    }, [vehiculos, sortStatus, page, PAGE_SIZE]);
+    }, [vehiculos, sortBy]);
 
-    // ---- Definición de columnas DESPUÉS de los handlers (ACTUALIZADO) ----
-    const columns: DataTableColumn<Vehiculo>[] = useMemo(() => {
-        // Restaurar lógica de selección para cabecera
-        const allSelected = vehiculos.length > 0 && selectedRecords.length === vehiculos.length;
-        const someSelected = selectedRecords.length > 0 && selectedRecords.length < vehiculos.length;
+    // Renderizar una card de vehículo
+    const renderVehiculoCard = (vehiculo: Vehiculo) => (
+        <Card 
+            key={vehiculo.ID_Vehiculo}
+            shadow="sm" 
+            padding="lg" 
+            radius="md" 
+            withBorder
+            style={{ cursor: 'pointer' }}
+            onClick={() => handleCardClick(vehiculo)}
+        >
+            <Card.Section>
+                <Box p="md" style={{ backgroundColor: '#f8f9fa' }}>
+                    <Group justify="space-between" align="center">
+                        <Group>
+                            <Avatar color="blue" radius="xl">
+                                <IconCar size={24} />
+                            </Avatar>
+                            <div>
+                                <Text fw={500} size="lg">{vehiculo.Matricula}</Text>
+                                <Text size="sm" c="dimmed">
+                                    {vehiculo.Marca} {vehiculo.Modelo}
+                                </Text>
+                            </div>
+                        </Group>
+                        <Group>
+                            {vehiculo.Comprobado && (
+                                <Tooltip label="Vehículo Comprobado">
+                                    <Badge color="green" variant="light">
+                                        <IconCheck size={14} style={{ marginRight: 5 }} />
+                                        Comprobado
+                                    </Badge>
+                                </Tooltip>
+                            )}
+                            {vehiculo.Sospechoso && (
+                                <Tooltip label="Vehículo Sospechoso">
+                                    <Badge color="red" variant="light">
+                                        <IconAlertTriangle size={14} style={{ marginRight: 5 }} />
+                                        Sospechoso
+                                    </Badge>
+                                </Tooltip>
+                            )}
+                        </Group>
+                    </Group>
+                    </Box>
+            </Card.Section>
 
-        return [
-            // --- RESTAURAR Columna de selección explícita ---
-            {
-                accessor: 'select',
-                title: (
-                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
-                        <Checkbox
-                            aria-label="Seleccionar todas las filas"
-                            checked={allSelected}
-                            indeterminate={someSelected}
-                            onChange={(e) => {
-                                setSelectedRecords(e.currentTarget.checked ? vehiculos : []);
-                            }}
-                        />
-                    </Box>
-                ),
-                width: '0%',
-                textAlignment: 'center',
-                styles: {
-                    cell: {
-                        paddingLeft: 'var(--mantine-spacing-xs)',
-                        paddingRight: 'var(--mantine-spacing-xs)',
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                },
-                render: (vehiculo) => (
-                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
-                        <Checkbox
-                            aria-label={`Seleccionar fila ${vehiculo.ID_Vehiculo}`}
-                            checked={selectedRecords.some(v => v.ID_Vehiculo === vehiculo.ID_Vehiculo)}
-                            onChange={(e) => {
-                                const isChecked = e.currentTarget.checked;
-                                setSelectedRecords(currentSelected =>
-                                    isChecked
-                                        ? [...currentSelected, vehiculo]
-                                        : currentSelected.filter(v => v.ID_Vehiculo !== vehiculo.ID_Vehiculo)
-                                );
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                        />
-                    </Box>
-                ),
-            },
-            // --- Columnas existentes (marcar como sortable) ---
-            { 
-                accessor: 'Matricula', 
-                title: 'Matrícula', 
-                sortable: true, 
-                textAlignment: 'center',
-                width: 120,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                },
-                render: (vehiculo) => (
-                    <Box
-                        component="span"
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            background: '#fff',
-                            border: '2px solid #222',
-                            borderRadius: 4,
-                            padding: '1px 6px',
-                            fontWeight: 700,
-                            fontSize: 14,
-                            letterSpacing: 0.5,
-                            color: '#222',
-                            fontFamily: 'monospace',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                            minWidth: 80,
-                            textAlign: 'center',
-                            justifyContent: 'center',
-                        }}
+            <Stack mt="md" gap="xs">
+                <Group>
+                    <IconMapPin size={16} style={{ color: '#228be6' }} />
+                    <Text size="sm">{vehiculo.Propiedad || 'Propiedad no especificada'}</Text>
+                </Group>
+                {vehiculo.Color && (
+                    <Group>
+                        <IconCar size={16} style={{ color: '#228be6' }} />
+                        <Text size="sm">{vehiculo.Color}</Text>
+                    </Group>
+                )}
+                {vehiculo.Alquiler && (
+                    <Group>
+                        <IconInfoCircle size={16} style={{ color: '#228be6' }} />
+                        <Text size="sm">Vehículo de alquiler</Text>
+                    </Group>
+                )}
+            </Stack>
+
+            <Group mt="md" justify="flex-end">
+                <Tooltip label="Editar">
+                    <ActionIcon 
+                        variant="light" 
+                        color="blue"
+                        onClick={(e) => handleEditClick(vehiculo, e)}
                     >
-                        <Box style={{ width: 6, height: 20, background: '#2b4fcf', borderRadius: '3px 0 0 3px', marginRight: 6 }} />
-                        {vehiculo.Matricula}
-                    </Box>
-                )
-            },
-            { 
-                accessor: 'Marca', 
-                title: 'Marca', 
-                sortable: true, 
-                textAlignment: 'center',
-                width: 100,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                }
-            },
-            { 
-                accessor: 'Modelo', 
-                title: 'Modelo', 
-                sortable: true, 
-                textAlignment: 'center',
-                width: 100,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                }
-            },
-            { 
-                accessor: 'Color', 
-                title: 'Color', 
-                sortable: true, 
-                textAlignment: 'center',
-                width: 100,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                }
-            },
-            { 
-                accessor: 'Propiedad', 
-                title: 'Propiedad', 
-                sortable: true, 
-                textAlignment: 'center',
-                width: 120,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                }
-            },
-            {
-                accessor: 'totalLecturasLprCaso',
-                title: 'Lecturas LPR',
-                width: 110,
-                textAlignment: 'center',
-                sortable: true,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                },
-                render: (vehiculo) => typeof vehiculo.total_lecturas_lpr_caso === 'number'
-                                       ? vehiculo.total_lecturas_lpr_caso
-                                       : (expandedRecordIds.includes(vehiculo.ID_Vehiculo) && lecturasExpandidas[vehiculo.ID_Vehiculo]
-                                           ? lecturasExpandidas[vehiculo.ID_Vehiculo].length
-                                           : '...'),
-            },
-            { 
-                accessor: 'Observaciones', 
-                title: 'Observaciones', 
-                textAlignment: 'center',
-                width: 200,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                }
-            },
-            {
-                accessor: 'Comprobado',
-                title: 'Comp.',
-                width: 70,
-                textAlignment: 'center',
-                sortable: true,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                },
-                render: (v) => (
-                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
-                        <Tooltip label={v.Comprobado ? 'Desmarcar Comprobado' : 'Marcar Comprobado'}>
-                            <ActionIcon 
-                                variant="subtle" 
-                                color={v.Comprobado ? 'teal' : 'gray'} 
-                                onClick={() => handleToggleBoolean(v, 'Comprobado')}
-                            >
-                                {v.Comprobado ? <IconCircleCheck size={18} /> : <IconX size={18}/>}
-                            </ActionIcon>
-                        </Tooltip>
-                    </Box>
-                )
-            },
-            {
-                accessor: 'Sospechoso',
-                title: 'Sosp.',
-                width: 70,
-                textAlignment: 'center',
-                sortable: true,
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                },
-                render: (v) => (
-                    <Box style={{ display: 'flex', justifyContent: 'center' }}>
-                        <Tooltip label={v.Sospechoso ? 'Desmarcar Sospechoso' : 'Marcar Sospechoso'}>
-                            <ActionIcon 
-                                variant="subtle" 
-                                color={v.Sospechoso ? 'red' : 'gray'} 
-                                onClick={() => handleToggleBoolean(v, 'Sospechoso')}
-                            >
-                                {v.Sospechoso ? <IconAlertTriangle size={18} /> : <IconX size={18}/>}
-                            </ActionIcon>
-                        </Tooltip>
-                    </Box>
-                )
-            },
-            {
-                accessor: 'actions',
-                title: 'Acciones',
-                width: 100,
-                textAlignment: 'center',
-                styles: {
-                    cell: {
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center'
-                    }
-                },
-                render: (vehiculo) => (
-                    <Group gap="xs" justify="center" wrap="nowrap">
-                        <Tooltip label="Editar Vehículo">
-                            <ActionIcon variant="subtle" color="blue" onClick={() => handleEditVehiculo(vehiculo)}>
                                 <IconPencil size={16} />
                             </ActionIcon>
                         </Tooltip>
-                        <Tooltip label="Eliminar Vehículo">
+                <Tooltip label="Eliminar">
                             <ActionIcon 
-                                variant="subtle" 
+                        variant="light" 
                                 color="red" 
-                                onClick={() => handleDeleteVehiculo(vehiculo)}
-                                disabled={selectedRecords.length > 0} 
+                        onClick={(e) => handleDeleteClick(vehiculo, e)}
                             >
                                 <IconTrash size={16} />
                             </ActionIcon>
                         </Tooltip>
                     </Group>
-                ),
-            },
-        ];
-    }, [vehiculos, selectedRecords, expandedRecordIds, lecturasExpandidas, handleEditVehiculo, handleDeleteVehiculo, handleToggleBoolean]);
+        </Card>
+    );
 
-    return (
-        <Box style={{ position: 'relative' }}>
-            <Group justify="flex-end" mb="xs">
-                <Button
-                    variant="light"
-                    color="blue"
-                    size="xs"
-                    onClick={() => setAyudaAbierta((v) => !v)}
-                >
-                    {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                </Button>
-            </Group>
-            <Collapse in={ayudaAbierta}>
-                <Alert color="blue" title="¿Cómo funciona la pestaña Vehículos?" mb="md">
-                    <Text size="sm">
-                        <b>¿Qué es este panel?</b><br />
-                        Aquí puedes gestionar la lista de vehículos (matrículas) asociados a este caso. Un vehículo se añade automáticamente si aparece en las lecturas importadas o si lo guardas manualmente desde otras pestañas.<br /><br />
-                        <b>Funcionalidades:</b><br />
-                        - <b>Listado:</b> Muestra todos los vehículos vinculados al caso, con detalles como marca, modelo, color, etc. (si se han añadido).<br />
-                        - <b>Lecturas LPR:</b> Indica cuántas lecturas LPR tiene cada vehículo <i>dentro de este caso</i>.<br />
-                        - <b>Editar Detalles:</b> Modifica la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).<br />
-                        - <b>Ver Lecturas:</b> Accede a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.<br />
-                        - <b>Eliminar Vehículo:</b> Borra un vehículo de la lista del caso (Nota: Esto <i>no</i> elimina sus lecturas asociadas, solo el registro del vehículo).<br />
-                        - <b>Refrescar:</b> Actualiza la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).<br /><br />
-                        <b>Consejos:</b><br />
-                        - Utiliza la función de edición para mantener actualizada la información de cada vehículo.<br />
-                        - Marca los vehículos como comprobados o sospechosos según el avance de la investigación.<br />
-                        - Elimina solo aquellos vehículos que no sean relevantes para el caso, ya que sus lecturas seguirán estando disponibles en el sistema.<br />
-                    </Text>
-                </Alert>
-            </Collapse>
-            <LoadingOverlay visible={loading} />
-            <Paper shadow="sm" p="md" withBorder>
-                <Group justify="space-between" align="center" mb="md">
-                    <Title order={3}>Vehículos Identificados en el Caso</Title>
+    // Modal de detalles
+    const renderDetailModal = () => (
+        <Modal
+            opened={isDetailModalOpen}
+            onClose={() => setIsDetailModalOpen(false)}
+            title={`Detalles del Vehículo ${selectedVehiculo?.Matricula}`}
+            size="xl"
+        >
+            {selectedVehiculo && (
+                <Stack>
                     <Group>
-                        {selectedRecords.length > 0 && (
-                            <Button 
-                                color="red" 
-                                variant="outline"
-                                size="xs"
-                            >
-                                Eliminar Selección ({selectedRecords.length})
-                            </Button>
-                        )}
-                        <Button 
-                            leftSection={<IconRefresh size={16} />}
-                            onClick={fetchVehiculos}
-                            variant="default"
-                            size="xs"
-                            disabled={loading}
-                        >
-                            Actualizar Lista
-                        </Button>
+                        <Avatar size="xl" color="blue" radius="xl">
+                            <IconCar size={32} />
+                        </Avatar>
+                        <div>
+                            <Text size="xl" fw={700}>{selectedVehiculo.Matricula}</Text>
+                            <Text size="lg">{selectedVehiculo.Marca} {selectedVehiculo.Modelo}</Text>
+                            <Text size="sm" c="dimmed">{selectedVehiculo.Propiedad || 'Propiedad no especificada'}</Text>
+                        </div>
                     </Group>
+
+                    <Divider />
+
+                    <SimpleGrid cols={2}>
+                        <Box>
+                            <Text fw={500} mb="xs">Información del Vehículo</Text>
+                            <Stack gap="xs">
+                                <Group>
+                                    <Text size="sm" fw={500}>Color:</Text>
+                                    <Text size="sm">{selectedVehiculo.Color || 'No especificado'}</Text>
+                                </Group>
+                                <Group>
+                                    <Text size="sm" fw={500}>Alquiler:</Text>
+                                    <Text size="sm">{selectedVehiculo.Alquiler ? 'Sí' : 'No'}</Text>
                 </Group>
-                {error && <Alert color="red" title="Error" mb="md">{error}</Alert>}
-                <MantineProvider
-                    theme={{
-                        components: {
-                            DataTable: {
-                                styles: {
-                                    table: {
-                                        '& td, & th': {
-                                            textAlign: 'center',
-                                            verticalAlign: 'middle',
-                                        }
-                                    }
-                                }
-                            },
-                            Checkbox: {
-                                styles: {
-                                    root: {
-                                        margin: '0 auto'
-                                    }
-                                }
-                            }
-                        }
-                    }}
-                >
-                    <DataTable<Vehiculo>
-                        records={sortedAndPaginatedVehiculos}
-                        columns={columns}
-                        minHeight={200}
-                        withTableBorder
-                        borderRadius="sm"
-                        withColumnBorders
-                        striped
-                        highlightOnHover
-                        idAccessor="ID_Vehiculo"
-                        noRecordsText=""
-                        noRecordsIcon={<></>}
-                        fetching={loading}
-                        totalRecords={vehiculos.length}
-                        recordsPerPage={PAGE_SIZE}
-                        page={page}
-                        onPageChange={setPage}
-                        sortStatus={sortStatus}
-                        onSortStatusChange={handleSortStatusChange}
-                        rowExpansion={{
-                            expanded: { 
-                                recordIds: expandedRecordIds,
-                                onRecordIdsChange: setExpandedRecordIds
-                            },
-                            allowMultiple: true,
-                            content: ({ record }) => (
-                                <Box p="md" style={{ background: '#f9f9f9' }}>
-                                     <LoadingOverlay visible={loadingLecturas[record.ID_Vehiculo] ?? false} />
-                                    {/* Mostrar tabla solo si hay lecturas LPR */}
-                                    {lecturasExpandidas[record.ID_Vehiculo] && lecturasExpandidas[record.ID_Vehiculo].length > 0 ? (
-                                        <>
-                                        <Text fw={500} mb="xs">Lecturas LPR ({lecturasExpandidas[record.ID_Vehiculo].length}) para Matrícula: {record.Matricula}</Text>
-                                        <DataTable<Lectura>
-                                            records={lecturasExpandidas[record.ID_Vehiculo]} // Solo LPR
-                                            columns={lecturaColumns}
-                                            minHeight={100}
-                                            noRecordsText=""
-                                            noRecordsIcon={<></>}
-                                            withTableBorder={false}
-                                        />
-                                        </>
-                                    ) : (
-                                        // Mostrar texto si no hay LPR (y no está cargando)
-                                        !loadingLecturas[record.ID_Vehiculo] && 
-                                        <Text c="dimmed" size="sm">No hay lecturas LPR registradas para este vehículo en este caso.</Text>
-                                    )}
-                                    {/* Mostrar botón GPS si existen */}
-                                    {(gpsLecturasExist[record.ID_Vehiculo] ?? false) && (
-                                        <Button 
-                                            mt="sm" 
-                                            size="xs" 
-                                            variant="outline"
-                                            // onClick={() => { /* TODO: Implementar navegación/modal */ }}
-                                        >
-                                            Lecturas GPS
-                                        </Button>
-                                    )}
-                                    {/* Mensaje de carga si aplica */}
-                                    {(loadingLecturas[record.ID_Vehiculo] ?? false) && (
-                                         <Text c="dimmed" size="sm">Cargando lecturas...</Text>
+                                <Group>
+                                    <Text size="sm" fw={500}>Estado:</Text>
+                                    <Group gap="xs">
+                                        {selectedVehiculo.Comprobado && (
+                                            <Badge color="green">Comprobado</Badge>
+                                        )}
+                                        {selectedVehiculo.Sospechoso && (
+                                            <Badge color="red">Sospechoso</Badge>
+                                        )}
+                                    </Group>
+                                </Group>
+                            </Stack>
+                        </Box>
+
+                        <Box>
+                            <Text fw={500} mb="xs">Observaciones</Text>
+                            <Text size="sm">{selectedVehiculo.Observaciones || 'Sin observaciones'}</Text>
+                        </Box>
+                    </SimpleGrid>
+
+                    <Divider />
+
+                    <Box>
+                        <Text fw={500} mb="xs">Últimas Lecturas</Text>
+                        <LoadingOverlay visible={loadingLecturas[selectedVehiculo.ID_Vehiculo]} />
+                        {lecturasExpandidas[selectedVehiculo.ID_Vehiculo]?.length > 0 ? (
+                            <Stack gap="xs">
+                                {lecturasExpandidas[selectedVehiculo.ID_Vehiculo].map((lectura, index) => (
+                                    <Paper key={index} p="xs" withBorder>
+                                        <Group>
+                                            <IconClock size={16} style={{ color: '#228be6' }} />
+                                            <Text size="sm">{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+                                            <Text size="sm">•</Text>
+                                            <Text size="sm">Lector: {lectura.ID_Lector}</Text>
+                                        </Group>
+                                    </Paper>
+                                ))}
+                            </Stack>
+                        ) : (
+                            <Text size="sm" c="dimmed">No hay lecturas registradas</Text>
                                     )}
                                 </Box>
-                            ),
-                        }}
-                    />
-                </MantineProvider>
-            </Paper>
+                </Stack>
+            )}
+        </Modal>
+    );
 
+    // Modal de edición
+    const renderEditModal = () => (
             <Modal
                  opened={isEditModalOpen}
-                 onClose={handleCloseEditModal}
-                 title={`Editar Vehículo: ${editingVehiculo?.Matricula}`}
-                 centered
-                 size="lg"
-            >
-                <LoadingOverlay visible={loadingEdit} />
+            onClose={() => setIsEditModalOpen(false)}
+            title={`Editar Vehículo ${selectedVehiculo?.Matricula}`}
+            size="md"
+        >
                 <Stack>
-                    <TextInput label="Marca" value={marcaEdit} onChange={(e) => setMarcaEdit(e.currentTarget.value)} />
-                    <TextInput label="Modelo" value={modeloEdit} onChange={(e) => setModeloEdit(e.currentTarget.value)} />
-                    <TextInput label="Color" value={colorEdit} onChange={(e) => setColorEdit(e.currentTarget.value)} />
-                    <TextInput label="Propiedad" value={propiedadEdit} onChange={(e) => setPropiedadEdit(e.currentTarget.value)} />
-                    <Checkbox label="Alquiler" checked={alquilerEdit} onChange={(e) => setAlquilerEdit(e.currentTarget.checked)} mt="xs"/>
-                    <Textarea label="Observaciones" value={observacionesEdit} onChange={(e) => setObservacionesEdit(e.currentTarget.value)} autosize minRows={2}/>
+                <TextInput
+                    label="Marca"
+                    value={marcaEdit}
+                    onChange={(e) => setMarcaEdit(e.target.value)}
+                />
+                <TextInput
+                    label="Modelo"
+                    value={modeloEdit}
+                    onChange={(e) => setModeloEdit(e.target.value)}
+                />
+                <TextInput
+                    label="Color"
+                    value={colorEdit}
+                    onChange={(e) => setColorEdit(e.target.value)}
+                />
+                <TextInput
+                    label="Propiedad"
+                    value={propiedadEdit}
+                    onChange={(e) => setPropiedadEdit(e.target.value)}
+                />
+                <Textarea
+                    label="Observaciones"
+                    value={observacionesEdit}
+                    onChange={(e) => setObservacionesEdit(e.target.value)}
+                    minRows={3}
+                />
                     <Group>
-                         <Checkbox label="Comprobado" checked={comprobadoEdit} onChange={(e) => setComprobadoEdit(e.currentTarget.checked)} />
-                         <Checkbox label="Sospechoso" checked={sospechosoEdit} onChange={(e) => setSospechosoEdit(e.currentTarget.checked)} />
+                    <Checkbox
+                        label="Vehículo de Alquiler"
+                        checked={alquilerEdit}
+                        onChange={(e) => setAlquilerEdit(e.target.checked)}
+                    />
+                    <Checkbox
+                        label="Comprobado"
+                        checked={comprobadoEdit}
+                        onChange={(e) => setComprobadoEdit(e.target.checked)}
+                    />
+                    <Checkbox
+                        label="Sospechoso"
+                        checked={sospechosoEdit}
+                        onChange={(e) => setSospechosoEdit(e.target.checked)}
+                    />
                     </Group>
                     <Group justify="flex-end" mt="md">
-                        <Button variant="default" onClick={handleCloseEditModal} disabled={loadingEdit}>Cancelar</Button>
-                        <Button onClick={handleSaveChanges} loading={loadingEdit}>Guardar Cambios</Button>
+                    <Button variant="light" onClick={() => setIsEditModalOpen(false)}>
+                        Cancelar
+                    </Button>
+                    <Button 
+                        onClick={handleSaveChanges}
+                        loading={loadingEdit}
+                    >
+                        Guardar Cambios
+                    </Button>
                     </Group>
                 </Stack>
             </Modal>
+    );
+
+    if (loading) return <LoadingOverlay visible />;
+    if (error) return <Alert color="red" title="Error">{error}</Alert>;
+
+    return (
+        <Box>
+            <Group justify="space-between" mb="md">
+                <Title order={3}>Vehículos del Caso</Title>
+                <Group>
+                    <Menu shadow="md" width={200} position="bottom-end">
+                        <Menu.Target>
+                            <Button variant="default" size="xs">
+                                Ordenar por: {sortLabels[sortBy]}
+                            </Button>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                            {sortOptions.map(opt => (
+                                <Menu.Item
+                                    key={opt.value}
+                                    onClick={() => setSortBy(opt.value)}
+                                    rightSection={sortBy === opt.value ? <IconCheck size={14} /> : null}
+                                >
+                                    {opt.label}
+                                </Menu.Item>
+                            ))}
+                        </Menu.Dropdown>
+                    </Menu>
+                    <Button
+                        variant="light"
+                        leftSection={<IconRefresh size={16} />}
+                        onClick={fetchVehiculos}
+                    >
+                        Actualizar
+                    </Button>
+                </Group>
+            </Group>
+
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="md">
+                {sortedVehiculos.map(renderVehiculoCard)}
+            </SimpleGrid>
+
+            {renderDetailModal()}
+            {renderEditModal()}
         </Box>
     );
 }
