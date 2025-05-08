@@ -76,6 +76,10 @@ export const deleteLector = async (lectorId: string): Promise<void> => {
         await apiClient.delete(`/lectores/${lectorId}`);
     } catch (error) {
         console.error(`Error al eliminar el lector ${lectorId}:`, error);
+        // Considerar manejo específico si hay lecturas asociadas (error 400 del backend)
+        if (axios.isAxiosError(error) && error.response?.status === 400) {
+             throw new Error(error.response?.data?.detail || 'No se puede eliminar, tiene lecturas asociadas.');
+        }
         throw error;
     }
 };
@@ -105,7 +109,7 @@ export const updateLector = async (lectorId: string, data: LectorUpdateData): Pr
  */
 export const deleteLector = async (lectorId: string): Promise<void> => {
     try {
-        await apiClient.delete(`/lectores/${lectorId}`);
+        await apiClient.delete(`/lectores/${encodeURIComponent(lectorId)}`);
     } catch (error) {
         console.error(`Error al eliminar el lector ${lectorId}:`, error);
         // Considerar manejo específico si hay lecturas asociadas (error 400 del backend)
