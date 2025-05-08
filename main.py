@@ -38,6 +38,7 @@ from schemas import Lectura as LecturaSchema
 from gps_capas import router as gps_capas_router
 from models import LocalizacionInteres
 from schemas import LocalizacionInteresCreate, LocalizacionInteresUpdate, LocalizacionInteresOut
+from admin.database_manager import router as admin_database_router
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -56,14 +57,20 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Cerrando aplicación...")
 
-app = FastAPI(
-    title="Tracer API", 
-    description="API para la aplicación de análisis vehicular Tracer", 
-    version="0.1.0",
-    lifespan=lifespan
+app = FastAPI(lifespan=lifespan)
+
+# Configurar CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # En producción, especificar los orígenes permitidos
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# Incluir routers
 app.include_router(gps_capas_router)
+app.include_router(admin_database_router)
 
 # ... existing code ...
 
