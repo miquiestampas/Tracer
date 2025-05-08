@@ -61,6 +61,24 @@ function Layout() {
           <Stack gap={4} align="center" mb={8}>
             <Text size="md" style={{ color: '#fff' }}>Administrador</Text>
             <UnstyledButton
+              onClick={() => window.location.assign('/admin')}
+              style={{
+                display: 'block',
+                padding: '8px 16px',
+                borderRadius: theme.radius.sm,
+                color: '#fff',
+                fontWeight: 500,
+                fontSize: 16,
+                background: 'none',
+                transition: 'background 0.2s, color 0.2s',
+                '&:hover': {
+                  background: 'rgba(255, 255, 255, 0.1)',
+                },
+              }}
+            >
+              <Text size="md" style={{ color: '#fff' }}>Panel de Administración</Text>
+            </UnstyledButton>
+            <UnstyledButton
               onClick={() => console.log('Cerrar sesión')}
               style={{
                 display: 'block',
