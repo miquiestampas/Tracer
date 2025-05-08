@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, create_engine
 import os
 import shutil
 from datetime import datetime
 from typing import List, Optional
 import json
+import logging
 
 from database import SessionLocal, engine, Base
 import models
@@ -16,6 +17,8 @@ router = APIRouter(
     tags=["admin"],
     responses={404: {"description": "Not found"}},
 )
+
+logger = logging.getLogger("admin.database_manager")
 
 def get_db():
     db = SessionLocal()
@@ -111,32 +114,28 @@ async def restore_database(backup_file: UploadFile = File(...)):
     """Restaura la base de datos desde un archivo de backup"""
     try:
         db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tracer.db')
-        
-        # Guardar el archivo de backup temporalmente
         temp_path = f"temp_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
         with open(temp_path, "wb") as buffer:
             content = await backup_file.read()
             buffer.write(content)
-        
-        # Verificar que el archivo es una base de datos SQLite válida
+        logger.info(f"Archivo recibido para restaurar: {backup_file.filename}, tamaño: {os.path.getsize(temp_path)} bytes")
         try:
             test_engine = create_engine(f"sqlite:///{temp_path}")
-            test_engine.connect()
-        except Exception:
+            conn = test_engine.connect()
+            conn.close()
+            test_engine.dispose()
+        except Exception as e:
+            logger.error(f"Archivo subido no es una base de datos SQLite válida: {e}")
             os.remove(temp_path)
             raise HTTPException(status_code=400, detail="El archivo no es una base de datos SQLite válida")
-        
-        # Crear backup de la base de datos actual antes de restaurar
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         current_backup = f"pre_restore_backup_{timestamp}.db"
         shutil.copy2(db_path, current_backup)
-        
-        # Restaurar la base de datos
         shutil.copy2(temp_path, db_path)
         os.remove(temp_path)
-        
         return {"message": "Base de datos restaurada exitosamente"}
     except Exception as e:
+        logger.error(f"Error inesperado al restaurar la base de datos: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/tables/{table_name}")
@@ -155,19 +154,19 @@ def delete_table_data(table_name: str, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/reset")
+@router.post("/reset")
 def reset_database(db: Session = Depends(get_db)):
     """Reinicia la base de datos eliminando todas las tablas y creándolas de nuevo"""
     try:
         # Crear backup antes de resetear
         create_backup(BackgroundTasks())
-        
         # Eliminar todas las tablas
         Base.metadata.drop_all(bind=engine)
-        
         # Crear las tablas nuevamente
         Base.metadata.create_all(bind=engine)
-        
+        # Ejecutar VACUUM para compactar la base de datos
+        db.execute(text("VACUUM"))
+        db.commit()
         return {"message": "Base de datos reiniciada exitosamente"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -212,7 +211,23 @@ def clear_except_lectores(db: Session = Depends(get_db)):
             if table != lector_table:
                 db.execute(text(f"DELETE FROM {table}"))
         db.commit()
+        # Ejecutar VACUUM para compactar la base de datos
+        db.execute(text("VACUUM"))
+        db.commit()
         return {"message": "Todos los datos (excepto lectores) eliminados exitosamente"}
     except Exception as e:
         db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/backups/{filename}")
+def delete_backup(filename: str):
+    """Elimina un archivo de backup específico."""
+    try:
+        backup_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'backups')
+        backup_path = os.path.join(backup_dir, filename)
+        if not os.path.exists(backup_path):
+            raise HTTPException(status_code=404, detail="Backup no encontrado")
+        os.remove(backup_path)
+        return {"message": f"Backup {filename} eliminado correctamente"}
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) 
