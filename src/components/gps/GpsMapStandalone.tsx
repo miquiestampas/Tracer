@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
 import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/core';
@@ -21,6 +21,10 @@ interface GpsMapStandaloneProps {
   onGuardarLocalizacion: (lectura: GpsLectura) => void;
   playbackLayer?: GpsCapa | null;
   currentPlaybackIndex?: number;
+}
+
+interface GpsMapStandalonePropsWithFullscreen extends GpsMapStandaloneProps {
+  fullscreenMap?: boolean;
 }
 
 const ICONOS = [
@@ -282,6 +286,56 @@ const decimatePoints = (points: GpsLectura[], options = {
   return result;
 };
 
+// Extender el tipo GpsLectura para incluir clusterSize
+interface GpsLecturaWithCluster extends GpsLectura {
+  clusterSize?: number;
+}
+
+// Función para agrupar puntos cercanos
+const clusterPoints = (points: GpsLectura[], maxDistance: number = 0.0001) => {
+  const clusters: GpsLectura[][] = [];
+  const processed = new Set<number>();
+
+  points.forEach((point, i) => {
+    if (processed.has(i)) return;
+
+    const cluster = [point];
+    processed.add(i);
+
+    points.forEach((otherPoint, j) => {
+      if (i === j || processed.has(j)) return;
+
+      const distance = haversineDistance(
+        point.Coordenada_Y,
+        point.Coordenada_X,
+        otherPoint.Coordenada_Y,
+        otherPoint.Coordenada_X
+      );
+
+      if (distance < maxDistance) {
+        cluster.push(otherPoint);
+        processed.add(j);
+      }
+    });
+
+    clusters.push(cluster);
+  });
+
+  return clusters;
+};
+
+// Función para calcular el punto central de un cluster
+const getClusterCenter = (cluster: GpsLectura[]): GpsLecturaWithCluster => {
+  const sumLat = cluster.reduce((sum, p) => sum + p.Coordenada_Y, 0);
+  const sumLng = cluster.reduce((sum, p) => sum + p.Coordenada_X, 0);
+  return {
+    ...cluster[0],
+    Coordenada_Y: sumLat / cluster.length,
+    Coordenada_X: sumLng / cluster.length,
+    clusterSize: cluster.length
+  };
+};
+
 // Utility functions for KML and GPX export
 const generateKML = (lecturas: GpsLectura[], nombre: string) => {
   const kmlHeader = `<?xml version="1.0" encoding="UTF-8"?>
@@ -356,7 +410,33 @@ const downloadFile = (content: string, filename: string) => {
   window.URL.revokeObjectURL(url);
 };
 
-const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
+// Componente auxiliar para forzar el resize del mapa
+const MapAutoResize = () => {
+  const map = useMap();
+  useEffect(() => {
+    // Forzar resize al montar
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+      map.invalidateSize();
+    }, 200);
+
+    // Forzar resize cuando cambie el tamaño del contenedor
+    const container = map.getContainer();
+    let observer: ResizeObserver | null = null;
+    if (container && 'ResizeObserver' in window) {
+      observer = new ResizeObserver(() => {
+        map.invalidateSize();
+      });
+      observer.observe(container);
+    }
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  }, [map]);
+  return null;
+};
+
+const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFullscreen>(({
   lecturas,
   capas,
   localizaciones,
@@ -364,7 +444,8 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
   mostrarLocalizaciones,
   onGuardarLocalizacion,
   playbackLayer,
-  currentPlaybackIndex
+  currentPlaybackIndex,
+  fullscreenMap
 }, ref): React.ReactElement => {
   const mapRef = useRef<L.Map | null>(null);
   const [infoBanner, setInfoBanner] = useState<{ info: any; isLocalizacion: boolean } | null>(null);
@@ -392,7 +473,15 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
   // Optimizar puntos si está activado
   const optimizedLecturas = useMemo(() => {
     if (!mapControls.optimizePoints || !Array.isArray(lecturas)) return lecturas;
-    return decimatePoints(lecturas);
+    
+    // Primero decimar los puntos
+    const decimatedPoints = decimatePoints(lecturas);
+    
+    // Luego agrupar puntos cercanos
+    const clusters = clusterPoints(decimatedPoints);
+    
+    // Convertir clusters a puntos individuales
+    return clusters.map(getClusterCenter);
   }, [lecturas, mapControls.optimizePoints]);
 
   // Obtener todas las lecturas de las capas activas
@@ -400,12 +489,19 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
     if (!Array.isArray(capas)) return [];
     return capas
       .filter(capa => capa.activa)
-      .flatMap(capa => capa.lecturas);
-  }, [capas]);
+      .flatMap(capa => {
+        if (mapControls.optimizePoints) {
+          const decimatedPoints = decimatePoints(capa.lecturas);
+          const clusters = clusterPoints(decimatedPoints);
+          return clusters.map(getClusterCenter);
+        }
+        return capa.lecturas;
+      }) as GpsLecturaWithCluster[];
+  }, [capas, mapControls.optimizePoints]);
 
   // Combinar lecturas activas con las lecturas actuales
   const allLecturas = useMemo(() => {
-    return [...optimizedLecturas, ...activeLayerLecturas];
+    return [...optimizedLecturas, ...activeLayerLecturas] as GpsLecturaWithCluster[];
   }, [optimizedLecturas, activeLayerLecturas]);
 
   // Solo calcula el centro y zoom inicial una vez
@@ -541,6 +637,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
         style={{ height: '100%', width: '100%' }}
         ref={mapRef as any}
       >
+        <MapAutoResize />
         <TileLayer
           attribution={tileLayerAttribution}
           url={tileLayerUrl}
@@ -566,27 +663,39 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandaloneProps>(({
         {mapControls.showHeatmap && validHeatmapPoints.length > 0 && (
           <HeatmapLayer points={validHeatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
         )}
-        {/* Renderizar puntos individuales */}
+        {/* Renderizar puntos individuales con clustering */}
         {mapControls.showPoints && allLecturas.map((lectura, idx) => {
           const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
           const color = capa ? capa.color : '#228be6';
           const isSelected = infoBanner && !infoBanner.isLocalizacion && infoBanner.info?.ID_Lectura === lectura.ID_Lectura;
+          const clusterSize = lectura.clusterSize || 1;
+          
           const customIcon = L.divIcon({
             className: 'custom-div-icon',
             html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
               ${isSelected ? `<div style='position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>` : ''}
-              <div style="background: ${isSelected ? color : color}; width: ${isSelected ? 24 : 12}px; height: ${isSelected ? 24 : 12}px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${isSelected ? color : 'rgba(0,0,0,0.4)'}; outline: ${isSelected ? '3px solid ' + color : 'none'};"></div>
+              <div style="background: ${isSelected ? color : color}; width: ${isSelected ? 24 : 12}px; height: ${isSelected ? 24 : 12}px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${isSelected ? color : 'rgba(0,0,0,0.4)'}; outline: ${isSelected ? '3px solid ' + color : 'none'};">
+                ${clusterSize > 1 ? `<span style="position: absolute; top: -8px; right: -8px; background: white; color: ${color}; font-size: 10px; padding: 2px 4px; border-radius: 8px; border: 1px solid ${color};">${clusterSize}</span>` : ''}
+              </div>
             </div>`,
             iconSize: [isSelected ? 44 : 12, isSelected ? 44 : 12],
             iconAnchor: [isSelected ? 22 : 6, isSelected ? 22 : 6]
           });
+
           return (
             <Marker
               key={lectura.ID_Lectura + '-' + idx}
               position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
               icon={customIcon}
               eventHandlers={{
-                click: () => setInfoBanner({ info: { ...lectura, onGuardarLocalizacion: () => onGuardarLocalizacion(lectura) }, isLocalizacion: false })
+                click: () => setInfoBanner({ 
+                  info: { 
+                    ...lectura, 
+                    onGuardarLocalizacion: () => onGuardarLocalizacion(lectura),
+                    clusterSize: clusterSize
+                  }, 
+                  isLocalizacion: false 
+                })
               }}
             />
           );

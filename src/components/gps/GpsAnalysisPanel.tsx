@@ -11,6 +11,7 @@ import { getLecturasGps, getParadasGps, getCoincidenciasGps, getGpsCapas, create
 import ReactDOMServer from 'react-dom/server';
 import GpsMapStandalone from './GpsMapStandalone';
 import html2canvas from 'html2canvas';
+import { gpsCache } from '../../services/gpsCache';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -525,7 +526,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   // Estados para controles del mapa
   const [mapControls, setMapControls] = useState({
     visualizationType: 'toner' as 'standard' | 'satellite' | 'toner',
-    showHeatmap: false,
+    showHeatmap: true,
     showPoints: true,
     optimizePoints: false
   });
@@ -632,15 +633,25 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     ['Escape', () => fullscreenMap && setFullscreenMap(false)]
   ]);
 
-  // Función para cargar lecturas GPS
+  // Función para cargar lecturas GPS con caché
   const fetchLecturasGps = useCallback(async () => {
     if (!casoId || !vehiculoObjetivo) return;
     setLoading(true);
     try {
+      // Intentar obtener del caché primero
+      const cachedLecturas = gpsCache.getLecturas(casoId, vehiculoObjetivo);
+      if (cachedLecturas) {
+        setLecturas(cachedLecturas);
+        setLoading(false);
+        return;
+      }
+
       const data = await getLecturasGps(casoId, {
         matricula: vehiculoObjetivo
       });
       setLecturas(data);
+      // Guardar en caché
+      gpsCache.setLecturas(casoId, vehiculoObjetivo, data);
     } catch (error) {
       console.error('Error al cargar lecturas GPS:', error);
     } finally {
@@ -674,15 +685,47 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     cargarVehiculos();
   }, [casoId]);
 
-  // Cargar capas GPS al montar el componente o cambiar casoId
+  // Cargar capas GPS con caché
   useEffect(() => {
     if (!casoId) return;
     (async () => {
       try {
+        // Intentar obtener del caché primero
+        const cachedCapas = gpsCache.getCapas(casoId);
+        if (cachedCapas) {
+          setCapas(cachedCapas.map(c => ({ ...c, descripcion: c.descripcion || '' })));
+          return;
+        }
+
         const capasBD = await getGpsCapas(casoId);
-        setCapas(capasBD.map(c => ({ ...c, descripcion: c.descripcion || '' })));
+        const capasFormateadas = capasBD.map(c => ({ ...c, descripcion: c.descripcion || '' }));
+        setCapas(capasFormateadas);
+        // Guardar en caché
+        gpsCache.setCapas(casoId, capasFormateadas);
       } catch (error) {
         setCapas([]);
+      }
+    })();
+  }, [casoId]);
+
+  // Cargar localizaciones con caché
+  useEffect(() => {
+    if (!casoId) return;
+    (async () => {
+      try {
+        // Intentar obtener del caché primero
+        const cachedLocs = gpsCache.getLocalizaciones(casoId);
+        if (cachedLocs) {
+          setLocalizaciones(cachedLocs);
+          return;
+        }
+
+        const locs = await getLocalizacionesInteres(casoId);
+        setLocalizaciones(locs);
+        // Guardar en caché
+        gpsCache.setLocalizaciones(casoId, locs);
+      } catch (error) {
+        setLocalizaciones([]);
       }
     })();
   }, [casoId]);
@@ -692,11 +735,19 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     setFilters(prev => ({ ...prev, ...updates }));
   }, []);
 
-  // Función para aplicar filtros
+  // Función para aplicar filtros con caché
   const handleFiltrar = useCallback(async () => {
     if (!vehiculoObjetivo) return;
     setLoading(true);
     try {
+      const cacheKey = `${casoId}_${vehiculoObjetivo}_${JSON.stringify(filters)}`;
+      const cachedData = gpsCache.getLecturas(casoId, cacheKey);
+      if (cachedData) {
+        setLecturas(cachedData);
+        setLoading(false);
+        return;
+      }
+
       const data = await getLecturasGps(casoId, {
         fecha_inicio: filters.fechaInicio || undefined,
         hora_inicio: filters.horaInicio || undefined,
@@ -709,6 +760,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
         matricula: vehiculoObjetivo
       });
       setLecturas(data);
+      // Guardar en caché
+      gpsCache.setLecturas(casoId, cacheKey, data);
     } catch (error) {
       console.error('Error al filtrar lecturas GPS:', error);
     } finally {
@@ -1001,6 +1054,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             onGuardarLocalizacion={handleAbrirModalLocalizacion}
             playbackLayer={selectedLayerForPlayback !== null ? capas.find(c => c.id === selectedLayerForPlayback) || null : null}
             currentPlaybackIndex={currentIndex}
+            fullscreenMap={fullscreenMap}
           />
         </Paper>
       </div>
@@ -1320,6 +1374,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
               onGuardarLocalizacion={handleAbrirModalLocalizacion}
               playbackLayer={selectedLayerForPlayback !== null ? capas.find(c => c.id === selectedLayerForPlayback) || null : null}
               currentPlaybackIndex={currentIndex}
+              fullscreenMap={fullscreenMap}
             />
           </Paper>
         </div>
