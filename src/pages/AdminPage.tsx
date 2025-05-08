@@ -34,6 +34,15 @@ function AdminPage() {
   const [clearModalOpen, setClearModalOpen] = useState(false);
   const [clearConfirmText, setClearConfirmText] = useState('');
   const [clearing, setClearing] = useState(false);
+  const [restoreFileModalOpen, setRestoreFileModalOpen] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreFileName, setRestoreFileName] = useState('');
+  const [restoreBackupModalOpen, setRestoreBackupModalOpen] = useState(false);
+  const [backupToRestore, setBackupToRestore] = useState<Backup | null>(null);
+  const [restoringBackup, setRestoringBackup] = useState(false);
+  const [deleteBackupModalOpen, setDeleteBackupModalOpen] = useState(false);
+  const [backupToDelete, setBackupToDelete] = useState<Backup | null>(null);
+  const [deletingBackup, setDeletingBackup] = useState(false);
 
   const fetchDbStatus = async () => {
     try {
@@ -58,6 +67,7 @@ function AdminPage() {
       const response = await fetch('/api/admin/database/backups');
       if (!response.ok) throw new Error('Error al obtener los backups');
       const data = await response.json();
+      console.log('Raw backup data from API:', data.backups);
       setBackups(data.backups);
     } catch (error) {
       notifications.show({
@@ -158,7 +168,7 @@ function AdminPage() {
     }
   };
 
-  const handleFileRestore = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileRestore = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!file.name.endsWith('.db')) {
@@ -169,13 +179,17 @@ function AdminPage() {
       });
       return;
     }
-    if (!window.confirm('¿Estás seguro de que quieres restaurar la base de datos desde este archivo? Esta acción no se puede deshacer.')) {
-      return;
-    }
+    setRestoreFile(file);
+    setRestoreFileName(file.name);
+    setRestoreFileModalOpen(true);
+  };
+
+  const confirmFileRestore = async () => {
+    if (!restoreFile) return;
+    setUploading(true);
     try {
-      setUploading(true);
       const formData = new FormData();
-      formData.append('backup_file', file);
+      formData.append('backup_file', restoreFile);
       const response = await fetch('/api/admin/database/restore', {
         method: 'POST',
         body: formData,
@@ -195,6 +209,9 @@ function AdminPage() {
       });
     } finally {
       setUploading(false);
+      setRestoreFile(null);
+      setRestoreFileName('');
+      setRestoreFileModalOpen(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -230,6 +247,79 @@ function AdminPage() {
     }
   };
 
+  const handleRestoreBackup = (backup: Backup) => {
+    setBackupToRestore(backup);
+    setRestoreBackupModalOpen(true);
+  };
+
+  const confirmRestoreBackup = async () => {
+    if (!backupToRestore) return;
+    setRestoringBackup(true);
+    try {
+      // Descargar el archivo backup como blob
+      const response = await fetch(`/api/admin/database/backups/${backupToRestore.filename}/download`);
+      if (!response.ok) throw new Error('No se pudo descargar el backup');
+      const blob = await response.blob();
+      const file = new File([blob], backupToRestore.filename, { type: 'application/octet-stream' });
+      // Subirlo como FormData al endpoint de restauración
+      const formData = new FormData();
+      formData.append('backup_file', file);
+      const restoreResponse = await fetch('/api/admin/database/restore', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!restoreResponse.ok) throw new Error('Error al restaurar la base de datos');
+      notifications.show({
+        title: 'Éxito',
+        message: 'Base de datos restaurada correctamente',
+        color: 'green',
+      });
+      await Promise.all([fetchDbStatus(), fetchBackups()]);
+      setRestoreBackupModalOpen(false);
+      setBackupToRestore(null);
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo restaurar la base de datos',
+        color: 'red',
+      });
+    } finally {
+      setRestoringBackup(false);
+    }
+  };
+
+  const handleDeleteBackup = (backup: Backup) => {
+    setBackupToDelete(backup);
+    setDeleteBackupModalOpen(true);
+  };
+
+  const confirmDeleteBackup = async () => {
+    if (!backupToDelete) return;
+    setDeletingBackup(true);
+    try {
+      const response = await fetch(`/api/admin/database/backups/${backupToDelete.filename}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error('No se pudo eliminar el backup');
+      notifications.show({
+        title: 'Éxito',
+        message: 'Backup eliminado correctamente',
+        color: 'green',
+      });
+      await fetchBackups();
+      setDeleteBackupModalOpen(false);
+      setBackupToDelete(null);
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo eliminar el backup',
+        color: 'red',
+      });
+    } finally {
+      setDeletingBackup(false);
+    }
+  };
+
   useEffect(() => {
     fetchDbStatus();
     fetchBackups();
@@ -248,12 +338,12 @@ function AdminPage() {
   };
 
   return (
-    <Container fluid style={{ paddingLeft: 32, paddingRight: 32 }}>
+    <Container fluid style={{ paddingLeft: 32, paddingRight: 32, maxWidth: 900 }}>
       <Title order={2} mt="md" mb="lg">Panel de Administración</Title>
 
       <Stack gap="lg">
         {/* Estado de la Base de Datos */}
-        <Paper p="md" withBorder>
+        <Paper p="md" withBorder style={{ maxWidth: 800 }}>
           <Group justify="space-between" mb="md">
             <Title order={3}>Estado de la Base de Datos</Title>
             <Button
@@ -301,7 +391,7 @@ function AdminPage() {
         </Paper>
 
         {/* Gestión de Base de Datos */}
-        <Paper p="md" withBorder>
+        <Paper p="md" withBorder style={{ maxWidth: 800 }}>
           <Title order={3} mb="md">Gestión de Base de Datos</Title>
           
           <Stack gap="md">
@@ -352,7 +442,6 @@ function AdminPage() {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Fecha</Table.Th>
-                  <Table.Th>Tamaño</Table.Th>
                   <Table.Th>Acciones</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -360,17 +449,13 @@ function AdminPage() {
                 {backups.map((backup) => (
                   <Table.Tr key={backup.filename}>
                     <Table.Td>{formatDate(backup.created_at)}</Table.Td>
-                    <Table.Td>{formatBytes(backup.size_bytes)}</Table.Td>
                     <Table.Td>
                       <Group gap="xs">
                         <Tooltip label="Restaurar">
                           <ActionIcon
                             color="blue"
                             variant="light"
-                            onClick={() => {
-                              setSelectedBackup(backup.filename);
-                              handleRestore();
-                            }}
+                            onClick={() => handleRestoreBackup(backup)}
                           >
                             <IconRestore size={16} />
                           </ActionIcon>
@@ -384,6 +469,15 @@ function AdminPage() {
                             <IconDownload size={16} />
                           </ActionIcon>
                         </Tooltip>
+                        <Tooltip label="Eliminar">
+                          <ActionIcon
+                            color="red"
+                            variant="light"
+                            onClick={() => handleDeleteBackup(backup)}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -395,8 +489,8 @@ function AdminPage() {
       </Stack>
 
       <Modal opened={resetModalOpen} onClose={() => setResetModalOpen(false)} title="Confirmar Reseteo" centered>
-        <Text c="red" fw={700} mb="md">
-          ¡ATENCIÓN! Esta acción eliminará TODOS los datos de la base de datos y no se puede deshacer.<br />
+        <Text fw={700} mb="md" c="black">
+          ¡ATENCIÓN! Esta acción eliminará <b>TODOS</b> los datos de la base de datos y <span style={{ color: '#d97706' }}>no se puede deshacer</span>.<br />
           Para confirmar, escribe <b>RESETEAR</b> en el campo de abajo.
         </Text>
         <TextInput
@@ -416,9 +510,9 @@ function AdminPage() {
       </Modal>
 
       <Modal opened={clearModalOpen} onClose={() => setClearModalOpen(false)} title="Confirmar Eliminación Masiva" centered>
-        <Text c="pink" fw={700} mb="md">
+        <Text fw={700} mb="md" c="black">
           Esta acción eliminará <b>TODOS</b> los datos de la base de datos excepto los lectores.<br />
-          No se puede deshacer.<br />
+          <span style={{ color: '#d97706' }}>No se puede deshacer.</span><br />
           Para confirmar, escribe <b>ELIMINAR</b> en el campo de abajo.
         </Text>
         <TextInput
@@ -433,6 +527,53 @@ function AdminPage() {
           </Button>
           <Button color="pink" disabled={clearConfirmText !== 'ELIMINAR'} onClick={confirmClearExceptLectores} loading={clearing}>
             Eliminar todo (excepto lectores)
+          </Button>
+        </Group>
+      </Modal>
+
+      <Modal opened={restoreFileModalOpen} onClose={() => { setRestoreFileModalOpen(false); setRestoreFile(null); setRestoreFileName(''); if (fileInputRef.current) fileInputRef.current.value = ''; }} title="Confirmar Restauración desde Archivo" centered>
+        <Text fw={700} mb="md" c="black">
+          Vas a restaurar la base de datos desde el archivo:<br />
+          <b>{restoreFileName}</b><br />
+          <span style={{ color: '#d97706' }}>Esta acción <b>sobrescribirá</b> la base de datos actual y no se puede deshacer.</span>
+        </Text>
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => { setRestoreFileModalOpen(false); setRestoreFile(null); setRestoreFileName(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}>
+            Cancelar
+          </Button>
+          <Button color="green" onClick={confirmFileRestore} loading={uploading}>
+            Restaurar desde archivo
+          </Button>
+        </Group>
+      </Modal>
+
+      <Modal opened={restoreBackupModalOpen} onClose={() => { setRestoreBackupModalOpen(false); setBackupToRestore(null); }} title="Confirmar Restauración de Backup" centered>
+        <Text fw={700} mb="md" c="black">
+          Vas a restaurar la base de datos desde el backup:<br />
+          <b>{backupToRestore?.filename}</b><br />
+          <span style={{ color: '#d97706' }}>Esta acción <b>sobrescribirá</b> la base de datos actual y no se puede deshacer.</span>
+        </Text>
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => { setRestoreBackupModalOpen(false); setBackupToRestore(null); }}>
+            Cancelar
+          </Button>
+          <Button color="blue" onClick={confirmRestoreBackup} loading={restoringBackup}>
+            Restaurar backup seleccionado
+          </Button>
+        </Group>
+      </Modal>
+
+      <Modal opened={deleteBackupModalOpen} onClose={() => { setDeleteBackupModalOpen(false); setBackupToDelete(null); }} title="Confirmar Eliminación de Backup" centered>
+        <Text fw={700} mb="md" c="black">
+          ¿Seguro que quieres eliminar el backup <b>{backupToDelete?.filename}</b>?<br />
+          <span style={{ color: '#d97706' }}>Esta acción no se puede deshacer.</span>
+        </Text>
+        <Group justify="flex-end" mt="md">
+          <Button variant="default" onClick={() => { setDeleteBackupModalOpen(false); setBackupToDelete(null); }}>
+            Cancelar
+          </Button>
+          <Button color="red" onClick={confirmDeleteBackup} loading={deletingBackup}>
+            Eliminar backup
           </Button>
         </Group>
       </Modal>
