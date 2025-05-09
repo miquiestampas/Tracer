@@ -26,6 +26,7 @@ export interface CasoCreate {
   NIV?: string | null;
   Descripcion?: string | null;
   Estado?: EstadoCaso; // Opcional al crear, el backend pondrá 'Nuevo'
+  ID_Grupo?: number; // Añadido para permitir selección de grupo por superadmin
 }
 
 // Interfaz para actualizar estado (payload de PUT)

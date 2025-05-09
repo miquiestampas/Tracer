@@ -11,6 +11,7 @@ import { getCasos, createCaso, deleteCaso, updateCasoEstado, updateCaso } from '
 import type { Caso, CasoCreate, EstadoCaso } from '../types/data';
 import dayjs from 'dayjs'; // Para formatear fecha
 import _ from 'lodash'; // Para ordenar
+import { useAuth } from '../context/AuthContext';
 
 // Lista de estados válidos
 const CASE_STATUSES: EstadoCaso[] = [
@@ -37,6 +38,14 @@ function getStatusColor(estado: EstadoCaso): string {
     }
 }
 
+interface Grupo {
+  ID_Grupo: number;
+  Nombre: string;
+  Descripcion?: string | null;
+  Fecha_Creacion?: string;
+  casos?: number;
+}
+
 function CasosPage() {
   const [casos, setCasos] = useState<Caso[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,6 +56,9 @@ function CasosPage() {
   const [editingCasoId, setEditingCasoId] = useState<number | null>(null);
   const [reactivatingCasoId, setReactivatingCasoId] = useState<number | null>(null);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [loadingGrupos, setLoadingGrupos] = useState(false);
 
   // --- NUEVO: Estados para Filtro y Ordenación ---
   const [filterText, setFilterText] = useState('');
@@ -69,6 +81,7 @@ function CasosPage() {
 
   useEffect(() => {
     fetchCasos();
+    if (user?.rol === 'superadmin') fetchGrupos();
   }, []);
 
   const fetchCasos = async () => {
@@ -85,13 +98,44 @@ function CasosPage() {
     }
   };
 
+  const fetchGrupos = async () => {
+    setLoadingGrupos(true);
+    try {
+      const res = await fetch('/api/grupos');
+      const data = await res.json();
+      setGrupos(data);
+    } catch (e) {
+      setGrupos([]);
+    } finally {
+      setLoadingGrupos(false);
+    }
+  };
+
+  // Cuando los grupos se cargan y el modal está abierto, asignar el primer grupo si no hay valor
+  React.useEffect(() => {
+    if (
+      user?.rol === 'superadmin' &&
+      createModalOpened &&
+      grupos.length > 0 &&
+      (form.values.ID_Grupo === undefined || form.values.ID_Grupo === null || String(form.values.ID_Grupo) === '')
+    ) {
+      form.setFieldValue('ID_Grupo', grupos[0].ID_Grupo);
+    }
+  }, [grupos, createModalOpened]);
+
   const handleCreateCaso = async (values: CasoCreate) => {
     try {
+      const idGrupoNum = user?.rol === 'superadmin' ? Number(values.ID_Grupo) : user?.grupo?.ID_Grupo;
+      if (!idGrupoNum || isNaN(idGrupoNum)) {
+        notifications.show({ title: 'Error', message: 'Debes seleccionar un grupo válido.', color: 'red' });
+        return;
+      }
       const dataToSend = {
         ...values,
         Año: Number(values.Año) || 0,
-        // Estado se asigna por defecto en el backend
+        ID_Grupo: idGrupoNum,
       };
+      console.log('Enviando caso:', dataToSend);
       await createCaso(dataToSend);
       notifications.show({
         title: 'Caso Creado',
@@ -100,17 +144,17 @@ function CasosPage() {
       });
       form.reset();
       _closeModal();
-      fetchCasos(); // Recargar la lista
+      fetchCasos();
     } catch (err: any) {
-        let errorMessage = 'Error al crear el caso.';
-        if (err.response && err.response.data && err.response.data.detail) {
-            errorMessage = `${errorMessage} ${err.response.data.detail}`;
-        }
-        notifications.show({
-            title: 'Error',
-            message: errorMessage,
-            color: 'red',
-        });
+      let errorMessage = 'Error al crear el caso.';
+      if (err.response && err.response.data && err.response.data.detail) {
+        errorMessage = `${errorMessage} ${err.response.data.detail}`;
+      }
+      notifications.show({
+        title: 'Error',
+        message: errorMessage,
+        color: 'red',
+      });
     }
   };
 
@@ -220,17 +264,20 @@ function CasosPage() {
   const openCreateModal = () => {
     form.reset(); // Limpiar form
     setEditingCasoId(null); // Asegurar modo creación
+    if (user?.rol === 'superadmin' && grupos.length > 0) {
+      form.setFieldValue('ID_Grupo', grupos[0].ID_Grupo);
+    }
     _openModal(); // Abrir modal
   };
 
   const openEditModal = (caso: Caso) => {
     setEditingCasoId(caso.ID_Caso); // Guardar ID del caso a editar
-    // Llenar form con datos existentes (asegurar que los nombres coinciden)
     form.setValues({
       Nombre_del_Caso: caso.Nombre_del_Caso,
       Año: caso.Año,
       Descripcion: caso.Descripcion || '',
-      NIV: caso.NIV || '' 
+      NIV: caso.NIV || '',
+      ID_Grupo: (user?.rol === 'superadmin' ? (caso as any).ID_Grupo : undefined),
     });
     _openModal(); // Abrir modal
   };
@@ -243,43 +290,44 @@ function CasosPage() {
 
   // --- Handler para Actualizar Caso (CONECTADO A API) --- 
   const handleUpdateCaso = async (id: number, values: CasoCreate) => {
-    // Opcional: Podríamos enviar solo los campos modificados
-    // pero por simplicidad enviamos todos los del form
-    const dataToSend = { 
-        ...values,
-        Año: Number(values.Año) || 0, // Asegurar que Año es número
+    const dataToSend = {
+      ...values,
+      Año: Number(values.Año) || 0,
+      ID_Grupo: user?.rol === 'superadmin' ? Number(values.ID_Grupo) : user?.grupo?.ID_Grupo,
     };
-    console.log("Actualizando caso:", id, dataToSend);
-
     try {
-        await updateCaso(id, dataToSend);
-        notifications.show({
-            title: 'Caso Actualizado',
-            message: `El caso "${values.Nombre_del_Caso}" ha sido actualizado.`,
-            color: 'blue',
-        });
-        closeModal(); // Cerrar modal al éxito
-        fetchCasos(); // Recargar la lista para ver cambios
+      await updateCaso(id, dataToSend);
+      notifications.show({
+        title: 'Caso Actualizado',
+        message: `El caso "${values.Nombre_del_Caso}" ha sido actualizado.`,
+        color: 'blue',
+      });
+      closeModal();
+      fetchCasos();
     } catch (err: any) {
-        let errorMessage = 'Error al actualizar el caso.';
-        if (err.response && err.response.data && err.response.data.detail) {
-            errorMessage = `${errorMessage} ${err.response.data.detail}`;
-        }
-        notifications.show({
-            title: 'Error',
-            message: errorMessage,
-            color: 'red',
-        });
+      let errorMessage = 'Error al actualizar el caso.';
+      if (err.response && err.response.data && err.response.data.detail) {
+        errorMessage = `${errorMessage} ${err.response.data.detail}`;
+      }
+      notifications.show({
+        title: 'Error',
+        message: errorMessage,
+        color: 'red',
+      });
     }
   };
 
+  const isGrupoValido = user?.rol === 'superadmin' ? (typeof form.values.ID_Grupo === 'number' && !isNaN(form.values.ID_Grupo)) : true;
+
   // --- NUEVO: Handler unificado para Submit del Formulario --- 
   const handleFormSubmit = async (values: CasoCreate) => {
+    if (user?.rol === 'superadmin' && (!values.ID_Grupo || isNaN(Number(values.ID_Grupo)))) {
+      notifications.show({ title: 'Error', message: 'Debes seleccionar un grupo válido.', color: 'red' });
+      return;
+    }
     if (editingCasoId) {
-      // Modo Edición
       await handleUpdateCaso(editingCasoId, values);
     } else {
-      // Modo Creación
       await handleCreateCaso(values);
     }
   };
@@ -517,9 +565,22 @@ function CasosPage() {
                minRows={2}
                {...form.getInputProps('Descripcion')}
              />
+             {user?.rol === 'superadmin' && (
+               <Select
+                 label="Grupo"
+                 placeholder="Selecciona un grupo"
+                 data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))}
+                 value={form.values.ID_Grupo !== undefined && form.values.ID_Grupo !== null ? String(form.values.ID_Grupo) : ''}
+                 onChange={v => form.setFieldValue('ID_Grupo', v ? Number(v) : undefined)}
+                 required
+                 searchable
+                 disabled={loadingGrupos || grupos.length === 0}
+                 error={!isGrupoValido ? 'Selecciona un grupo válido' : undefined}
+               />
+             )}
              <Group justify="flex-end" mt="md">
                <Button variant="default" onClick={closeModal}>Cancelar</Button>
-               <Button type="submit">{editingCasoId ? "Guardar Cambios" : "Crear Caso"}</Button>
+               <Button type="submit" disabled={user?.rol === 'superadmin' && (!isGrupoValido || loadingGrupos || grupos.length === 0)}>{editingCasoId ? "Guardar Cambios" : "Crear Caso"}</Button>
              </Group>
            </Stack>
          </form>
