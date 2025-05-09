@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0 <21.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,13 +15,13 @@
     "@changey/react-leaflet-markercluster": "^4.0.0-rc1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
-    "@mantine/core": "^7.17.5",
-    "@mantine/dates": "^7.17.4",
+    "@mantine/core": "^7.17.7",
+    "@mantine/dates": "^7.17.7",
     "@mantine/dropzone": "^7.17.7",
-    "@mantine/form": "^7.17.4",
-    "@mantine/hooks": "^7.17.5",
-    "@mantine/modals": "^7.17.5",
-    "@mantine/notifications": "^7.17.5",
+    "@mantine/form": "^7.17.7",
+    "@mantine/hooks": "^7.17.7",
+    "@mantine/modals": "^7.17.7",
+    "@mantine/notifications": "^7.17.7",
     "@mui/material": "^7.0.2",
     "@tabler/icons-react": "^2.47.0",
     "@turf/boolean-point-in-polygon": "^7.2.0",
@@ -48,12 +51,12 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@types/node": "^22.14.1",
-    "@types/react": "^19.1.1",
-    "@types/react-dom": "^19.1.2",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
     "@types/xlsx": "^0.0.35",
     "@vitejs/plugin-react": "^4.2.1",
-    "typescript": "^5.8.3",
-    "vite": "^6.3.3"
+    "typescript": "^5.3.3",
+    "vite": "^5.0.0"
   }
 }

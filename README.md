@@ -99,3 +99,49 @@ Aplicación web para la gestión y análisis de datos de lecturas de matrículas
     *   Abre tu navegador y ve a la dirección indicada (normalmente `http://localhost:5173` o similar).
 
 ## Estructura del Proyecto (Simplificada)
+
+## Requisitos Previos
+
+- Node.js (versión 18.x o 20.x LTS)
+- npm (incluido con Node.js)
+
+## Instalación
+
+1. Clonar el repositorio:
+```bash
+git clone [URL_DEL_REPOSITORIO]
+cd lpr-tracer
+```
+
+2. Instalar dependencias:
+```bash
+npm install
+```
+
+3. Iniciar el servidor de desarrollo:
+```bash
+npm run dev
+```
+
+## Scripts Disponibles
+
+- `npm run dev` - Inicia el servidor de desarrollo
+- `npm run build` - Construye la aplicación para producción
+- `npm run preview` - Previsualiza la versión de producción localmente
+
+## Estructura del Proyecto
+
+[Descripción básica de la estructura del proyecto]
+
+## Tecnologías Principales
+
+- React
+- Vite
+- Mantine UI
+- Leaflet (para mapas)
+- TypeScript
+
+## Notas Importantes
+
+- Asegúrate de usar Node.js versión 18.x o 20.x LTS
+- No uses Node.js versión 22.x o superior, ya que puede causar problemas de compatibilidad
