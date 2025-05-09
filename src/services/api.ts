@@ -13,6 +13,24 @@ const apiClient = axios.create({
   // },
 });
 
+// Interceptor para agregar el token de autenticación
+apiClient.interceptors.request.use(
+  (config) => {
+    // Obtener el usuario del localStorage
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user.token) {
+        config.headers.Authorization = `Basic ${user.token}`;
+      }
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Interceptor para manejar errores
 apiClient.interceptors.response.use(
   (response) => response,

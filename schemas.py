@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator, SkipValidation
-from typing import Optional, List, Union, Tuple, Dict, Any
+from typing import Optional, List, Union, Tuple, Dict, Any, Literal
 import datetime
 import enum # Importar enum
 
@@ -7,12 +7,17 @@ import enum # Importar enum
 from models import EstadoCasoEnum 
 
 # --- Schemas Base ---
+class GrupoBase(BaseModel):
+    Nombre: str = Field(..., example="Grupo de Investigación 1")
+    Descripcion: Optional[str] = Field(None, example="Grupo especializado en investigaciones de tráfico")
+
 class CasoBase(BaseModel):
     Nombre_del_Caso: str = Field(..., example="Robo Banco Central")
     Año: int = Field(..., example=2024)
     NIV: Optional[str] = Field(None, example="ABC123XYZ789DEF", max_length=50) # Añadir max_length si se usa String(50) en el modelo
     Descripcion: Optional[str] = Field(None, example="Investigación sobre el robo ocurrido el...")
     Estado: Optional[str] = Field(default=EstadoCasoEnum.NUEVO.value, example=EstadoCasoEnum.NUEVO.value)
+    ID_Grupo: int = Field(..., example=1)
 
 class ArchivoExcelBase(BaseModel):
     Nombre_del_Archivo: str = Field(..., example="camaras_entrada_sur.xlsx")
@@ -40,8 +45,11 @@ class VehiculoBase(BaseModel):
     Sospechoso: bool = Field(default=False)
 
 # --- Schemas para Creación (POST) ---
+class GrupoCreate(GrupoBase):
+    pass
+
 class CasoCreate(CasoBase):
-    pass # Hereda los campos necesarios
+    pass
 
 class ArchivoExcelCreate(ArchivoExcelBase):
     ID_Caso: int
@@ -141,15 +149,24 @@ class CasoUpdate(BaseModel):
     NIV: Optional[str] = None
     Descripcion: Optional[str] = None
     Estado: Optional[str] = None
+    ID_Grupo: Optional[int] = None
 
 # --- Schemas para Lectura (GET) ---
+class Grupo(GrupoBase):
+    ID_Grupo: int
+    Fecha_Creacion: datetime.date
+    # casos: List['Caso'] = []  # Eliminado para evitar recursión
+
+    class Config:
+        from_attributes = True
+
 class Caso(CasoBase):
     ID_Caso: int
     Fecha_de_Creacion: datetime.date
-    # archivos: List['ArchivoExcel'] = []
+    grupo: Optional[Grupo] = None
 
     class Config:
-        from_attributes = True  # Reemplaza orm_mode en Pydantic v2
+        from_attributes = True
 
 class ArchivoExcel(ArchivoExcelBase):
     ID_Archivo: int
@@ -395,5 +412,27 @@ class LocalizacionInteresUpdate(LocalizacionInteresBase):
 class LocalizacionInteresOut(LocalizacionInteresBase):
     id: int
     caso_id: int
+    class Config:
+        from_attributes = True
+
+class RolUsuarioEnum(str, enum.Enum):
+    superadmin = "superadmin"
+    admin_casos = "admin_casos"
+
+class UsuarioBase(BaseModel):
+    User: int = Field(..., example=12345)
+    Rol: RolUsuarioEnum = Field(..., example="admin_casos")
+    ID_Grupo: int = Field(..., example=1)
+
+class UsuarioCreate(UsuarioBase):
+    Contraseña: str = Field(..., example="12345")
+
+class UsuarioUpdate(BaseModel):
+    Rol: Optional[RolUsuarioEnum] = None
+    ID_Grupo: Optional[int] = None
+    Contraseña: Optional[str] = None
+
+class Usuario(UsuarioBase):
+    grupo: Optional[Grupo] = None
     class Config:
         from_attributes = True

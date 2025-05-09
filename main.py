@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Query, Body
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload, contains_eager, relationship
 from sqlalchemy.sql import func, extract, select, label
 import models, schemas
 from database import SessionLocal, engine, get_db
+from models import security  # Add this import
 import pandas as pd
 from io import BytesIO
 import datetime
@@ -39,6 +41,7 @@ from gps_capas import router as gps_capas_router
 from models import LocalizacionInteres
 from schemas import LocalizacionInteresCreate, LocalizacionInteresUpdate, LocalizacionInteresOut
 from admin.database_manager import router as admin_database_router
+import secrets
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -295,7 +298,8 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
             Año=caso_data['Año'],
             NIV=caso_data.get('NIV'),
             Descripcion=caso_data.get('Descripcion'),
-            Estado=estado_str # Asignar el string validado
+            Estado=estado_str, # Asignar el string validado
+            ID_Grupo=caso_data.get('ID_Grupo') # Añadido para incluir ID_Grupo
         )
         db.add(db_caso)
         db.commit() 
@@ -310,31 +314,29 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al crear el caso: {e}")
 
 @app.get("/casos", response_model=List[schemas.Caso])
-def read_casos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    logger.info(f"GET /casos - skip: {skip}, limit: {limit}")
-    try:
+def read_casos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(security)):
+    # Obtener usuario autenticado
+    if credentials.username == str(SUPERADMIN_USER) and credentials.password == SUPERADMIN_PASS:
+        # Superadmin: ver todos los casos
         casos_db = db.query(models.Caso).order_by(models.Caso.ID_Caso).offset(skip).limit(limit).all()
-        
-        # --- Log de depuración --- 
-        logger.info(f"Se obtuvieron {len(casos_db)} casos de la BD.")
-        for i, caso_obj in enumerate(casos_db):
-            estado_valor_raw = None
-            try:
-                # Intentar acceder al valor directamente (puede ser ya el Enum o el string si native_enum=False funciona)
-                estado_valor_raw = caso_obj.Estado
-                logger.info(f"  Caso {i+1} (ID: {caso_obj.ID_Caso}): Estado leído = {repr(estado_valor_raw)} (Tipo: {type(estado_valor_raw)})")
-                # Forzar la validación aquí para ver si falla
-                validated_enum = models.EstadoCasoEnum(estado_valor_raw.value if isinstance(estado_valor_raw, models.EstadoCasoEnum) else estado_valor_raw)
-                logger.info(f"    Estado validado como Enum del modelo: {validated_enum}")
-            except Exception as e_log:
-                # Si falla el acceso o la validación forzada, loguear
-                logger.error(f"  Caso {i+1} (ID: {caso_obj.ID_Caso}): Error al procesar/validar estado '{estado_valor_raw}': {e_log}")
-        # --- Fin Log de depuración ---
-
-        return casos_db # Devolver la lista original para que Pydantic/FastAPI la procese
-    except Exception as e:
-        logger.error(f"Error general al obtener casos: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al obtener casos: {e}")
+    else:
+        user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
+        if not user or user.Contraseña != credentials.password:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
+        casos_db = db.query(models.Caso).filter(models.Caso.ID_Grupo == user.ID_Grupo).order_by(models.Caso.ID_Caso).offset(skip).limit(limit).all()
+    # --- Log de depuración ---
+    logger.info(f"Se obtuvieron {len(casos_db)} casos de la BD.")
+    for i, caso_obj in enumerate(casos_db):
+        estado_valor_raw = None
+        try:
+            estado_valor_raw = caso_obj.Estado
+            logger.info(f"  Caso {i+1} (ID: {caso_obj.ID_Caso}): Estado leído = {repr(estado_valor_raw)} (Tipo: {type(estado_valor_raw)})")
+            validated_enum = models.EstadoCasoEnum(estado_valor_raw.value if isinstance(estado_valor_raw, models.EstadoCasoEnum) else estado_valor_raw)
+            logger.info(f"    Estado validado como Enum del modelo: {validated_enum}")
+        except Exception as e_log:
+            logger.error(f"  Caso {i+1} (ID: {caso_obj.ID_Caso}): Error al procesar/validar estado '{estado_valor_raw}': {e_log}")
+    # --- Fin Log de depuración ---
+    return casos_db
 
 @app.get("/casos/{caso_id}", response_model=schemas.Caso)
 def read_caso(caso_id: int, db: Session = Depends(get_db)):
@@ -2192,3 +2194,128 @@ def read_archivos_recientes(
         archivo.Total_Registros = total_registros
         resultado.append(archivo)
     return resultado
+
+grupos_router = APIRouter(prefix="/api/grupos", tags=["Grupos"])
+
+@grupos_router.get("", response_model=List[schemas.Grupo])
+def get_grupos(db: Session = Depends(get_db)):
+    grupos = db.query(models.Grupo).options(joinedload(models.Grupo.casos)).all()
+    return grupos
+
+@grupos_router.post("", response_model=schemas.Grupo, status_code=201)
+def create_grupo(grupo: schemas.GrupoCreate, db: Session = Depends(get_db)):
+    db_grupo = models.Grupo(Nombre=grupo.Nombre, Descripcion=grupo.Descripcion)
+    db.add(db_grupo)
+    try:
+        db.commit()
+        db.refresh(db_grupo)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="El nombre del grupo ya existe")
+    return db_grupo
+
+@grupos_router.put("/{grupo_id}", response_model=schemas.Grupo)
+def update_grupo(grupo_id: int, grupo_update: schemas.GrupoCreate, db: Session = Depends(get_db)):
+    db_grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == grupo_id).first()
+    if not db_grupo:
+        raise HTTPException(status_code=404, detail="Grupo no encontrado")
+    db_grupo.Nombre = grupo_update.Nombre
+    db_grupo.Descripcion = grupo_update.Descripcion
+    try:
+        db.commit()
+        db.refresh(db_grupo)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="El nombre del grupo ya existe")
+    return db_grupo
+
+@grupos_router.delete("/{grupo_id}", status_code=204)
+def delete_grupo(grupo_id: int, db: Session = Depends(get_db)):
+    db_grupo = db.query(models.Grupo).options(joinedload(models.Grupo.casos)).filter(models.Grupo.ID_Grupo == grupo_id).first()
+    if not db_grupo:
+        raise HTTPException(status_code=404, detail="Grupo no encontrado")
+    if db_grupo.casos and len(db_grupo.casos) > 0:
+        raise HTTPException(status_code=400, detail="No se puede eliminar un grupo con casos asignados")
+    db.delete(db_grupo)
+    db.commit()
+    return
+
+app.include_router(grupos_router)
+
+usuarios_router = APIRouter(prefix="/api/usuarios", tags=["Usuarios"])
+
+SUPERADMIN_USER = 117020
+SUPERADMIN_PASS = "Salva202020"
+security = HTTPBasic()
+
+def superadmin_required(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_user = secrets.compare_digest(str(credentials.username), str(SUPERADMIN_USER))
+    correct_pass = secrets.compare_digest(credentials.password, SUPERADMIN_PASS)
+    if not (correct_user and correct_pass):
+        raise HTTPException(status_code=401, detail="No autorizado")
+    return True
+
+@usuarios_router.get("", response_model=List[schemas.Usuario])
+def get_usuarios(db: Session = Depends(get_db), auth: bool = Depends(superadmin_required)):
+    return db.query(models.Usuario).all()
+
+@usuarios_router.post("", response_model=schemas.Usuario, status_code=201)
+def create_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db), auth: bool = Depends(superadmin_required)):
+    if db.query(models.Usuario).filter(models.Usuario.User == usuario.User).first():
+        raise HTTPException(status_code=400, detail="El usuario ya existe")
+    contrasena = usuario.Contraseña or str(usuario.User)
+    db_usuario = models.Usuario(User=usuario.User, Contraseña=contrasena, Rol=usuario.Rol, ID_Grupo=usuario.ID_Grupo)
+    db.add(db_usuario)
+    db.commit()
+    db.refresh(db_usuario)
+    return db_usuario
+
+@usuarios_router.put("/{user_id}", response_model=schemas.Usuario)
+def update_usuario(user_id: int, usuario_update: schemas.UsuarioUpdate, db: Session = Depends(get_db), auth: bool = Depends(superadmin_required)):
+    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
+    if not db_usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if usuario_update.Rol is not None:
+        db_usuario.Rol = usuario_update.Rol
+    if usuario_update.ID_Grupo is not None:
+        db_usuario.ID_Grupo = usuario_update.ID_Grupo
+    if usuario_update.Contraseña is not None:
+        db_usuario.Contraseña = usuario_update.Contraseña
+    db.commit()
+    db.refresh(db_usuario)
+    return db_usuario
+
+@usuarios_router.delete("/{user_id}", status_code=204)
+def delete_usuario(user_id: int, db: Session = Depends(get_db), auth: bool = Depends(superadmin_required)):
+    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
+    if not db_usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    db.delete(db_usuario)
+    db.commit()
+    return
+
+app.include_router(usuarios_router)
+
+@app.get("/api/auth/me", response_model=schemas.Usuario)
+def auth_me(credentials: HTTPBasicCredentials = Depends(security), db: Session = Depends(get_db)):
+    # SuperAdmin
+    if credentials.username == str(SUPERADMIN_USER) and credentials.password == SUPERADMIN_PASS:
+        # Buscar grupo del SuperAdmin (puedes asignar uno fijo, ej: 1)
+        grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == 1).first()
+        return schemas.Usuario(
+            User=SUPERADMIN_USER,
+            Rol="superadmin",
+            ID_Grupo=grupo.ID_Grupo if grupo else 1,
+            grupo=grupo
+        )
+    # Usuarios normales
+    user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
+    if not user or user.Contraseña != credentials.password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
+    grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == user.ID_Grupo).first()
+    return schemas.Usuario(
+        User=user.User,
+        Rol=user.Rol.value if hasattr(user.Rol, 'value') else user.Rol,
+        ID_Grupo=user.ID_Grupo,
+        grupo=grupo
+    )
