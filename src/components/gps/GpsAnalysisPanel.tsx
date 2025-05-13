@@ -1064,7 +1064,29 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   return (
     <Box>
       <Group justify="flex-end" mb="xs">
-        <Button variant="light" size="xs" onClick={() => mapRef.current?.refrescarMapa()} leftSection={<IconRefresh size={16} />}>Refrescar mapa</Button>
+        <Button
+          variant="light"
+          size="xs"
+          onClick={() => mapRef.current?.refrescarMapa()}
+          leftSection={<IconRefresh size={16} />}
+          style={{
+            backgroundColor: 'var(--mantine-color-blue-0)',
+            color: 'var(--mantine-color-blue-6)',
+            border: 'none',
+            fontWeight: 600,
+            borderRadius: 8,
+            paddingLeft: 18,
+            paddingRight: 18,
+            height: 32,
+            boxShadow: 'none',
+            fontSize: 15,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          Refrescar mapa
+        </Button>
         <Button
           variant="light"
           color="blue"

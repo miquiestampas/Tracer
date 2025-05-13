@@ -8,7 +8,7 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
 
@@ -293,6 +293,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [selectedLectura, setSelectedLectura] = useState<Lectura | null>(null);
   const mapRef = useRef<L.Map | null>(null);
 
+  const [vehiculosLoading, setVehiculosLoading] = useState(false);
+
   // Manejar la tecla Escape
   useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
 
@@ -313,18 +315,21 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   }, [lectores]); // Dependencia de lectores para actualizar cuando cambien
 
   // Cargar vehículos de interés
-  useEffect(() => {
-    const fetchVehiculosInteres = async () => {
-      try {
-        const response = await apiClient.get<Vehiculo[]>(`/casos/${casoId}/vehiculos`);
-        setVehiculosInteres(response.data);
-      } catch (error) {
-        console.error('Error al obtener vehículos de interés:', error);
-      }
-    };
-
-    fetchVehiculosInteres();
+  const fetchVehiculosInteres = useCallback(async () => {
+    setVehiculosLoading(true);
+    try {
+      const response = await apiClient.get<Vehiculo[]>(`/casos/${casoId}/vehiculos`);
+      setVehiculosInteres(response.data);
+    } catch (error) {
+      console.error('Error al obtener vehículos de interés:', error);
+    } finally {
+      setVehiculosLoading(false);
+    }
   }, [casoId]);
+
+  useEffect(() => {
+    fetchVehiculosInteres();
+  }, [fetchVehiculosInteres]);
 
   // Función para manejar cambios en los filtros
   const handleFilterChange = useCallback((updates: Partial<typeof filters>) => {
@@ -1096,7 +1101,6 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             html2canvas(mapContainer, { 
               useCORS: true, 
               backgroundColor: null,
-              willReadFrequently: true 
             }).then(canvas => {
               if (cameraBtn) cameraBtn.style.visibility = 'visible';
               const link = document.createElement('a');
@@ -1297,6 +1301,31 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   return (
     <Box>
       <Group justify="flex-end" mb="xs">
+        <Button
+          leftSection={<IconRefresh size={16} />}
+          variant="light"
+          color="blue"
+          size="xs"
+          onClick={fetchVehiculosInteres}
+          loading={vehiculosLoading}
+          style={{
+            backgroundColor: 'var(--mantine-color-blue-0)',
+            color: 'var(--mantine-color-blue-6)',
+            border: 'none',
+            fontWeight: 600,
+            borderRadius: 8,
+            paddingLeft: 18,
+            paddingRight: 18,
+            height: 32,
+            boxShadow: 'none',
+            fontSize: 15,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          Actualizar
+        </Button>
         <Button
           variant="light"
           color="blue"
