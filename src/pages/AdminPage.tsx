@@ -5,6 +5,8 @@ import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getCasos, getArchivosPorCaso, deleteCaso, updateCaso } from '../services/casosApi';
+import type { Caso, ArchivoExcel } from '../types/data';
 
 interface DbStatus {
   status: string;
@@ -92,6 +94,12 @@ function AdminPage() {
   const [editRol, setEditRol] = useState<'superadmin' | 'admin_casos'>('admin_casos');
   const [editGrupo, setEditGrupo] = useState<number | null>(null);
   const [editPass, setEditPass] = useState('');
+  const [casos, setCasos] = useState<Caso[]>([]);
+  const [casosLoading, setCasosLoading] = useState(false);
+  const [archivosPorCaso, setArchivosPorCaso] = useState<Record<number, ArchivoExcel[]>>({});
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [casoToReassign, setCasoToReassign] = useState<Caso | null>(null);
+  const [nuevoGrupoId, setNuevoGrupoId] = useState<number | null>(null);
 
   const fetchDbStatus = async () => {
     try {
@@ -618,6 +626,36 @@ function AdminPage() {
     }
   };
 
+  const handleDeleteCaso = async (casoId: number) => {
+    if (!window.confirm('¿Seguro que quieres eliminar este caso y todos sus archivos/lecturas?')) return;
+    try {
+      await deleteCaso(casoId);
+      setCasos((prev) => prev.filter((c) => c.ID_Caso !== casoId));
+      notifications.show({ title: 'Éxito', message: 'Caso eliminado', color: 'green' });
+    } catch (e) {
+      notifications.show({ title: 'Error', message: 'No se pudo eliminar el caso', color: 'red' });
+    }
+  };
+
+  const handleOpenReassign = (caso: Caso) => {
+    setCasoToReassign(caso);
+    setNuevoGrupoId(null);
+    setReassignModalOpen(true);
+  };
+
+  const handleReassignGrupo = async () => {
+    if (!casoToReassign || !nuevoGrupoId) return;
+    try {
+      await updateCaso(casoToReassign.ID_Caso, { ID_Grupo: nuevoGrupoId });
+      setCasos((prev) => prev.map((c) => c.ID_Caso === casoToReassign.ID_Caso ? { ...c, ID_Grupo: nuevoGrupoId } : c));
+      notifications.show({ title: 'Éxito', message: 'Caso reasignado', color: 'green' });
+      setReassignModalOpen(false);
+      setCasoToReassign(null);
+    } catch (e) {
+      notifications.show({ title: 'Error', message: 'No se pudo reasignar el caso', color: 'red' });
+    }
+  };
+
   useEffect(() => {
     fetchDbStatus();
     fetchBackups();
@@ -639,6 +677,30 @@ function AdminPage() {
       navigate('/login');
     }
   }, [user, navigate]);
+
+  useEffect(() => {
+    const fetchCasosYArchivos = async () => {
+      setCasosLoading(true);
+      try {
+        const casosData = await getCasos();
+        setCasos(casosData);
+        // Para cada caso, obtener archivos
+        const archivosMap: Record<number, ArchivoExcel[]> = {};
+        await Promise.all(
+          casosData.map(async (caso) => {
+            const archivos = await getArchivosPorCaso(caso.ID_Caso);
+            archivosMap[caso.ID_Caso] = archivos;
+          })
+        );
+        setArchivosPorCaso(archivosMap);
+      } catch (e) {
+        notifications.show({ title: 'Error', message: 'No se pudieron obtener los casos o archivos', color: 'red' });
+      } finally {
+        setCasosLoading(false);
+      }
+    };
+    fetchCasosYArchivos();
+  }, []);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
@@ -967,6 +1029,63 @@ function AdminPage() {
                   </Table>
                 )}
               </Paper>
+              {/* Panel de Gestión de Casos */}
+              <Paper p="md" withBorder mt="lg">
+                <Group justify="space-between" mb="md">
+                  <Title order={3}>Gestión de Casos</Title>
+                </Group>
+                {casosLoading ? <Loader /> : (
+                  <Table>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Nombre</Table.Th>
+                        <Table.Th>Grupo</Table.Th>
+                        <Table.Th>Archivos</Table.Th>
+                        <Table.Th>Lecturas</Table.Th>
+                        <Table.Th>Peso (MB)</Table.Th>
+                        <Table.Th>Acciones</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {casos.map((caso) => {
+                        const archivos = archivosPorCaso[caso.ID_Caso] || [];
+                        const numArchivos = archivos.length;
+                        const totalLecturas = archivos.reduce((acc, a) => acc + (a.Total_Registros || 0), 0);
+                        const totalMB = '-';
+                        let grupoNombre = '-';
+                        if ('grupo' in caso && (caso as any).grupo?.Nombre) {
+                          grupoNombre = (caso as any).grupo.Nombre;
+                        } else if ('ID_Grupo' in caso) {
+                          grupoNombre = (caso as any).ID_Grupo;
+                        }
+                        return (
+                          <Table.Tr key={caso.ID_Caso}>
+                            <Table.Td>{caso.Nombre_del_Caso}</Table.Td>
+                            <Table.Td>{grupoNombre}</Table.Td>
+                            <Table.Td>{numArchivos}</Table.Td>
+                            <Table.Td>{totalLecturas}</Table.Td>
+                            <Table.Td>{totalMB}</Table.Td>
+                            <Table.Td>
+                              <Group gap="xs">
+                                <Tooltip label="Reasignar grupo">
+                                  <ActionIcon color="blue" variant="light" onClick={() => handleOpenReassign(caso)}>
+                                    <IconEdit size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
+                                <Tooltip label="Eliminar">
+                                  <ActionIcon color="red" variant="light" onClick={() => handleDeleteCaso(caso.ID_Caso)}>
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              </Group>
+                            </Table.Td>
+                          </Table.Tr>
+                        );
+                      })}
+                    </Table.Tbody>
+                  </Table>
+                )}
+              </Paper>
             </Stack>
           </Grid.Col>
         </Grid>
@@ -1168,6 +1287,24 @@ function AdminPage() {
             <Button variant="default" onClick={() => setDeleteUsuarioModalOpen(false)}>Cancelar</Button>
             <Button color="red" onClick={handleDeleteUsuario} loading={loadingUsuarios}>Eliminar Usuario</Button>
           </Group>
+        </Modal>
+
+        {/* Modal Reasignar Grupo */}
+        <Modal opened={reassignModalOpen} onClose={() => setReassignModalOpen(false)} title="Reasignar Grupo" centered>
+          <Stack>
+            <Select
+              label="Nuevo Grupo"
+              value={nuevoGrupoId?.toString() || ''}
+              onChange={v => setNuevoGrupoId(Number(v))}
+              data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))}
+              required
+              searchable
+            />
+            <Group justify="flex-end" mt="md">
+              <Button variant="default" onClick={() => setReassignModalOpen(false)}>Cancelar</Button>
+              <Button onClick={handleReassignGrupo}>Reasignar</Button>
+            </Group>
+          </Stack>
         </Modal>
       </Container>
     </>
