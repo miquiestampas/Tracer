@@ -49,7 +49,19 @@ const AUTO_MAP_TERMS: { [key: string]: string[] } = {
   Matricula: ['matricula', 'matrícula', 'plate', 'license', 'licensenumber', 'numplaca', 'patente', 'licenseplate'],
   Fecha: ['fecha', 'date', 'fec'],
   Hora: ['hora', 'time', 'timestamp'], // Timestamp podría requerir dividir fecha/hora después
-  ID_Lector: ['id_lector', 'idlector', 'lector', 'camara', 'cámara', 'device', 'reader', 'dispositivo'],
+  ID_Lector: [
+    'id_lector', 'idlector', 'lector', 'camara', 'cámara', 'device', 'reader', 'dispositivo',
+    'camera', 'cam', 'cam_id', 'device_id', 'deviceid', 'reader_id', 'readerid',
+    'sensor', 'detector', 'scanner', 'scanner_id', 'scannerid',
+    'equipo', 'equipment', 'equipment_id', 'equipmentid',
+    'unidad', 'unit', 'unit_id', 'unitid',
+    'terminal', 'terminal_id', 'terminalid',
+    'estacion', 'station', 'station_id', 'stationid',
+    'punto', 'point', 'point_id', 'pointid',
+    'nodo', 'node', 'node_id', 'nodeid',
+    'devicename', 'device_name', 'device-name', 'devicename_id', 'device_name_id',
+    'nombre_dispositivo', 'nombre_equipo', 'nombre_lector', 'nombre_camara'
+  ],
   Coordenada_X: ['coordenada_x', 'coord_x', 'coordx', 'longitud', 'longitude', 'lon', 'x', 'este', 'easting'],
   Coordenada_Y: ['coordenada_y', 'coord_y', 'coordy', 'latitud', 'latitude', 'lat', 'y', 'norte', 'northing'],
   Velocidad: ['velocidad', 'speed', 'vel', 'v', 'kmh'],
