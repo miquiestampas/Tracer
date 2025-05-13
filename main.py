@@ -2244,7 +2244,7 @@ app.include_router(grupos_router)
 
 usuarios_router = APIRouter(prefix="/api/usuarios", tags=["Usuarios"])
 
-SUPERADMIN_USER = 117020
+SUPERADMIN_USER = 0
 SUPERADMIN_PASS = "Salva202020"
 security = HTTPBasic()
 
