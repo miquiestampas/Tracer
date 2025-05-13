@@ -474,6 +474,22 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                         variant="light"
                         leftSection={<IconRefresh size={16} />}
                         onClick={fetchVehiculos}
+                        size="xs"
+                        style={{
+                          backgroundColor: 'var(--mantine-color-blue-0)',
+                          color: 'var(--mantine-color-blue-6)',
+                          border: 'none',
+                          fontWeight: 600,
+                          borderRadius: 8,
+                          paddingLeft: 18,
+                          paddingRight: 18,
+                          height: 32,
+                          boxShadow: 'none',
+                          fontSize: 15,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                        }}
                     >
                         Actualizar
                     </Button>
