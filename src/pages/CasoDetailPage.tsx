@@ -237,9 +237,6 @@ function CasoDetailPage() {
   const [errorArchivos, setErrorArchivos] = useState<string | null>(null);
   const [deletingArchivoId, setDeletingArchivoId] = useState<number | null>(null);
   const navigate = useNavigate();
-  const [ayudaArchivosAbierta, setAyudaArchivosAbierta] = useState(false);
-  const [ayudaRelevantesAbierta, setAyudaRelevantesAbierta] = useState(false);
-  const [ayudaVehiculosAbierta, setAyudaVehiculosAbierta] = useState(false);
 
   // El estado activeMainTab se mantiene, pero controla la sección activa
   const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
@@ -689,35 +686,6 @@ const handleDeleteArchivo = async (archivoId: number) => {
 
               {/* Pestaña Lecturas Relevantes */}
               <Box style={{ display: activeMainTab === 'lecturas-relevantes' ? 'block' : 'none', position: 'relative' }}>
-                  <Group justify="flex-end" mb="xs">
-                      <Button
-                          variant="light"
-                          color="blue"
-                          size="xs"
-                          onClick={() => setAyudaRelevantesAbierta((v) => !v)}
-                      >
-                          {ayudaRelevantesAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                      </Button>
-                  </Group>
-                  <Collapse in={ayudaRelevantesAbierta}>
-                      <Alert color="blue" title="¿Cómo funciona el panel de Lecturas Relevantes?" mb="md">
-                          <Text size="sm">
-                              <b>¿Qué es este panel?</b><br />
-                              Aquí se recopilan todas las lecturas que has marcado como relevantes desde la pestaña "Lecturas LPR". Permite centrarse en los eventos clave de la investigación.<br /><br />
-                              <b>Funcionalidades:</b><br />
-                              - <b>Visualización:</b> Muestra la tabla de lecturas marcadas. Puedes ordenar y paginar como en otras tablas.<br />
-                              - <b>Notas:</b> Edita o añade notas específicas a cada lectura relevante para recordar por qué es importante.<br />
-                              - <b>Desmarcar:</b> Elimina la marca de relevancia si una lectura ya no es crucial. Puedes hacerlo individualmente o para una selección.<br />
-                              - <b>Guardar Vehículo:</b> Guarda rápidamente la matrícula de una lectura relevante como un vehículo para seguimiento posterior.<br />
-                              - <b>Selección Múltiple:</b> Usa las casillas para seleccionar varias lecturas y desmarcarlas o guardar sus vehículos en bloque.<br />
-                              - <b>Refrescar:</b> Actualiza la lista si has hecho cambios en otra pestaña.<br /><br />
-                              <b>Consejos:</b><br />
-                              - Usa las notas para documentar por qué una lectura es relevante para el caso.<br />
-                              - Marca como relevantes solo las lecturas que aporten valor a la investigación.<br />
-                              - Revisa periódicamente las lecturas relevantes para mantener el foco en lo importante.<br />
-                          </Text>
-                      </Alert>
-                  </Collapse>
                   <LecturasRelevantesPanel
                       lecturas={lecturasRelevantes}
                       loading={relevantLoading}
@@ -740,43 +708,6 @@ const handleDeleteArchivo = async (archivoId: number) => {
 
               {/* Pestaña Vehículos */}
               <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
-                  <Group justify="flex-end" mb="xs">
-                      <Button
-                          variant="light"
-                          color="blue"
-                          size="xs"
-                          onClick={() => setAyudaVehiculosAbierta((v) => !v)}
-                      >
-                          {ayudaVehiculosAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                      </Button>
-                  </Group>
-                  <Collapse in={ayudaVehiculosAbierta}>
-                      <Alert color="blue" title="¿Cómo funciona el panel de Vehículos?" mb="md">
-                          <Text size="sm">
-                              <b>¿Qué es este panel?</b><br />
-                              Aquí puedes gestionar la lista de vehículos relevantes asociados a este caso que hayas guardado desde los paneles de Lecturas y Análisis Avanzado. Podrás indicar si el mismo ya ha sido comprobado y si efectivamente se trata de un vehículo sospechoso. Si se importan archivos con lecturas concretas de un vehículo, éste debe estar incluido en esta lista para poder ser analizado en detalle en el mapa LPR.
-                          </Text>
-                          <Text size="xs">
-                              <strong>Funcionalidades:</strong>
-                              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-                                  <li><strong>Listado:</strong> Muestra todos los vehículos de interés para la investigación, con detalles como marca, modelo, color, etc. (si se han añadido).</li>
-                                  <li><strong>Lecturas LPR:</strong> Indica cuántas lecturas LPR tiene cada vehículo *dentro de este caso*.</li>
-                                  <li><strong>Editar Detalles:</strong> Modifica la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).</li>
-                                  <li><strong>Ver Lecturas:</strong> Accede a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.</li>
-                                  <li><strong>Eliminar Vehículo:</strong> Borra un vehículo de la lista del caso (Nota: Esto *no* elimina sus lecturas asociadas, solo el registro del vehículo).</li>
-                                  <li><strong>Refrescar:</strong> Actualiza la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).</li>
-                              </ul>
-                          </Text>
-                          <Text size="xs">
-                              <strong>Consejos:</strong>
-                              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-                                  <li>Mantén actualizada la información de los vehículos para facilitar su identificación.</li>
-                                  <li>Usa el estado de comprobado/sospechoso para marcar vehículos que ya han sido investigados.</li>
-                                  <li>Revisa periódicamente las lecturas asociadas a cada vehículo para detectar patrones de movimiento.</li>
-                              </ul>
-                          </Text>
-                      </Alert>
-                  </Collapse>
                   <VehiculosPanel casoId={idCasoNum!} />
               </Box>
 
@@ -808,28 +739,11 @@ const handleDeleteArchivo = async (archivoId: number) => {
                           variant="light"
                           color="blue"
                           size="xs"
-                          onClick={() => setAyudaArchivosAbierta((v) => !v)}
+                          onClick={() => setActiveMainTab(null)}
                       >
-                          {ayudaArchivosAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                          {activeMainTab === 'archivos' ? 'Ocultar ayuda' : 'Mostrar ayuda'}
                       </Button>
                   </Group>
-                  <Collapse in={ayudaArchivosAbierta}>
-                      <Alert color="blue" title="¿Cómo funciona la pestaña Archivos Importados?" mb="md">
-                          <Text size="sm">
-                              <b>¿Qué es esta pestaña?</b><br />
-                              Aquí puedes importar archivos Excel con lecturas LPR o GPS y gestionarlos para su análisis en el caso.<br /><br />
-                              <b>¿Cómo importar?</b><br />
-                              1. Selecciona el caso al que quieres asociar los archivos.<br />
-                              2. Elige el tipo de archivo (LPR o GPS).<br />
-                              3. Sube el archivo Excel y mapea las columnas a los campos requeridos.<br />
-                              4. Confirma la importación y revisa los archivos ya cargados.<br /><br />
-                              <b>Consejos:</b><br />
-                              - Asegúrate de que tu archivo tenga cabeceras claras y todos los campos obligatorios.<br />
-                              - Puedes eliminar archivos importados si te has equivocado.<br />
-                              - El sistema intentará mapear automáticamente las columnas, pero revisa siempre el mapeo antes de confirmar.<br />
-                          </Text>
-                      </Alert>
-                  </Collapse>
                   <Group justify="space-between" mb="md">
                       <Title order={4}>Archivos Importados</Title>
                       <Button 

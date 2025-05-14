@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Text, Badge, Button, Group, Box, Title } from '@mantine/core';
+import { Card, Text, Badge, Button, Group, Box, Title, Avatar } from '@mantine/core';
 import { IconFolder } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import type { Caso } from '../../types/data';
@@ -42,26 +42,34 @@ export function RecentCases({ cases }: RecentCasesProps) {
       <Title order={3} mb="sm">Casos Recientes</Title>
       <Group gap="md" wrap="nowrap">
         {sorted.map((caso) => (
-          <Card key={caso.ID_Caso} shadow="sm" padding="lg" radius="sm" withBorder style={{ width: 320, minWidth: 260 }}>
-            <Card.Section h={60} style={{ background: `var(--mantine-color-${estadoColor[caso.Estado] || 'gray'}-6)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <IconFolder size={32} color="#fff" />
+          <Card key={caso.ID_Caso} shadow="sm" padding="lg" radius="md" withBorder style={{ width: 320, minWidth: 260 }}>
+            <Card.Section>
+              <Box p="md" style={{ backgroundColor: '#f8f9fa' }}>
+                <Group>
+                  <Avatar color={estadoColor[caso.Estado] || 'gray'} radius="xl">
+                    <IconFolder size={24} />
+                  </Avatar>
+                  <div style={{ flex: 1 }}>
+                    <Text fw={500} size="lg" truncate>{caso.Nombre_del_Caso}</Text>
+                    <Text size="sm" c="dimmed">Año: {caso.Año}</Text>
+                  </div>
+                  <Badge color={estadoColor[caso.Estado] || 'gray'}>{caso.Estado}</Badge>
+                </Group>
+              </Box>
             </Card.Section>
-            <Group justify="space-between" mt="md" mb="xs">
-              <Text fw={500} truncate>{caso.Nombre_del_Caso}</Text>
-              <Badge color={estadoColor[caso.Estado] || 'gray'}>{caso.Estado}</Badge>
-            </Group>
-            <Text size="xs" c="dimmed" mb={4}>Año: {caso.Año}</Text>
-            {caso.Descripcion && <Text size="sm" c="dimmed" lineClamp={2}>{caso.Descripcion}</Text>}
-            <Button
-              color={estadoColor[caso.Estado] || 'blue'}
-              fullWidth
-              mt="md"
-              radius="sm"
-              component={Link}
-              to={`/casos/detalle/${caso.ID_Caso}`}
-            >
-              Ver caso
-            </Button>
+            <Box mt="md">
+              {caso.Descripcion && <Text size="sm" c="dimmed" lineClamp={2}>{caso.Descripcion}</Text>}
+              <Button
+                color={estadoColor[caso.Estado] || 'blue'}
+                fullWidth
+                mt="md"
+                radius="md"
+                component={Link}
+                to={`/casos/detalle/${caso.ID_Caso}`}
+              >
+                Ver caso
+              </Button>
+            </Box>
           </Card>
         ))}
       </Group>

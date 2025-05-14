@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box, Stack, Paper, Grid, RingProgress, Center, Loader, Alert, Title } from '@mantine/core';
+import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box, Stack, Paper, Grid, RingProgress, Center, Loader, Alert, Title, Avatar } from '@mantine/core';
 import { IconFolder, IconDeviceCctv, IconMap2, IconSearch, IconFileImport, IconDatabase } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { getEstadisticasGlobales } from '../services/estadisticasApi';
@@ -124,30 +124,29 @@ function HomePage() {
                 key={feature.title}
                 shadow="sm"
                 radius="md"
-                p="lg"
+                padding="lg"
+                withBorder
                 component={Link}
                 to={feature.path}
                 style={{ textDecoration: 'none' }}
-                withBorder
               >
-                <Group>
-                  <ThemeIcon
-                    size="xl"
-                    radius="md"
-                    variant="light"
-                    color={feature.color}
-                  >
-                    <feature.icon style={{ width: rem(24), height: rem(24) }} stroke={1.5} />
-                  </ThemeIcon>
-                  <div style={{ flex: 1 }}>
-                    <Text size="lg" fw={500}>
-                      {feature.title}
-                    </Text>
-                    <Text size="sm" c="dimmed">
-                      {feature.description}
-                    </Text>
-                  </div>
-                </Group>
+                <Card.Section>
+                  <Box p="md" style={{ backgroundColor: '#f8f9fa' }}>
+                    <Group>
+                      <Avatar color={feature.color} radius="xl">
+                        <feature.icon style={{ width: rem(24), height: rem(24) }} stroke={1.5} />
+                      </Avatar>
+                      <div style={{ flex: 1 }}>
+                        <Text size="lg" fw={500}>
+                          {feature.title}
+                        </Text>
+                        <Text size="sm" c="dimmed">
+                          {feature.description}
+                        </Text>
+                      </div>
+                    </Group>
+                  </Box>
+                </Card.Section>
               </Card>
             ))}
           </SimpleGrid>

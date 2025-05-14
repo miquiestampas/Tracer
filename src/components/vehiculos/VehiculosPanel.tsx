@@ -481,24 +481,26 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                         </Menu.Dropdown>
                     </Menu>
                     <Button
-                        variant="light"
+                        variant="outline"
                         leftSection={<IconRefresh size={16} />}
                         onClick={fetchVehiculos}
                         size="xs"
+                        color="blue"
                         style={{
-                          backgroundColor: 'var(--mantine-color-blue-0)',
+                          backgroundColor: 'white',
                           color: 'var(--mantine-color-blue-6)',
-                          border: 'none',
-                          fontWeight: 600,
+                          border: '1px solid var(--mantine-color-blue-3)',
+                          fontWeight: 500,
                           borderRadius: 8,
-                          paddingLeft: 18,
-                          paddingRight: 18,
+                          paddingLeft: 14,
+                          paddingRight: 14,
                           height: 32,
                           boxShadow: 'none',
                           fontSize: 15,
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
+                          minWidth: 0
                         }}
                     >
                         Actualizar

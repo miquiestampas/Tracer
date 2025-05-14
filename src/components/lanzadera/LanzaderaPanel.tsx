@@ -71,7 +71,6 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
     const [lanzaderaResultados, setLanzaderaResultados] = useState<string[]>([]);
     const [lanzaderaDetalles, setLanzaderaDetalles] = useState<any[]>([]);
     const [selectedRows, setSelectedRows] = useState<any[]>([]);
-    const [ayudaAcompananteAbierta, setAyudaAcompananteAbierta] = useState(false);
     const [busquedaRealizada, setBusquedaRealizada] = useState(false);
 
     const limpiarFiltros = () => {
@@ -548,33 +547,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
             <Paper shadow="sm" p="md" mb="md">
                 <Group justify="space-between" mb="md">
                     <Title order={4}>Detección de Vehículos Rápidos</Title>
-                    <Button
-                        variant="light"
-                        color="blue"
-                        size="xs"
-                        onClick={() => setAyudaAbierta((v) => !v)}
-                    >
-                        {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                    </Button>
                 </Group>
-                <Collapse in={ayudaAbierta}>
-                    <Alert color="blue" title="¿Cómo funciona este panel?" mb="md">
-                        <Text size="sm">
-                            <b>Este panel permite detectar automáticamente vehículos que han recorrido grandes distancias en tiempos muy reducidos, superando el umbral de velocidad que tú determines.</b><br /><br />
-                            <b>¿Cómo usarlo?</b><br />
-                            1. Selecciona el rango de fechas y horas que quieres analizar.<br />
-                            2. (Opcional) Filtra por carretera concreta.<br />
-                            3. Ajusta la velocidad mínima para considerar un vehículo como "rápido".<br />
-                            4. Pulsa <b>Buscar</b>.<br /><br />
-                            El sistema analizará todas las lecturas de matrículas, calculará la velocidad real entre puntos kilométricos y carreteras, y te mostrará solo los vehículos que superan el umbral.<br /><br />
-                            <b>¿Para qué sirve?</b><br />
-                            - Detectar vehículos a la fuga o con trayectorias sospechosas.<br />
-                            - Identificar patrones imposibles de ver manualmente.<br />
-                            - Ahorrar tiempo y mejorar la eficacia de la investigación.<br /><br />
-                            <b>Consejo:</b> Si no aparecen resultados, prueba a ampliar el rango de fechas/horas o bajar el umbral de velocidad.<br />
-                        </Text>
-                    </Alert>
-                </Collapse>
                 
                 <Group mb="md">
                     <NumberInput
@@ -690,36 +663,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
             <Paper shadow="sm" p="md" mb="md">
                 <Group justify="space-between" mb="md">
                     <Title order={4}>Detección de Vehículo Acompañante</Title>
-                    <Button
-                        variant="light"
-                        color="blue"
-                        size="xs"
-                        onClick={() => setAyudaAcompananteAbierta((v) => !v)}
-                    >
-                        {ayudaAcompananteAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                    </Button>
                 </Group>
-                <Collapse in={ayudaAcompananteAbierta}>
-                    <Alert color="blue" title="¿Cómo funciona el panel de Vehículo Acompañante?" mb="md">
-                        <Text size="sm">
-                            <b>¿Qué es este panel?</b><br />
-                            Este panel permite detectar vehículos que han circulado junto al vehículo objetivo en ventanas temporales cercanas, utilizando las lecturas LPR del caso. El objetivo es identificar posibles acompañantes o "convoyes" que puedan estar relacionados con el vehículo investigado.<br /><br />
-                            <b>¿Cómo funciona?</b><br />
-                            1. <b>Matrícula objetivo:</b> Introduce la matrícula del vehículo que quieres analizar como objetivo.<br />
-                            2. <b>Fechas (opcional):</b> Selecciona el rango de fechas en el que quieres buscar coincidencias.<br />
-                            3. <b>Ventana temporal:</b> Indica el margen de minutos antes y después de cada lectura del objetivo en el que se buscarán otros vehículos que hayan pasado por el mismo lector.<br />
-                            4. <b>Diferencia mínima:</b> Especifica el tiempo mínimo (en minutos) que debe haber entre lecturas para considerar que se trata de coincidencias independientes y no de un mismo evento.<br />
-                            5. Pulsa <b>Buscar</b> para obtener los resultados.<br /><br />
-                            El sistema analizará todas las lecturas del caso y mostrará una tabla con las coincidencias encontradas, diferenciando entre el vehículo objetivo y los posibles acompañantes. Puedes seleccionar filas para marcar vehículos relevantes o guardar matrículas para su seguimiento.<br /><br />
-                            <b>¿Para qué sirve?</b><br />
-                            - Identificar vehículos que acompañan de forma reiterada al objetivo.<br />
-                            - Detectar patrones de convoy o escolta.<br />
-                            - Apoyar investigaciones sobre movimientos coordinados o sospechosos.<br /><br />
-                            <b>Nota importante:</b><br />
-                            Algunas lecturas pueden ser incorrectas y no corresponderse con la realidad, debido a errores de lectura automática o a la similitud entre matrículas de diferentes vehículos. Se recomienda revisar los resultados y, en caso de duda, contrastar con otras fuentes o análisis.
-                        </Text>
-                    </Alert>
-                </Collapse>
                 <Group mb="md">
                     <TextInput
                         label="Matrícula objetivo"

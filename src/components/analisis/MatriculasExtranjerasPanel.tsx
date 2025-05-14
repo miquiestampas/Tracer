@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Group, Button, TextInput, Title, Table, LoadingOverlay, MultiSelect, ActionIcon, Loader, Collapse, Alert, Text } from '@mantine/core';
+import { Box, Group, Button, TextInput, Title, Table, LoadingOverlay, MultiSelect, ActionIcon, Loader } from '@mantine/core';
 import { IconSearch, IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react';
 import CountryFlag from 'react-country-flag';
 import { platePatterns } from '../../utils/platePatterns';
@@ -56,8 +56,6 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
   const [loadingLecturas, setLoadingLecturas] = useState(true);
   const [sortField, setSortField] = useState<SortField>('fecha');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [ayudaAbierta, setAyudaAbierta] = useState(false);
-  const [busquedaRealizada, setBusquedaRealizada] = useState(false);
 
   // Cargar lecturas del caso
   useEffect(() => {
@@ -156,24 +154,7 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
     <Box>
       <Group justify="space-between" mb="md">
         <Title order={4}>Búsqueda de Matrículas Extranjeras</Title>
-        <Button
-          variant="light"
-          color="blue"
-          size="xs"
-          onClick={() => setAyudaAbierta((v) => !v)}
-        >
-          {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-        </Button>
       </Group>
-      <Collapse in={ayudaAbierta}>
-        <Alert color="blue" title="¿Cómo funciona el panel de Matrículas Extranjeras?" mb="md">
-          <Text size="sm">
-            <b>¿Qué es este panel?</b><br />
-            Aquí puedes buscar matrículas extranjeras detectadas en las lecturas del caso. Puedes filtrar por país, matrícula y fechas.<br /><br />
-            <b>Nota importante:</b> Algunas lecturas pueden ser incorrectas y no corresponderse con el país mostrado, debido a errores de lectura o similitud entre formatos de matrículas de diferentes países.
-          </Text>
-        </Alert>
-      </Collapse>
       <Group justify="space-between" mb="md">
         <Group>
           <MultiSelect

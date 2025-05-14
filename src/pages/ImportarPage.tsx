@@ -101,9 +101,6 @@ function ImportarPage() {
   const navigate = useNavigate(); // Hook para navegación
   const location = useLocation(); // <-- Hook para obtener estado de ruta
 
-  // Estados para la ayuda
-  const [ayudaAbierta, setAyudaAbierta] = useState(false);
-
   // Estado para advertencia visual de importación
   const [importWarning, setImportWarning] = useState<React.ReactNode | null>(null);
 
@@ -605,33 +602,6 @@ function ImportarPage() {
   // --- Renderizado del Componente ---
   return (
     <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
-      <Group justify="flex-end" mb="xs">
-        <Button
-          variant="light"
-          color="blue"
-          size="xs"
-          onClick={() => setAyudaAbierta((v) => !v)}
-        >
-          {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-        </Button>
-      </Group>
-      <Collapse in={ayudaAbierta}>
-        <Alert color="blue" title="¿Cómo funciona la pestaña Archivos Importados?" mb="md">
-          <Text size="sm">
-            <b>¿Qué es esta pestaña?</b><br />
-            Aquí puedes importar archivos Excel con lecturas LPR o GPS y gestionarlos para su análisis en el caso.<br /><br />
-            <b>¿Cómo importar?</b><br />
-            1. Selecciona el caso al que quieres asociar los archivos.<br />
-            2. Elige el tipo de archivo (LPR o GPS).<br />
-            3. Sube el archivo Excel y mapea las columnas a los campos requeridos.<br />
-            4. Confirma la importación y revisa los archivos ya cargados.<br /><br />
-            <b>Consejos:</b><br />
-            - Asegúrate de que tu archivo tenga cabeceras claras y todos los campos obligatorios.<br />
-            - Puedes eliminar archivos importados si te has equivocado.<br />
-            - El sistema intentará mapear automáticamente las columnas, pero revisa siempre el mapeo antes de confirmar.<br />
-          </Text>
-        </Alert>
-      </Collapse>
       <Title order={2} mb="xl">Importar Datos desde Excel</Title>
       
       {/* Overlay global de carga */}
