@@ -106,6 +106,13 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
         }
     }, [casoId]);
 
+    // Cargar lecturas al abrir el modal de detalle
+    useEffect(() => {
+      if (isDetailModalOpen && selectedVehiculo) {
+        fetchLecturas(selectedVehiculo.ID_Vehiculo);
+      }
+    }, [isDetailModalOpen, selectedVehiculo, fetchLecturas]);
+
     // Handlers para las cards
     const handleCardClick = useCallback((vehiculo: Vehiculo) => {
         setSelectedVehiculo(vehiculo);
@@ -296,86 +303,89 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     );
 
     // Modal de detalles
-    const renderDetailModal = () => (
-        <Modal
-            opened={isDetailModalOpen}
-            onClose={() => setIsDetailModalOpen(false)}
-            title={`Detalles del Vehículo ${selectedVehiculo?.Matricula}`}
-            size="xl"
-        >
-            {selectedVehiculo && (
-                <Stack>
-                    <Group>
-                        <Avatar size="xl" color="blue" radius="xl">
-                            <IconCar size={32} />
-                        </Avatar>
-                        <div>
-                            <Text size="xl" fw={700}>{selectedVehiculo.Matricula}</Text>
-                            <Text size="lg">{selectedVehiculo.Marca} {selectedVehiculo.Modelo}</Text>
-                            <Text size="sm" c="dimmed">{selectedVehiculo.Propiedad || 'Propiedad no especificada'}</Text>
-                        </div>
-                    </Group>
+    const renderDetailModal = () => {
+        const lecturasLPR = selectedVehiculo ? (lecturasExpandidas[selectedVehiculo.ID_Vehiculo] || []).filter(l => l.Tipo_Fuente === 'LPR') : [];
+        return (
+            <Modal
+                opened={isDetailModalOpen}
+                onClose={() => setIsDetailModalOpen(false)}
+                title={`Detalles del Vehículo ${selectedVehiculo?.Matricula}`}
+                size="xl"
+            >
+                {selectedVehiculo && (
+                    <Stack>
+                        <Group>
+                            <Avatar size="xl" color="blue" radius="xl">
+                                <IconCar size={32} />
+                            </Avatar>
+                            <div>
+                                <Text size="xl" fw={700}>{selectedVehiculo.Matricula}</Text>
+                                <Text size="lg">{selectedVehiculo.Marca} {selectedVehiculo.Modelo}</Text>
+                                <Text size="sm" c="dimmed">{selectedVehiculo.Propiedad || 'Propiedad no especificada'}</Text>
+                            </div>
+                        </Group>
 
-                    <Divider />
+                        <Divider />
 
-                    <SimpleGrid cols={2}>
-                        <Box>
-                            <Text fw={500} mb="xs">Información del Vehículo</Text>
-                            <Stack gap="xs">
-                                <Group>
-                                    <Text size="sm" fw={500}>Color:</Text>
-                                    <Text size="sm">{selectedVehiculo.Color || 'No especificado'}</Text>
-                                </Group>
-                                <Group>
-                                    <Text size="sm" fw={500}>Alquiler:</Text>
-                                    <Text size="sm">{selectedVehiculo.Alquiler ? 'Sí' : 'No'}</Text>
-                </Group>
-                                <Group>
-                                    <Text size="sm" fw={500}>Estado:</Text>
-                                    <Group gap="xs">
-                                        {selectedVehiculo.Comprobado && (
-                                            <Badge color="green">Comprobado</Badge>
-                                        )}
-                                        {selectedVehiculo.Sospechoso && (
-                                            <Badge color="red">Sospechoso</Badge>
-                                        )}
+                        <SimpleGrid cols={2}>
+                            <Box>
+                                <Text fw={500} mb="xs">Información del Vehículo</Text>
+                                <Stack gap="xs">
+                                    <Group>
+                                        <Text size="sm" fw={500}>Color:</Text>
+                                        <Text size="sm">{selectedVehiculo.Color || 'No especificado'}</Text>
                                     </Group>
-                                </Group>
-                            </Stack>
-                        </Box>
+                                    <Group>
+                                        <Text size="sm" fw={500}>Alquiler:</Text>
+                                        <Text size="sm">{selectedVehiculo.Alquiler ? 'Sí' : 'No'}</Text>
+                                    </Group>
+                                    <Group>
+                                        <Text size="sm" fw={500}>Estado:</Text>
+                                        <Group gap="xs">
+                                            {selectedVehiculo.Comprobado && (
+                                                <Badge color="green">Comprobado</Badge>
+                                            )}
+                                            {selectedVehiculo.Sospechoso && (
+                                                <Badge color="red">Sospechoso</Badge>
+                                            )}
+                                        </Group>
+                                    </Group>
+                                </Stack>
+                            </Box>
+
+                            <Box>
+                                <Text fw={500} mb="xs">Observaciones</Text>
+                                <Text size="sm">{selectedVehiculo.Observaciones || 'Sin observaciones'}</Text>
+                            </Box>
+                        </SimpleGrid>
+
+                        <Divider />
 
                         <Box>
-                            <Text fw={500} mb="xs">Observaciones</Text>
-                            <Text size="sm">{selectedVehiculo.Observaciones || 'Sin observaciones'}</Text>
+                            <Text fw={500} mb="xs">Últimas Lecturas</Text>
+                            <LoadingOverlay visible={loadingLecturas[selectedVehiculo.ID_Vehiculo]} />
+                            {lecturasLPR.length > 0 ? (
+                                <Stack gap="xs">
+                                    {lecturasLPR.map((lectura, index) => (
+                                        <Paper key={index} p="xs" withBorder>
+                                            <Group>
+                                                <IconClock size={16} style={{ color: '#228be6' }} />
+                                                <Text size="sm">{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
+                                                <Text size="sm">•</Text>
+                                                <Text size="sm">Lector: {lectura.ID_Lector}</Text>
+                                            </Group>
+                                        </Paper>
+                                    ))}
+                                </Stack>
+                            ) : (
+                                <Text size="sm" c="dimmed">No hay lecturas registradas</Text>
+                            )}
                         </Box>
-                    </SimpleGrid>
-
-                    <Divider />
-
-                    <Box>
-                        <Text fw={500} mb="xs">Últimas Lecturas</Text>
-                        <LoadingOverlay visible={loadingLecturas[selectedVehiculo.ID_Vehiculo]} />
-                        {lecturasExpandidas[selectedVehiculo.ID_Vehiculo]?.length > 0 ? (
-                            <Stack gap="xs">
-                                {lecturasExpandidas[selectedVehiculo.ID_Vehiculo].map((lectura, index) => (
-                                    <Paper key={index} p="xs" withBorder>
-                                        <Group>
-                                            <IconClock size={16} style={{ color: '#228be6' }} />
-                                            <Text size="sm">{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Text>
-                                            <Text size="sm">•</Text>
-                                            <Text size="sm">Lector: {lectura.ID_Lector}</Text>
-                                        </Group>
-                                    </Paper>
-                                ))}
-                            </Stack>
-                        ) : (
-                            <Text size="sm" c="dimmed">No hay lecturas registradas</Text>
-                                    )}
-                                </Box>
-                </Stack>
-            )}
-        </Modal>
-    );
+                    </Stack>
+                )}
+            </Modal>
+        );
+    };
 
     // Modal de edición
     const renderEditModal = () => (
