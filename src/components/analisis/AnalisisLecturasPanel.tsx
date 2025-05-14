@@ -183,7 +183,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
     const [selectedSearches, setSelectedSearches] = useState<number[]>([]);
     const [showSavedSearches, setShowSavedSearches] = useState(false);
-    const [ayudaAbierta, setAyudaAbierta] = useState(false);
     const [overlayVisible, setOverlayVisible] = useState(false);
     const [overlayMessage, setOverlayMessage] = useState('');
     const [overlayProgress, setOverlayProgress] = useState(0);
@@ -1176,77 +1175,50 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         <Box style={{ position: 'relative' }}>
             <style>{customStyles}</style>
             <Box>
-                <Group justify="flex-end" mb="xs">
-                    <Button
-                        variant="light"
-                        color="blue"
-                        size="xs"
-                        onClick={() => setAyudaAbierta((v) => !v)}
-                    >
-                        {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                    </Button>
-                </Group>
-                <Collapse in={ayudaAbierta}>
-                    <Alert color="blue" title="¿Cómo funciona la pestaña Lecturas LPR?" mb="md">
-                        <Text size="sm">
-                            <b>¿Qué es esta pestaña?</b><br />
-                            Aquí puedes consultar y filtrar todas las lecturas LPR asociadas al caso. Utiliza los filtros avanzados para acotar por matrícula (con comodines), fechas, horas, lector, carretera, etc.<br /><br />
-                            <b>Guardar búsquedas y uso cruzado</b><br />
-                            Puedes guardar cualquier búsqueda que realices (con los filtros aplicados) para consultarla más adelante o cruzarla con otras búsquedas. Esta funcionalidad es especialmente útil para:<br />
-                            <ul>
-                                <li><b>Comparar patrones de movimiento</b> de diferentes vehículos.</li>
-                                <li><b>Localizar coincidencias</b> entre vehículos en distintos puntos geográficos y temporales.</li>
-                                <li><b>Investigar vehículos lanzadera</b> que acompañan a un objetivo en diferentes momentos y ubicaciones.</li>
-                            </ul>
-                            <b>¿Cómo guardar una búsqueda?</b><br />
-                            1. Aplica los filtros que te interesen (matrícula, fechas, lector, etc.).<br />
-                            2. Haz clic en el botón "Guardar búsqueda".<br />
-                            3. Asigna un nombre descriptivo para identificarla fácilmente.<br />
-                            4. Accede a tus búsquedas guardadas desde el panel correspondiente para consultarlas o cruzarlas con otras.<br /><br />
-                            <b>Ejemplos de uso avanzado:</b>
-                            <ul>
-                                <li><b>Localizar vehículos en varios puntos:</b> Filtra por una matrícula o patrón y guarda la búsqueda. Luego, filtra por otra ubicación o rango temporal y guarda esa búsqueda. Puedes comparar ambas para ver si hay vehículos que aparecen en ambos contextos.</li>
-                                <li><b>Buscar vehículos lanzadera:</b> Filtra por la matrícula del vehículo objetivo y guarda la búsqueda. Después, filtra por intervalos de tiempo y ubicaciones donde el objetivo fue detectado, y guarda esas búsquedas. Cruza los resultados para identificar matrículas que aparecen repetidamente junto al objetivo en diferentes lugares y momentos.</li>
-                                <li><b>Análisis de acompañamiento:</b> Guarda búsquedas de diferentes eventos (por ejemplo, entradas y salidas de una ciudad) y analiza qué vehículos coinciden en ambos eventos, lo que puede indicar acompañamiento o patrones sospechosos.</li>
-                            </ul>
-                            <b>Consejos:</b>
-                            <ul>
-                                <li>Usa nombres descriptivos al guardar búsquedas (ejemplo: "Matricula 1234ABC en Madrid 01/05/2024").</li>
-                                <li>Cruza búsquedas para descubrir relaciones ocultas entre vehículos y eventos.</li>
-                                <li>Aprovecha los filtros avanzados y los comodines para búsquedas flexibles y potentes.</li>
-                            </ul>
-                        </Text>
-                    </Alert>
-                </Collapse>
-            </Box>
-            <Grid>
-                 <ProgressOverlay 
-                    visible={initialLoading && !overlayVisible} 
-                    progress={initialLoading ? 100 : 0} 
-                    label="Cargando datos iniciales..."
-                    zIndex={1000}
-                 />
-                 <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
-                     <Paper shadow="sm" p="md" withBorder>
-                         <Stack gap="sm">
-                             <Title order={4} mb="sm">Definir Filtros</Title>
-                             {permitirSeleccionCaso && (
-                                 <MultiSelect
-                                     label="Casos"
-                                     placeholder="Seleccionar casos..."
-                                     data={casosList}
-                                     value={selectedCasos}
-                                     onChange={setSelectedCasos}
-                                     searchable
-                                     clearable
-                                     disabled={initialLoading}
-                                     leftSection={<IconFolder style={iconStyle} />}
-                                 />
-                             )}
-                             <Input.Wrapper label="Fecha Inicio" size="xs" className="analisis-datepicker-wrapper">
-                                <DatePicker
-                                    selected={fechaInicio}
-                                    onChange={(date) => setFechaInicio(date)}
+                <Grid>
+                     <ProgressOverlay 
+                        visible={initialLoading && !overlayVisible} 
+                        progress={initialLoading ? 100 : 0} 
+                        label="Cargando datos iniciales..."
+                        zIndex={1000}
+                     />
+                     <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
+                         <Paper shadow="sm" p="md" withBorder>
+                             <Stack gap="sm">
+                                 <Title order={4} mb="sm">Definir Filtros</Title>
+                                 {permitirSeleccionCaso && (
+                                     <MultiSelect
+                                         label="Casos"
+                                         placeholder="Seleccionar casos..."
+                                         data={casosList}
+                                         value={selectedCasos}
+                                         onChange={setSelectedCasos}
+                                         searchable
+                                         clearable
+                                         disabled={initialLoading}
+                                         leftSection={<IconFolder style={iconStyle} />}
+                                     />
+                                 )}
+                                 <Input.Wrapper label="Fecha Inicio" size="xs" className="analisis-datepicker-wrapper">
+                                    <DatePicker
+                                        selected={fechaInicio}
+                                        onChange={(date) => setFechaInicio(date)}
+                                        dateFormat="yyyy-MM-dd"
+                                        placeholderText="AAAA-MM-DD"
+                                        isClearable
+                                        customInput={
+                                            <Input 
+                                                leftSection={<IconCalendar style={iconStyle} />} 
+                                                style={{ width: '100%' }}
+                                            />
+                                        }
+                                    />
+                                </Input.Wrapper>
+                                
+                                <Input.Wrapper label="Fecha Fin" size="xs" className="analisis-datepicker-wrapper">
+                                 <DatePicker
+                                    selected={fechaFin}
+                                    onChange={(date) => setFechaFin(date)}
                                     dateFormat="yyyy-MM-dd"
                                     placeholderText="AAAA-MM-DD"
                                     isClearable
@@ -1257,362 +1229,347 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                         />
                                     }
                                 />
-                            </Input.Wrapper>
-                            
-                            <Input.Wrapper label="Fecha Fin" size="xs" className="analisis-datepicker-wrapper">
-                             <DatePicker
-                                selected={fechaFin}
-                                onChange={(date) => setFechaFin(date)}
-                                dateFormat="yyyy-MM-dd"
-                                placeholderText="AAAA-MM-DD"
-                                isClearable
-                                customInput={
-                                    <Input 
-                                        leftSection={<IconCalendar style={iconStyle} />} 
-                                        style={{ width: '100%' }}
+                                </Input.Wrapper>
+                                <Group grow>
+                                    <TimeInput 
+                                        label="Desde Hora" 
+                                        value={timeFrom} 
+                                        onChange={(event) => setTimeFrom(event.currentTarget.value)} 
+                                        leftSection={<IconClock style={iconStyle} />} 
                                     />
-                                }
-                            />
-                            </Input.Wrapper>
-                            <Group grow>
-                                <TimeInput 
-                                    label="Desde Hora" 
-                                    value={timeFrom} 
-                                    onChange={(event) => setTimeFrom(event.currentTarget.value)} 
-                                    leftSection={<IconClock style={iconStyle} />} 
-                                />
-                                <TimeInput 
-                                    label="Hasta Hora" 
-                                    value={timeTo} 
-                                    onChange={(event) => setTimeTo(event.currentTarget.value)} 
-                                    leftSection={<IconClock style={iconStyle} />} 
-                                />
-                            </Group>
-                            <MultiSelect
-                                label="Lectores"
-                                placeholder="Todos"
-                                data={lectoresList}
-                                value={selectedLectores}
-                                onChange={setSelectedLectores}
-                                searchable
-                                clearable
-                                disabled={initialLoading}
-                                leftSection={<IconDeviceCctv style={iconStyle} />}
-                                comboboxProps={{
-                                    withinPortal: true,
-                                    position: 'bottom',
-                                    middlewares: { flip: false, shift: false },
-                                    offset: 0,
-                                }}
-                            />
-                            <Group grow>
-                            <MultiSelect
-                                    label="Organismo"
-                                data={organismosList}
-                                value={selectedOrganismos}
-                                onChange={setSelectedOrganismos}
-                                searchable
-                                clearable
-                                    leftSection={<IconBuildingCommunity style={iconStyle} />}
-                            />
-                            <MultiSelect
-                                    label="Provincia"
-                                data={provinciasList}
-                                value={selectedProvincias}
-                                onChange={setSelectedProvincias}
-                                searchable
-                                clearable
-                                leftSection={<IconMapPin style={iconStyle} />}
-                            />
-                            </Group>
-                            <Group grow>
-                            <MultiSelect
-                                    label="Carretera"
-                                    placeholder="Todas"
-                                data={carreterasList}
-                                value={selectedCarreteras}
-                                onChange={setSelectedCarreteras}
-                                searchable
-                                clearable
-                                    leftSection={<IconRoad style={iconStyle} />}
-                            />
-                                {tipoFuenteFijo === 'LPR' ? (
+                                    <TimeInput 
+                                        label="Hasta Hora" 
+                                        value={timeTo} 
+                                        onChange={(event) => setTimeTo(event.currentTarget.value)} 
+                                        leftSection={<IconClock style={iconStyle} />} 
+                                    />
+                                </Group>
                                 <MultiSelect
-                                    label="Sentido"
-                                    placeholder="Ambos"
-                                    data={sentidosList}
-                                    value={selectedSentidos}
-                                    onChange={setSelectedSentidos}
+                                    label="Lectores"
+                                    placeholder="Todos"
+                                    data={lectoresList}
+                                    value={selectedLectores}
+                                    onChange={setSelectedLectores}
+                                    searchable
                                     clearable
-                                    leftSection={<IconArrowsUpDown style={iconStyle} />}
+                                    disabled={initialLoading}
+                                    leftSection={<IconDeviceCctv style={iconStyle} />}
+                                    comboboxProps={{
+                                        withinPortal: true,
+                                        position: 'bottom',
+                                        middlewares: { flip: false, shift: false },
+                                        offset: 0,
+                                    }}
                                 />
-                                ) : null}
-                            </Group>
-                            <Box>
-                                <TextInput
-                                    label="Matrícula (Completa o parcial)"
-                                    placeholder="Ej: ?98?C* (Presiona espacio para agregar múltiples)"
-                                    value={currentMatriculaInput}
-                                    onChange={handleMatriculaChange}
-                                    onKeyDown={handleMatriculaKeyDown}
-                                    leftSection={<IconLicense style={iconStyle} />}
+                                <Group grow>
+                                <MultiSelect
+                                        label="Organismo"
+                                    data={organismosList}
+                                    value={selectedOrganismos}
+                                    onChange={setSelectedOrganismos}
+                                    searchable
+                                    clearable
+                                        leftSection={<IconBuildingCommunity style={iconStyle} />}
                                 />
-                                {matriculaTags.length > 0 && (
-                                    <Group mt="xs" gap="xs">
-                                        {matriculaTags.map((tag, index) => (
-                                            <Paper key={index} p="xs" withBorder>
-                                                <Group gap="xs">
-                                                    <Text size="sm">{tag}</Text>
-                                                    <ActionIcon 
-                                                        variant="subtle" 
-                                                        color="red" 
-                                                        size="xs"
-                                                        onClick={() => removeMatriculaTag(tag)}
-                                                    >
-                                                        <IconX size={14} />
-                                                    </ActionIcon>
-                                                </Group>
-                                            </Paper>
-                                        ))}
-                                    </Group>
-                                )}
-                            </Box>
-                            <Group grow>
-                                <NumberInput
-                                    label="Mín. Pasos"
-                                    placeholder="Cualquiera"
-                                    value={minPasos || ''}
-                                    onChange={handleMinPasosChange}
-                                    min={1}
-                                    allowDecimal={false}
-                                    allowNegative={false}
-                                    clampBehavior="strict"
-                                    hideControls
+                                <MultiSelect
+                                        label="Provincia"
+                                    data={provinciasList}
+                                    value={selectedProvincias}
+                                    onChange={setSelectedProvincias}
+                                    searchable
+                                    clearable
+                                    leftSection={<IconMapPin style={iconStyle} />}
                                 />
-                                <NumberInput
-                                    label="Máx. Pasos"
-                                    placeholder="Cualquiera"
-                                    value={maxPasos || ''}
-                                    onChange={handleMaxPasosChange}
-                                    min={1}
-                                    allowDecimal={false}
-                                    allowNegative={false}
-                                    clampBehavior="strict"
-                                    hideControls
+                                </Group>
+                                <Group grow>
+                                <MultiSelect
+                                        label="Carretera"
+                                        placeholder="Todas"
+                                    data={carreterasList}
+                                    value={selectedCarreteras}
+                                    onChange={setSelectedCarreteras}
+                                    searchable
+                                    clearable
+                                        leftSection={<IconRoad style={iconStyle} />}
                                 />
-                            </Group>
-                            <Button 
-                                onClick={handleSearch} 
-                                loading={loading} 
-                                disabled={initialLoading} 
-                                leftSection={<IconSearch style={iconStyle} />} 
-                                size="sm"
-                                variant="filled"
-                                fullWidth 
-                                mt="md"
-                            >
-                                Ejecutar Filtro
-                            </Button>
-                            <Button 
-                                variant="outline" 
-                                color="gray" 
-                                leftSection={<IconFilterOff size={16} />} 
-                                onClick={handleClearFilters}
-                                size="xs" 
-                                fullWidth
-                                mt="xs"
-                                disabled={loading || initialLoading}
-                            >
-                                Limpiar Filtros Actuales
-                            </Button>
-                         </Stack>
-                     </Paper>
-                 </Grid.Col>
-                 <Grid.Col span={{ base: 12, md: 9 }}>
-                     <Paper shadow="sm" p="md" withBorder style={{ position: 'relative', overflow: 'hidden' }}>
-                        <Group justify="space-between" mb="md">
-                            <Title order={4}>Resultados ({results.length} lecturas, {Array.from(new Set(results.map(r => r.Matricula))).length} vehículos)</Title>
-                            <Group>
+                                    {tipoFuenteFijo === 'LPR' ? (
+                                    <MultiSelect
+                                        label="Sentido"
+                                        placeholder="Ambos"
+                                        data={sentidosList}
+                                        value={selectedSentidos}
+                                        onChange={setSelectedSentidos}
+                                        clearable
+                                        leftSection={<IconArrowsUpDown style={iconStyle} />}
+                                    />
+                                    ) : null}
+                                </Group>
+                                <Box>
+                                    <TextInput
+                                        label="Matrícula (Completa o parcial)"
+                                        placeholder="Ej: ?98?C* (Presiona espacio para agregar múltiples)"
+                                        value={currentMatriculaInput}
+                                        onChange={handleMatriculaChange}
+                                        onKeyDown={handleMatriculaKeyDown}
+                                        leftSection={<IconLicense style={iconStyle} />}
+                                    />
+                                    {matriculaTags.length > 0 && (
+                                        <Group mt="xs" gap="xs">
+                                            {matriculaTags.map((tag, index) => (
+                                                <Paper key={index} p="xs" withBorder>
+                                                    <Group gap="xs">
+                                                        <Text size="sm">{tag}</Text>
+                                                        <ActionIcon 
+                                                            variant="subtle" 
+                                                            color="red" 
+                                                            size="xs"
+                                                            onClick={() => removeMatriculaTag(tag)}
+                                                        >
+                                                            <IconX size={14} />
+                                                        </ActionIcon>
+                                                    </Group>
+                                                </Paper>
+                                            ))}
+                                        </Group>
+                                    )}
+                                </Box>
+                                <Group grow>
+                                    <NumberInput
+                                        label="Mín. Pasos"
+                                        placeholder="Cualquiera"
+                                        value={minPasos || ''}
+                                        onChange={handleMinPasosChange}
+                                        min={1}
+                                        allowDecimal={false}
+                                        allowNegative={false}
+                                        clampBehavior="strict"
+                                        hideControls
+                                    />
+                                    <NumberInput
+                                        label="Máx. Pasos"
+                                        placeholder="Cualquiera"
+                                        value={maxPasos || ''}
+                                        onChange={handleMaxPasosChange}
+                                        min={1}
+                                        allowDecimal={false}
+                                        allowNegative={false}
+                                        clampBehavior="strict"
+                                        hideControls
+                                    />
+                                </Group>
                                 <Button 
-                                    size="xs" 
-                                    variant={isGroupedByVehicle ? "filled" : "outline"}
-                                    color="blue"
-                                    leftSection={isGroupedByVehicle ? <IconTableOptions size={16} /> : <IconTable size={16} />}
-                                    onClick={() => setIsGroupedByVehicle(!isGroupedByVehicle)}
+                                    onClick={handleSearch} 
+                                    loading={loading} 
+                                    disabled={initialLoading} 
+                                    leftSection={<IconSearch style={iconStyle} />} 
+                                    size="sm"
+                                    variant="filled"
+                                    fullWidth 
+                                    mt="md"
                                 >
-                                    {isGroupedByVehicle ? 'Vista Normal' : 'Agrupar por Vehículo'}
+                                    Ejecutar Filtro
                                 </Button>
                                 <Button 
-                                    size="xs" 
                                     variant="outline" 
-                                    leftSection={<IconBookmark size={16} />}
-                                    onClick={handleMarcarRelevante} 
-                                    disabled={selectedRecords.length === 0 || loading}
-                                >
-                                    Marcar Relevante ({selectedRecords.length})
-                                </Button>
-                                <Button 
+                                    color="gray" 
+                                    leftSection={<IconFilterOff size={16} />} 
+                                    onClick={handleClearFilters}
                                     size="xs" 
-                                    variant="outline" 
-                                    color="orange" 
-                                    leftSection={<IconBookmarkOff size={16} />}
-                                    onClick={handleDesmarcarRelevante} 
-                                    disabled={selectedRecords.length === 0 || loading}
+                                    fullWidth
+                                    mt="xs"
+                                    disabled={loading || initialLoading}
                                 >
-                                    Desmarcar Relevante ({selectedRecords.length})
+                                    Limpiar Filtros Actuales
                                 </Button>
-                                <Button 
-                                    size="xs" 
-                                    variant="outline" 
-                                    color="green" 
-                                    leftSection={<IconCar size={16} />}
-                                    onClick={handleGuardarVehiculos} 
-                                    disabled={selectedRecords.length === 0 || loading}
-                                >
-                                    Guardar Vehículos ({selectedRecords.length})
-                                </Button>
-                                <Button 
-                                    size="xs" 
-                                    variant="outline" 
-                                    color="blue" 
-                                    leftSection={<IconPlus size={16} />}
-                                    onClick={handleSaveSearch}
-                                    disabled={loading}
-                                >
-                                    Guardar Búsqueda
-                                </Button>
-                                <Button 
-                                    size="xs" 
-                                    variant="outline" 
-                                    color="violet" 
-                                    leftSection={<IconSearch size={16} />}
-                                    onClick={() => setShowSavedSearches(!showSavedSearches)}
-                                >
-                                    Búsquedas Guardadas
-                                </Button>
-                            </Group>
-                        </Group>
-
-                        {showSavedSearches && (
-                            <Paper shadow="sm" p="md" mb="md" withBorder>
-                                <Group justify="space-between" mb="sm">
-                                    <Title order={5}>Búsquedas Guardadas</Title>
+                             </Stack>
+                         </Paper>
+                     </Grid.Col>
+                     <Grid.Col span={{ base: 12, md: 9 }}>
+                         <Paper shadow="sm" p="md" withBorder style={{ position: 'relative', overflow: 'hidden' }}>
+                            <Group justify="space-between" mb="md">
+                                <Title order={4}>Resultados ({results.length} lecturas, {Array.from(new Set(results.map(r => r.Matricula))).length} vehículos)</Title>
+                                <Group>
                                     <Button 
                                         size="xs" 
-                                        variant="light" 
+                                        variant={isGroupedByVehicle ? "filled" : "outline"}
                                         color="blue"
-                                        onClick={handleCrossSearch}
-                                        disabled={selectedSearches.length < 2}
+                                        leftSection={isGroupedByVehicle ? <IconTableOptions size={16} /> : <IconTable size={16} />}
+                                        onClick={() => setIsGroupedByVehicle(!isGroupedByVehicle)}
                                     >
-                                        Realizar Cruce ({selectedSearches.length} seleccionadas)
+                                        {isGroupedByVehicle ? 'Vista Normal' : 'Agrupar por Vehículo'}
+                                    </Button>
+                                    <Button 
+                                        size="xs" 
+                                        variant="outline" 
+                                        leftSection={<IconBookmark size={16} />}
+                                        onClick={handleMarcarRelevante} 
+                                        disabled={selectedRecords.length === 0 || loading}
+                                    >
+                                        Marcar Relevante ({selectedRecords.length})
+                                    </Button>
+                                    <Button 
+                                        size="xs" 
+                                        variant="outline" 
+                                        color="orange" 
+                                        leftSection={<IconBookmarkOff size={16} />}
+                                        onClick={handleDesmarcarRelevante} 
+                                        disabled={selectedRecords.length === 0 || loading}
+                                    >
+                                        Desmarcar Relevante ({selectedRecords.length})
+                                    </Button>
+                                    <Button 
+                                        size="xs" 
+                                        variant="outline" 
+                                        color="green" 
+                                        leftSection={<IconCar size={16} />}
+                                        onClick={handleGuardarVehiculos} 
+                                        disabled={selectedRecords.length === 0 || loading}
+                                    >
+                                        Guardar Vehículos ({selectedRecords.length})
+                                    </Button>
+                                    <Button 
+                                        size="xs" 
+                                        variant="outline" 
+                                        color="blue" 
+                                        leftSection={<IconPlus size={16} />}
+                                        onClick={handleSaveSearch}
+                                        disabled={loading}
+                                    >
+                                        Guardar Búsqueda
+                                    </Button>
+                                    <Button 
+                                        size="xs" 
+                                        variant="outline" 
+                                        color="violet" 
+                                        leftSection={<IconSearch size={16} />}
+                                        onClick={() => setShowSavedSearches(!showSavedSearches)}
+                                    >
+                                        Búsquedas Guardadas
                                     </Button>
                                 </Group>
-                                <Stack>
-                                    {savedSearches.map(search => (
-                                        <Group key={search.id} justify="space-between">
-                                            <Checkbox
-                                                label={
-                                                    <Text size="sm">
-                                                        {search.name} ({search.results.length} lecturas)
-                                                        <Text size="xs" color="dimmed" mt={2}>
-                                                            Creada: {dayjs(search.created_at).format('DD/MM/YYYY HH:mm')}
-                                                        </Text>
-                                                    </Text>
-                                                }
-                                                checked={selectedSearches.includes(search.id)}
-                                                onChange={(e) => {
-                                                    if (e.currentTarget.checked) {
-                                                        setSelectedSearches(prev => [...prev, search.id]);
-                                                    } else {
-                                                        setSelectedSearches(prev => prev.filter(id => id !== search.id));
-                                                    }
-                                                }}
-                                            />
-                                            <ActionIcon 
-                                                color="red" 
-                                                variant="subtle"
-                                                onClick={() => handleDeleteSavedSearch(search.id)}
-                                            >
-                                                <IconX size={16} />
-                                            </ActionIcon>
-                                        </Group>
-                                    ))}
-                                    {savedSearches.length === 0 && (
-                                        <Text color="dimmed" size="sm" ta="center">
-                                            No hay búsquedas guardadas
-                                        </Text>
-                                    )}
-                                </Stack>
-                            </Paper>
-                        )}
-
-                        <Box style={{ maxHeight: 'calc(100vh - 400px)', overflow: 'auto' }}>
-                            <DataTable<ExtendedLectura>
-                                withTableBorder
-                                borderRadius="sm"
-                                withColumnBorders
-                                striped
-                                highlightOnHover
-                                records={sortedAndPaginatedResults}
-                                columns={columns}
-                                minHeight={200}
-                                totalRecords={processedResults.length}
-                                recordsPerPage={pageSize}
-                                page={page}
-                                onPageChange={handlePageChange}
-                                idAccessor="ID_Lectura"
-                                selectedRecords={selectedRecords.map(id => processedResults.find(r => r.ID_Lectura === id)).filter(Boolean) as ExtendedLectura[]}
-                                onSelectedRecordsChange={handleSelectionChange}
-                                noRecordsText={loading ? 'Cargando...' : (results.length === 0 ? 'No se encontraron resultados con los filtros aplicados' : '')}
-                                noRecordsIcon={<></>}
-                                fetching={loading && !overlayVisible}
-                                sortStatus={sortStatus}
-                                onSortStatusChange={handleSortStatusChange}
-                                style={{ tableLayout: 'fixed' }}
-                            />
-                            <Group justify="space-between" mt="md">
-                                <Select
-                                    label="Filas por página"
-                                    data={['25', '50', '100']}
-                                    value={String(pageSize)}
-                                    onChange={handlePageSizeChange}
-                                    style={{ width: 150 }}
-                                    disabled={loading}
-                                />
-                                <Text size="sm">Total: {processedResults.length} lecturas</Text>
                             </Group>
-                        </Box>
-                     </Paper>
-                 </Grid.Col>
-            </Grid>
-            {overlayVisible && (
-                <div style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    background: 'rgba(0,0,0,0.35)',
-                    zIndex: 9999,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                }}>
-                    <Loader size={64} color="blue" />
+
+                            {showSavedSearches && (
+                                <Paper shadow="sm" p="md" mb="md" withBorder>
+                                    <Group justify="space-between" mb="sm">
+                                        <Title order={5}>Búsquedas Guardadas</Title>
+                                        <Button 
+                                            size="xs" 
+                                            variant="light" 
+                                            color="blue"
+                                            onClick={handleCrossSearch}
+                                            disabled={selectedSearches.length < 2}
+                                        >
+                                            Realizar Cruce ({selectedSearches.length} seleccionadas)
+                                        </Button>
+                                    </Group>
+                                    <Stack>
+                                        {savedSearches.map(search => (
+                                            <Group key={search.id} justify="space-between">
+                                                <Checkbox
+                                                    label={
+                                                        <Text size="sm">
+                                                            {search.name} ({search.results.length} lecturas)
+                                                            <Text size="xs" color="dimmed" mt={2}>
+                                                                Creada: {dayjs(search.created_at).format('DD/MM/YYYY HH:mm')}
+                                                            </Text>
+                                                        </Text>
+                                                    }
+                                                    checked={selectedSearches.includes(search.id)}
+                                                    onChange={(e) => {
+                                                        if (e.currentTarget.checked) {
+                                                            setSelectedSearches(prev => [...prev, search.id]);
+                                                        } else {
+                                                            setSelectedSearches(prev => prev.filter(id => id !== search.id));
+                                                        }
+                                                    }}
+                                                />
+                                                <ActionIcon 
+                                                    color="red" 
+                                                    variant="subtle"
+                                                    onClick={() => handleDeleteSavedSearch(search.id)}
+                                                >
+                                                    <IconX size={16} />
+                                                </ActionIcon>
+                                            </Group>
+                                        ))}
+                                        {savedSearches.length === 0 && (
+                                            <Text color="dimmed" size="sm" ta="center">
+                                                No hay búsquedas guardadas
+                                            </Text>
+                                        )}
+                                    </Stack>
+                                </Paper>
+                            )}
+
+                            <Box style={{ maxHeight: 'calc(100vh - 400px)', overflow: 'auto' }}>
+                                <DataTable<ExtendedLectura>
+                                    withTableBorder
+                                    borderRadius="sm"
+                                    withColumnBorders
+                                    striped
+                                    highlightOnHover
+                                    records={sortedAndPaginatedResults}
+                                    columns={columns}
+                                    minHeight={200}
+                                    totalRecords={processedResults.length}
+                                    recordsPerPage={pageSize}
+                                    page={page}
+                                    onPageChange={handlePageChange}
+                                    idAccessor="ID_Lectura"
+                                    selectedRecords={selectedRecords.map(id => processedResults.find(r => r.ID_Lectura === id)).filter(Boolean) as ExtendedLectura[]}
+                                    onSelectedRecordsChange={handleSelectionChange}
+                                    noRecordsText={loading ? 'Cargando...' : (results.length === 0 ? 'No se encontraron resultados con los filtros aplicados' : '')}
+                                    noRecordsIcon={<></>}
+                                    fetching={loading && !overlayVisible}
+                                    sortStatus={sortStatus}
+                                    onSortStatusChange={handleSortStatusChange}
+                                    style={{ tableLayout: 'fixed' }}
+                                />
+                                <Group justify="space-between" mt="md">
+                                    <Select
+                                        label="Filas por página"
+                                        data={['25', '50', '100']}
+                                        value={String(pageSize)}
+                                        onChange={handlePageSizeChange}
+                                        style={{ width: 150 }}
+                                        disabled={loading}
+                                    />
+                                    <Text size="sm">Total: {processedResults.length} lecturas</Text>
+                                </Group>
+                            </Box>
+                         </Paper>
+                     </Grid.Col>
+                </Grid>
+                {overlayVisible && (
                     <div style={{
-                        marginTop: 32,
-                        fontSize: 32,
-                        color: '#fff',
-                        fontWeight: 600,
-                        textShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        background: 'rgba(0,0,0,0.35)',
+                        zIndex: 9999,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                     }}>
-                        {overlayMessage}
+                        <Loader size={64} color="blue" />
+                        <div style={{
+                            marginTop: 32,
+                            fontSize: 32,
+                            color: '#fff',
+                            fontWeight: 600,
+                            textShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                        }}>
+                            {overlayMessage}
+                        </div>
+                        <Progress value={overlayProgress} size="xl" w={400} mt={32} color="blue" />
+                        <div style={{ color: '#fff', marginTop: 8, fontSize: 18 }}>{Math.round(overlayProgress)}%</div>
                     </div>
-                    <Progress value={overlayProgress} size="xl" w={400} mt={32} color="blue" />
-                    <div style={{ color: '#fff', marginTop: 8, fontSize: 18 }}>{Math.round(overlayProgress)}%</div>
-                </div>
-            )}
+                )}
+            </Box>
         </Box>
     );
   }

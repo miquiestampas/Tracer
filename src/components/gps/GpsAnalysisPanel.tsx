@@ -501,7 +501,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [nuevaCapa, setNuevaCapa] = useState<Partial<CapaGps>>({ nombre: '', color: '#228be6' });
   const [mostrarFormularioCapa, setMostrarFormularioCapa] = useState(false);
   const [fullscreenMap, setFullscreenMap] = useState(false);
-  const [ayudaAbierta, setAyudaAbierta] = useState(false);
   const [editandoCapa, setEditandoCapa] = useState<number | null>(null);
   const [mostrarLocalizaciones, setMostrarLocalizaciones] = useState(true);
   const [lecturaSeleccionada, setLecturaSeleccionada] = useState<GpsLectura | null>(null);
@@ -1065,52 +1064,31 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     <Box>
       <Group justify="flex-end" mb="xs">
         <Button
-          variant="light"
+          variant="outline"
           size="xs"
+          color="blue"
           onClick={() => mapRef.current?.refrescarMapa()}
           leftSection={<IconRefresh size={16} />}
           style={{
-            backgroundColor: 'var(--mantine-color-blue-0)',
+            backgroundColor: 'white',
             color: 'var(--mantine-color-blue-6)',
-            border: 'none',
-            fontWeight: 600,
+            border: '1px solid var(--mantine-color-blue-3)',
+            fontWeight: 500,
             borderRadius: 8,
-            paddingLeft: 18,
-            paddingRight: 18,
+            paddingLeft: 14,
+            paddingRight: 14,
             height: 32,
             boxShadow: 'none',
             fontSize: 15,
             display: 'flex',
             alignItems: 'center',
             gap: 6,
+            minWidth: 0
           }}
         >
           Actualizar
         </Button>
-        <Button
-          variant="light"
-          color="blue"
-          size="xs"
-          onClick={() => setAyudaAbierta((v) => !v)}
-        >
-          {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-        </Button>
       </Group>
-      <Collapse in={ayudaAbierta}>
-        <Alert color="blue" title="¿Qué puedes hacer en el Panel de Análisis GPS?" mb="md">
-          <Text size="sm">
-            El Panel de Análisis GPS te permite visualizar, filtrar y analizar recorridos de vehículos a partir de datos de localización. Puedes:<br /><br />
-            - Seleccionar un vehículo y filtrar sus trayectos por fecha, hora, velocidad o duración de paradas.<br />
-            - Visualizar los puntos GPS en el mapa, tanto individualmente como mediante mapas de calor para identificar zonas de mayor actividad.<br />
-            - Crear, editar y gestionar capas personalizadas para guardar y comparar diferentes análisis o recorridos.<br />
-            - Marcar y gestionar localizaciones de interés sobre el mapa, asignándoles iconos y colores personalizados.<br />
-            - Navegar cronológicamente entre los puntos GPS para analizar el recorrido paso a paso.<br />
-            - Optimizar la visualización eliminando puntos redundantes y resaltando los más relevantes.<br />
-            - Limpiar filtros y resultados para comenzar nuevos análisis de forma rápida.<br /><br />
-            Para una explicación detallada de cada función, consulta el manual de usuario disponible en la plataforma.
-          </Text>
-        </Alert>
-      </Collapse>
 
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr 420px', gap: '1rem', height: 'calc(100vh - 200px)' }}>
         {/* Panel de Filtros */}

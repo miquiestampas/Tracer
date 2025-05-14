@@ -286,8 +286,6 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
   const [fullscreenMap, setFullscreenMap] = useState(false);
 
-  const [ayudaAbierta, setAyudaAbierta] = useState(false);
-
   const [infoBanner, setInfoBanner] = useState<any | null>(null);
 
   const [selectedLectura, setSelectedLectura] = useState<Lectura | null>(null);
@@ -1303,62 +1301,31 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       <Group justify="flex-end" mb="xs">
         <Button
           leftSection={<IconRefresh size={16} />}
-          variant="light"
+          variant="outline"
           color="blue"
           size="xs"
           onClick={fetchVehiculosInteres}
           loading={vehiculosLoading}
           style={{
-            backgroundColor: 'var(--mantine-color-blue-0)',
+            backgroundColor: 'white',
             color: 'var(--mantine-color-blue-6)',
-            border: 'none',
-            fontWeight: 600,
+            border: '1px solid var(--mantine-color-blue-3)',
+            fontWeight: 500,
             borderRadius: 8,
-            paddingLeft: 18,
-            paddingRight: 18,
+            paddingLeft: 14,
+            paddingRight: 14,
             height: 32,
             boxShadow: 'none',
             fontSize: 15,
             display: 'flex',
             alignItems: 'center',
             gap: 6,
+            minWidth: 0
           }}
         >
           Actualizar
         </Button>
-        <Button
-          variant="light"
-          color="blue"
-          size="xs"
-          onClick={() => setAyudaAbierta((v) => !v)}
-        >
-          {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-        </Button>
       </Group>
-      <Collapse in={ayudaAbierta}>
-        <Alert color="blue" title="¿Cómo funciona el Mapa de Lecturas?" mb="md">
-          <Text size="sm">
-            <b>¿Qué es este panel?</b><br />
-            El Mapa de Lecturas te permite visualizar geográficamente las lecturas LPR y GPS asociadas a un caso. Puedes filtrar por vehículo, fechas, lectores y guardar resultados en capas personalizadas para análisis avanzados.<br /><br />
-            <b>Filtros y búsqueda:</b><br />
-            - Selecciona un vehículo de interés para ver sus pasos en el mapa.<br />
-            - Filtra por fechas, horas, lector o relevancia para acotar los resultados.<br />
-            - Los resultados se muestran como marcadores en el mapa, agrupados por lector o ubicación.<br /><br />
-            <b>Capas:</b><br />
-            - Guarda cualquier resultado de filtro como una "capa" para compararlo con otros vehículos o periodos.<br />
-            - Activa/desactiva capas para ver coincidencias espaciales y temporales.<br />
-            - Personaliza el nombre y color de cada capa.<br /><br />
-            <b>Controles del mapa:</b><br />
-            - Cambia el tipo de visualización (estándar, satélite, toner).<br />
-            - Muestra todos los lectores del sistema o solo los del caso.<br />
-            - Activa la detección de coincidencias para resaltar ubicaciones donde varios vehículos han coincidido.<br /><br />
-            <b>Consejos:</b><br />
-            - Haz zoom y mueve el mapa para explorar los datos.<br />
-            - Haz clic en los marcadores para ver detalles de cada lectura o lector.<br />
-            - Usa el botón "Limpiar Mapa" para reiniciar la visualización.<br />
-          </Text>
-        </Alert>
-      </Collapse>
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, md: 3 }}>
           <Stack>

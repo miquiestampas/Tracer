@@ -5,6 +5,8 @@ import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../../context/AuthContext';
 import Navbar from './Navbar';
+import HelpButton from '../common/HelpButton';
+import HelpCenterModal from '../common/HelpCenterModal';
 
 const navItems = [
   { icon: IconHome2, label: 'Home', path: '/' },
@@ -20,6 +22,7 @@ function Layout() {
   const [opened, { toggle }] = useDisclosure();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [helpOpen, setHelpOpen] = React.useState(false);
 
   const handleLogout = () => {
     logout();
@@ -43,6 +46,9 @@ function Layout() {
               <Text size="sm" c="#222">
                 {user.user} - {user.grupo?.Nombre || 'Sin grupo'}
               </Text>
+              <Button variant="default" size="xs" onClick={() => setHelpOpen(true)}>
+                Mostrar ayuda
+              </Button>
               <Button variant="light" color="red" size="xs" onClick={handleLogout}>
                 Cerrar sesión
               </Button>
@@ -58,6 +64,7 @@ function Layout() {
       <AppShell.Main>
         <Outlet />
       </AppShell.Main>
+      <HelpCenterModal opened={helpOpen} onClose={() => setHelpOpen(false)} />
     </AppShell>
   );
 }

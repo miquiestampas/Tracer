@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Imports necesarios, incluyendo Select
-import { Tabs, Text, Box, Table, Button, Modal, TextInput, Textarea, Group, Loader, Alert, NumberInput, ActionIcon, Tooltip, Select, Card, SimpleGrid, SegmentedControl, Input, Title, Stack, ThemeIcon, Divider } from '@mantine/core';
-import { IconList, IconPlus, IconAlertCircle, IconEye, IconTrash, IconLayoutGrid, IconSortAscending, IconSortDescending, IconSearch, IconPencil, IconArrowsUpDown, IconRefresh } from '@tabler/icons-react'; // Icono Kanban eliminado
+import { Tabs, Text, Box, Table, Button, Modal, TextInput, Textarea, Group, Loader, Alert, NumberInput, ActionIcon, Tooltip, Select, Card, SimpleGrid, SegmentedControl, Input, Title, Stack, ThemeIcon, Divider, Avatar } from '@mantine/core';
+import { IconList, IconPlus, IconAlertCircle, IconEye, IconTrash, IconLayoutGrid, IconSortAscending, IconSortDescending, IconSearch, IconPencil, IconArrowsUpDown, IconRefresh, IconFolder } from '@tabler/icons-react'; // Icono Kanban eliminado
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -408,42 +408,51 @@ function CasosPage() {
                               justifyContent: 'space-between'
                           }}
                       >
-                          <Link to={`/casos/detalle/${caso.ID_Caso}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                              <Group justify="space-between" mt="md" mb="xs">
-                                  <Text fw={500} size="lg" truncate>{caso.Nombre_del_Caso}</Text>
-                              </Group>
+                          <Card.Section>
+                              <Box p="md" style={{ backgroundColor: '#f8f9fa' }}>
+                                  <Group>
+                                      <Avatar color="blue" radius="xl">
+                                          <IconFolder size={24} />
+                                      </Avatar>
+                                      <div style={{ flex: 1 }}>
+                                          <Text fw={500} size="lg" truncate>{caso.Nombre_del_Caso}</Text>
+                                          <Text size="sm" c="dimmed">
+                                              Año: {caso.Año} | NIV: {caso.NIV || '-'}
+                                          </Text>
+                                      </div>
+                                  </Group>
+                              </Box>
+                          </Card.Section>
 
-                              <Text size="sm" c="dimmed" mb="sm">
-                                  Año: {caso.Año} | NIV: {caso.NIV || '-'}
-                              </Text>
-
+                          <Stack mt="md" gap="xs">
                               <Text size="sm" c="dimmed" lineClamp={3}>
                                   {caso.Descripcion || 'Sin descripción'}
                               </Text>
-                          </Link>
+                          </Stack>
 
-                          <Select
-                              mt="md"
-                              size="xs"
-                              data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
-                              value={caso.Estado}
-                              onChange={(value) => handleEstadoChange(caso.ID_Caso, value)}
-                              disabled={updatingEstadoCasoId === caso.ID_Caso}
-                              placeholder="Cambiar estado"
-                              comboboxProps={{ shadow: 'md', transitionProps: { transition: 'pop', duration: 200 } }}
-                          />
+                          <Group mt="md" justify="space-between">
+                              <Select
+                                  size="xs"
+                                  data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
+                                  value={caso.Estado}
+                                  onChange={(value) => handleEstadoChange(caso.ID_Caso, value)}
+                                  disabled={updatingEstadoCasoId === caso.ID_Caso}
+                                  placeholder="Cambiar estado"
+                                  comboboxProps={{ shadow: 'md', transitionProps: { transition: 'pop', duration: 200 } }}
+                              />
 
-                          <Group justify="flex-end" mt="md">
-                              <Tooltip label="Editar Caso">
-                                  <ActionIcon variant="light" color="gray" onClick={() => openEditModal(caso)}>
-                                      <IconPencil size={16} />
-                                  </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Eliminar Caso">
-                                  <ActionIcon variant="light" color="red" onClick={() => handleDeleteCaso(caso.ID_Caso)} loading={deletingCasoId === caso.ID_Caso}>
-                                      <IconTrash size={16} />
-                                  </ActionIcon>
-                              </Tooltip>
+                              <Group>
+                                  <Tooltip label="Editar Caso">
+                                      <ActionIcon variant="light" color="gray" onClick={() => openEditModal(caso)}>
+                                          <IconPencil size={16} />
+                                      </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Eliminar Caso">
+                                      <ActionIcon variant="light" color="red" onClick={() => handleDeleteCaso(caso.ID_Caso)} loading={deletingCasoId === caso.ID_Caso}>
+                                          <IconTrash size={16} />
+                                      </ActionIcon>
+                                  </Tooltip>
+                              </Group>
                           </Group>
                       </Card>
                   ))}
@@ -473,7 +482,7 @@ function CasosPage() {
                               <Card 
                                   key={caso.ID_Caso} 
                                   shadow="sm" 
-                                  padding="md" 
+                                  padding="lg" 
                                   radius="md" 
                                   withBorder 
                                   style={{
@@ -485,30 +494,38 @@ function CasosPage() {
                                       justifyContent: 'space-between'
                                   }}
                               >
-                                  <Link to={`/casos/detalle/${caso.ID_Caso}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                                      <Group justify="space-between" mt="md" mb="xs">
-                                          <Text fw={500} size="sm" truncate>{caso.Nombre_del_Caso}</Text>
-                                      </Group>
+                                  <Card.Section>
+                                      <Box p="md" style={{ backgroundColor: '#f8f9fa' }}>
+                                          <Group>
+                                              <Avatar color="blue" radius="xl">
+                                                  <IconFolder size={24} />
+                                              </Avatar>
+                                              <div style={{ flex: 1 }}>
+                                                  <Text fw={500} size="lg" truncate>{caso.Nombre_del_Caso}</Text>
+                                                  <Text size="sm" c="dimmed">
+                                                      Año: {caso.Año} | NIV: {caso.NIV || '-'}
+                                                  </Text>
+                                              </div>
+                                          </Group>
+                                      </Box>
+                                  </Card.Section>
 
-                                      <Text size="xs" c="dimmed" mb="xs">
-                                          Año: {caso.Año} | NIV: {caso.NIV || '-'}
-                                      </Text>
-
-                                      <Text size="xs" c="dimmed" lineClamp={2}>
+                                  <Stack mt="md" gap="xs">
+                                      <Text size="sm" c="dimmed" lineClamp={3}>
                                           {caso.Descripcion || 'Sin descripción'}
                                       </Text>
-                                  </Link>
+                                  </Stack>
 
-                                  <Group justify="flex-end" mt="xs">
+                                  <Group mt="md" justify="flex-end">
                                       <Tooltip label="Reactivar Caso">
                                           <ActionIcon 
-                                            variant="light" 
-                                            color="green" 
-                                            size="xs" 
-                                            onClick={() => handleReactivateCaso(caso.ID_Caso)} 
-                                            loading={reactivatingCasoId === caso.ID_Caso}
+                                              variant="light" 
+                                              color="green" 
+                                              size="xs" 
+                                              onClick={() => handleReactivateCaso(caso.ID_Caso)} 
+                                              loading={reactivatingCasoId === caso.ID_Caso}
                                           >
-                                            <IconRefresh size={14} />
+                                              <IconRefresh size={14} />
                                           </ActionIcon>
                                       </Tooltip>
                                       <Tooltip label="Editar Caso">
