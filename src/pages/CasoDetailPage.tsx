@@ -197,17 +197,26 @@ const helpTexts: { [key: string]: React.ReactNode } = {
       <Text fw={500} mb="sm">Ayuda: Vehículos</Text>
       <Stack gap="xs">
         <Text size="xs">
-          <strong>Propósito:</strong> Gestiona la lista de vehículos (matrículas) asociados a este caso. Un vehículo se añade aquí automáticamente si aparece en las lecturas importadas o si lo guardas manualmente desde otras pestañas.
+          <strong>¿Qué es este panel?</strong><br />
+          Aquí puedes gestionar la lista de vehículos relevantes asociados a este caso que hayas guardado desde los paneles de Lecturas y Análisis Avanzado. Podrás indicar si el mismo ya ha sido comprobado y si efectivamente se trata de un vehículo sospechoso. Si se importan archivos con lecturas concretas de un vehículo, éste debe estar incluido en esta lista para poder ser analizado en detalle en el mapa LPR.
         </Text>
         <Text size="xs">
           <strong>Funcionalidades:</strong>
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li><strong>Listado:</strong> Muestra todos los vehículos vinculados al caso, con detalles como marca, modelo, color, etc. (si se han añadido).</li>
+            <li><strong>Listado:</strong> Muestra todos los vehículos de interés para la investigación, con detalles como marca, modelo, color, etc. (si se han añadido).</li>
             <li><strong>Lecturas LPR:</strong> Indica cuántas lecturas LPR tiene cada vehículo *dentro de este caso*.</li>
-            <li><strong>Editar Detalles:</strong> Modifica (<IconPencil size="0.8rem"/>) la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).</li>
-            <li><strong>Ver Lecturas:</strong> Accede (<IconEye size="0.8rem"/>) a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.</li>
-            <li><strong>Eliminar Vehículo:</strong> Borra (<IconTrash size="0.8rem"/>) un vehículo de la lista del caso (Nota: Esto *no* elimina sus lecturas asociadas, solo el registro del vehículo).</li>
-             <li><strong>Refrescar:</strong> Actualiza (<IconRefresh size="0.8rem"/>) la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).</li>
+            <li><strong>Editar Detalles:</strong> Modifica la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).</li>
+            <li><strong>Ver Lecturas:</strong> Accede a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.</li>
+            <li><strong>Eliminar Vehículo:</strong> Borra un vehículo de la lista del caso (Nota: Esto *no* elimina sus lecturas asociadas, solo el registro del vehículo).</li>
+            <li><strong>Actualizar:</strong> Actualiza la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).</li>
+          </ul>
+        </Text>
+        <Text size="xs">
+          <strong>Consejos:</strong>
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li>Mantén actualizada la información de los vehículos para facilitar su identificación.</li>
+            <li>Usa el estado de comprobado/sospechoso para marcar vehículos que ya han sido investigados.</li>
+            <li>Revisa periódicamente las lecturas asociadas a cada vehículo para detectar patrones de movimiento.</li>
           </ul>
         </Text>
       </Stack>
@@ -229,6 +238,8 @@ function CasoDetailPage() {
   const [deletingArchivoId, setDeletingArchivoId] = useState<number | null>(null);
   const navigate = useNavigate();
   const [ayudaArchivosAbierta, setAyudaArchivosAbierta] = useState(false);
+  const [ayudaRelevantesAbierta, setAyudaRelevantesAbierta] = useState(false);
+  const [ayudaVehiculosAbierta, setAyudaVehiculosAbierta] = useState(false);
 
   // El estado activeMainTab se mantiene, pero controla la sección activa
   const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
@@ -257,7 +268,6 @@ function CasoDetailPage() {
   const [selectedRelevantRecordIds, setSelectedRelevantRecordIds] = useState<number[]>([]);
   const [editingRelevantNota, setEditingRelevantNota] = useState<Lectura | null>(null);
   const [notaInputValue, setNotaInputValue] = useState('');
-  const [ayudaRelevantesAbierta, setAyudaRelevantesAbierta] = useState(false);
 
   // Función para cargar lecturas relevantes
   const fetchLecturasRelevantes = useCallback(async () => {
@@ -730,6 +740,43 @@ const handleDeleteArchivo = async (archivoId: number) => {
 
               {/* Pestaña Vehículos */}
               <Box style={{ display: activeMainTab === 'vehiculos' ? 'block' : 'none', position: 'relative' }}>
+                  <Group justify="flex-end" mb="xs">
+                      <Button
+                          variant="light"
+                          color="blue"
+                          size="xs"
+                          onClick={() => setAyudaVehiculosAbierta((v) => !v)}
+                      >
+                          {ayudaVehiculosAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
+                      </Button>
+                  </Group>
+                  <Collapse in={ayudaVehiculosAbierta}>
+                      <Alert color="blue" title="¿Cómo funciona el panel de Vehículos?" mb="md">
+                          <Text size="sm">
+                              <b>¿Qué es este panel?</b><br />
+                              Aquí puedes gestionar la lista de vehículos relevantes asociados a este caso que hayas guardado desde los paneles de Lecturas y Análisis Avanzado. Podrás indicar si el mismo ya ha sido comprobado y si efectivamente se trata de un vehículo sospechoso. Si se importan archivos con lecturas concretas de un vehículo, éste debe estar incluido en esta lista para poder ser analizado en detalle en el mapa LPR.
+                          </Text>
+                          <Text size="xs">
+                              <strong>Funcionalidades:</strong>
+                              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+                                  <li><strong>Listado:</strong> Muestra todos los vehículos de interés para la investigación, con detalles como marca, modelo, color, etc. (si se han añadido).</li>
+                                  <li><strong>Lecturas LPR:</strong> Indica cuántas lecturas LPR tiene cada vehículo *dentro de este caso*.</li>
+                                  <li><strong>Editar Detalles:</strong> Modifica la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).</li>
+                                  <li><strong>Ver Lecturas:</strong> Accede a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.</li>
+                                  <li><strong>Eliminar Vehículo:</strong> Borra un vehículo de la lista del caso (Nota: Esto *no* elimina sus lecturas asociadas, solo el registro del vehículo).</li>
+                                  <li><strong>Refrescar:</strong> Actualiza la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).</li>
+                              </ul>
+                          </Text>
+                          <Text size="xs">
+                              <strong>Consejos:</strong>
+                              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+                                  <li>Mantén actualizada la información de los vehículos para facilitar su identificación.</li>
+                                  <li>Usa el estado de comprobado/sospechoso para marcar vehículos que ya han sido investigados.</li>
+                                  <li>Revisa periódicamente las lecturas asociadas a cada vehículo para detectar patrones de movimiento.</li>
+                              </ul>
+                          </Text>
+                      </Alert>
+                  </Collapse>
                   <VehiculosPanel casoId={idCasoNum!} />
               </Box>
 

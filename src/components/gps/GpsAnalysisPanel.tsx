@@ -1085,7 +1085,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             gap: 6,
           }}
         >
-          Refrescar mapa
+          Actualizar
         </Button>
         <Button
           variant="light"
