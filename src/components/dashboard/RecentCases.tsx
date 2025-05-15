@@ -35,11 +35,11 @@ export function RecentCases({ cases }: RecentCasesProps) {
       if (pa !== pb) return pa - pb;
       return new Date(b.Fecha_de_Creacion).getTime() - new Date(a.Fecha_de_Creacion).getTime();
     })
-    .slice(0, 4);
+    .slice(0, 3);
 
   return (
     <>
-      <Title order={3} mb="sm">Casos Recientes</Title>
+      <Title order={3} mb="sm">Investigaciones Recientes</Title>
       <Group gap="md" wrap="nowrap">
         {sorted.map((caso) => (
           <Card key={caso.ID_Caso} shadow="sm" padding="lg" radius="md" withBorder style={{ width: 320, minWidth: 260 }}>
@@ -60,6 +60,7 @@ export function RecentCases({ cases }: RecentCasesProps) {
             <Box mt="md">
               {caso.Descripcion && <Text size="sm" c="dimmed" lineClamp={2}>{caso.Descripcion}</Text>}
               <Button
+                variant="outline"
                 color={estadoColor[caso.Estado] || 'blue'}
                 fullWidth
                 mt="md"

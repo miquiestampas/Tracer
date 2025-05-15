@@ -8,38 +8,9 @@ import { getCasos } from '../services/casosApi';
 import { QuickSearch } from '../components/dashboard/QuickSearch';
 import { ImportTimeline } from '../components/dashboard/ImportTimeline';
 import { RecentCases } from '../components/dashboard/RecentCases';
-
-// Datos de ejemplo para las tarjetas de acción
-const actionCardsData = [
-  {
-    title: 'Investigaciones',
-    icon: IconFolder,
-    color: 'blue',
-    path: '/casos',
-    description: 'Crea, gestiona y accede al panel principal de herramientas de investigación'
-  },
-  {
-    title: 'Importar Datos',
-    icon: IconFileImport,
-    color: 'violet',
-    path: '/importar',
-    description: 'Importa archivos Excel (LPR/GPS) a los casos.'
-  },
-  {
-    title: 'Análisis GPS',
-    icon: IconMap2,
-    color: 'cyan',
-    path: '/analisis-gps',
-    description: 'Analiza rutas y patrones de movimiento a partir de datos GPS.'
-  },
-  {
-    title: 'Búsqueda Multi-Caso',
-    icon: IconSearch,
-    color: 'grape',
-    path: '/busqueda',
-    description: 'Busca y analiza datos de vehículos en todos los casos.'
-  },
-];
+import BusquedaMulticasoPanel from '../components/busqueda/BusquedaMulticasoPanel';
+import { ReaderGeoAlerts } from '../components/dashboard/ReaderAlerts';
+import RecentSuspectVehicles from '../components/dashboard/RecentSuspectVehicles.new';
 
 // Datos de ejemplo para los widgets de resumen
 const summaryData = [
@@ -107,49 +78,25 @@ function HomePage() {
       <Grid>
         {/* Columna Izquierda */}
         <Grid.Col span={{ base: 12, md: 8 }}>
-          {/* Casos Recientes - ahora arriba */}
-          <Box mb="xl">
-            <RecentCases cases={recentCases} />
-          </Box>
-
           {/* Título para el buscador de matrículas */}
-          <Title order={3} mb="sm">Búsqueda Rápida</Title>
+          <Title order={3} mt="md" mb="xs">Búsqueda Rápida</Title>
           {/* Buscador Rápido */}
           <QuickSearch onSearch={handleQuickSearch} />
 
-          {/* Tarjetas de Acción */}
-          <SimpleGrid cols={1} spacing="lg" mt="xl">
-            {actionCardsData.map((feature) => (
-              <Card
-                key={feature.title}
-                shadow="sm"
-                radius="md"
-                padding="lg"
-                withBorder
-                component={Link}
-                to={feature.path}
-                style={{ textDecoration: 'none' }}
-              >
-                <Card.Section>
-                  <Box p="md" style={{ backgroundColor: '#f8f9fa' }}>
-                    <Group>
-                      <Avatar color={feature.color} radius="xl">
-                        <feature.icon style={{ width: rem(24), height: rem(24) }} stroke={1.5} />
-                      </Avatar>
-                      <div style={{ flex: 1 }}>
-                        <Text size="lg" fw={500}>
-                          {feature.title}
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {feature.description}
-                        </Text>
-                      </div>
-                    </Group>
-                  </Box>
-                </Card.Section>
-              </Card>
-            ))}
-          </SimpleGrid>
+          {/* Título para Búsqueda Multi-Caso */}
+          <Title order={3} mt="md" mb="xs">Búsqueda Multi-Caso</Title>
+          {/* Panel de Búsqueda Multi-Caso */}
+          <Card shadow="sm" radius="md" padding="lg" withBorder mt={0}>
+            <BusquedaMulticasoPanel />
+          </Card>
+
+          {/* Investigaciones Recientes */}
+          <Box mt="xl">
+            <RecentCases cases={recentCases} />
+          </Box>
+
+          {/* Apartado de vehículos sospechosos recientes al final */}
+          <RecentSuspectVehicles />
         </Grid.Col>
 
         {/* Columna Derecha */}
@@ -183,6 +130,9 @@ function HomePage() {
               </Paper>
             ))}
           </SimpleGrid>
+
+          {/* Alerta de lectores sin coordenadas */}
+          <ReaderGeoAlerts />
 
           {/* Timeline de Importaciones */}
           <Box mt="xl">
