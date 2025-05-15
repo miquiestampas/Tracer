@@ -3,6 +3,7 @@ import { Modal, Accordion, Button, Group } from '@mantine/core';
 import helpTexts from '../../help/helpTexts';
 
 const helpSections = [
+  { key: 'dashboard', label: 'Dashboard' },
   { key: 'investigaciones', label: 'Investigaciones (General)' },
   { key: 'archivos', label: 'Archivos Importados' },
   { key: 'analisis-lpr', label: 'Lecturas LPR' },
@@ -30,7 +31,7 @@ const HelpCenterModal: React.FC<HelpCenterModalProps> = ({ opened, onClose }) =>
       size="xl"
       centered
       overlayProps={{ opacity: 0.55, blur: 2 }}
-      scrollAreaComponent="div"
+      styles={{ content: { maxWidth: '1200px', width: '90%' } }}
     >
       <Accordion chevronPosition="left" variant="separated" multiple>
         {helpSections.map(section => (

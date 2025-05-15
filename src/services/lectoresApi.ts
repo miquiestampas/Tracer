@@ -289,4 +289,16 @@ export const importarLectores = async (lectores: any[]): Promise<ImportResult> =
   });
 
   return { imported, updated, errores };
+};
+
+// Devuelve los lectores que no tienen coordenadas válidas
+export const getLectoresSinCoordenadas = async (): Promise<Lector[]> => {
+  const { lectores } = await getLectores();
+  return lectores.filter(l => {
+    const x = l.Coordenada_X;
+    const y = l.Coordenada_Y;
+    // Considera como faltante: null, undefined, vacío, '-', 0 o no numérico
+    const isMissing = (val: any) => val === null || val === undefined || val === '' || val === '-' || isNaN(Number(val)) || Number(val) === 0;
+    return isMissing(x) || isMissing(y);
+  });
 }; 

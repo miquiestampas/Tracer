@@ -1,7 +1,9 @@
-import React from 'react';
-import { Paper, Text, List, ThemeIcon, Badge, Group, Button } from '@mantine/core';
-import { IconAlertCircle, IconChevronRight } from '@tabler/icons-react';
+import React, { useEffect, useState } from 'react';
+import { Paper, Text, List, ThemeIcon, Badge, Group, Button, Loader, Alert } from '@mantine/core';
+import { IconAlertCircle, IconChevronRight, IconMapPin } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
+import { getLectoresSinCoordenadas, getLectores } from '../../services/lectoresApi';
+import type { Lector } from '../../types/data';
 
 interface ReaderAlert {
   id: number;
@@ -53,6 +55,51 @@ export function ReaderAlerts({ alerts }: ReaderAlertsProps) {
           </List.Item>
         ))}
       </List>
+    </Paper>
+  );
+}
+
+export function ReaderGeoAlerts() {
+  const [total, setTotal] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchLectores = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { total_count } = await getLectores();
+        setTotal(total_count);
+      } catch (err) {
+        setError('No se pudo obtener la información de los lectores.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLectores();
+  }, []);
+
+  if (loading) {
+    return <Paper shadow="sm" p="md" withBorder mb="md" mt="md"><Loader size="sm" /></Paper>;
+  }
+
+  if (error) {
+    return <Paper shadow="sm" p="md" withBorder mb="md" mt="md"><Alert color="red">{error}</Alert></Paper>;
+  }
+
+  return (
+    <Paper shadow="sm" p="md" withBorder mb="md" mt="md">
+      <Group justify="space-between" mb="xs">
+        <Group>
+          <IconAlertCircle color="#2ecc40" size={20} />
+          <Text fw={500} size="sm">Total de lectores en el sistema</Text>
+        </Group>
+        <Badge color="green" variant="light">{total}</Badge>
+      </Group>
+      <Text size="xs">
+        Este es el número total de lectores actualmente registrados en el sistema.
+      </Text>
     </Paper>
   );
 }

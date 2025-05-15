@@ -84,6 +84,17 @@ export const updateCasoEstado = async (casoId: number, nuevoEstado: EstadoCaso):
   }
 };
 
+// Obtener los vehículos de un caso específico
+export const getVehiculosPorCaso = async (casoId: number) => {
+  try {
+    const response = await apiClient.get(`/casos/${casoId}/vehiculos`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error al obtener vehículos para el caso ${casoId}:`, error);
+    throw error;
+  }
+};
+
 // --- FUNCIONES RELACIONADAS CON LECTURAS (SE MUEVEN A archivosApi.ts) ---
 
 // === SE MUEVE getLecturas A archivosApi.ts ===
