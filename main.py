@@ -2307,57 +2307,57 @@ def create_usuario(
             logger.info(f"[create_usuario] Authorization header: {auth}")
             if not auth or not auth.startswith('Basic '):
                 logger.warning("[create_usuario] No Authorization header o formato incorrecto")
-                raise HTTPException(status_code=401, detail="Se requiere autenticación")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autorizado")
+            
+            # Decodificar credenciales
             import base64
             try:
-                credentials = base64.b64decode(auth.split(' ')[1]).decode('utf-8')
-                username, password = credentials.split(':')
-                logger.info(f"[create_usuario] Decoded username: {username}, password: {password}")
+                auth_decoded = base64.b64decode(auth.split(' ')[1]).decode('utf-8')
+                username, password = auth_decoded.split(':')
+                logger.info(f"[create_usuario] Credenciales decodificadas - Usuario: {username}")
             except Exception as e:
-                logger.error(f"[create_usuario] Error decodificando Authorization: {e}")
-                raise HTTPException(status_code=401, detail="Se requiere autenticación (decode error)")
-            current_user = db.query(models.Usuario).filter(models.Usuario.User == username).first()
-            logger.info(f"[create_usuario] Usuario autenticado encontrado: {current_user.User if current_user else None}, Rol: {getattr(current_user, 'Rol', None)}, Contraseña en BD: {getattr(current_user, 'Contraseña', None)}, Contraseña recibida: {password}")
-            is_superadmin = (hasattr(current_user.Rol, 'value') and current_user.Rol.value == 'superadmin') or (not hasattr(current_user.Rol, 'value') and current_user.Rol == 'superadmin')
-            if not current_user or current_user.Contraseña != password or not is_superadmin:
-                logger.warning(f"[create_usuario] Fallo autenticación: user existe? {bool(current_user)}, pass ok? {current_user and current_user.Contraseña == password}, rol ok? {is_superadmin}")
-                raise HTTPException(status_code=401, detail="Se requiere autenticación de superadmin")
+                logger.error(f"[create_usuario] Error decodificando credenciales: {str(e)}")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
+            
+            # Verificar usuario y contraseña
+            db_user = db.query(models.Usuario).filter(models.Usuario.User == username).first()
+            if not db_user or db_user.Contraseña != password:
+                logger.warning(f"[create_usuario] Usuario no encontrado o contraseña incorrecta: {username}")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
+            
+            # Verificar que sea superadmin
+            if db_user.Rol != 'superadmin':
+                logger.warning(f"[create_usuario] Usuario no es superadmin: {username}, Rol: {db_user.Rol}")
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requiere rol de superadmin")
+            
+            logger.info(f"[create_usuario] Usuario autenticado correctamente: {username}")
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"[create_usuario] Excepción inesperada autenticando: {e}")
-            raise HTTPException(status_code=401, detail="Se requiere autenticación de superadmin (excepción)")
+            logger.error(f"[create_usuario] Error en autenticación: {str(e)}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Error en autenticación")
     
-    # Verificar si el usuario ya existe
-    if db.query(models.Usuario).filter(models.Usuario.User == usuario.User).first():
-        raise HTTPException(status_code=400, detail="El usuario ya existe")
-    
-    # Manejar el grupo
-    grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == usuario.ID_Grupo).first()
-    if not grupo:
-        if usuario.Rol == "superadmin":
-            grupo = models.Grupo(
-                ID_Grupo=1,
-                Nombre="Grupo Principal",
-                Descripcion="Grupo principal del sistema",
-                Fecha_Creacion=datetime.now().date()
-            )
-            db.add(grupo)
-            db.commit()
-            db.refresh(grupo)
-        else:
-            raise HTTPException(status_code=400, detail="El grupo especificado no existe")
-    
-    # Crear el usuario
-    contrasena = usuario.Contraseña or str(usuario.User)
+    # Crear el nuevo usuario
     db_usuario = models.Usuario(
-        User=usuario.User, 
-        Contraseña=contrasena, 
-        Rol=usuario.Rol, 
-        ID_Grupo=grupo.ID_Grupo
+        User=str(usuario.User),  # Aseguramos que User sea string
+        Rol=usuario.Rol,
+        ID_Grupo=usuario.ID_Grupo,
+        Contraseña=usuario.Contraseña
     )
     db.add(db_usuario)
     db.commit()
     db.refresh(db_usuario)
-    return db_usuario
+    
+    # Obtener el grupo asociado
+    grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == db_usuario.ID_Grupo).first()
+    
+    # Devolver el usuario creado con el grupo
+    return schemas.Usuario(
+        User=str(db_usuario.User),  # Aseguramos que User sea string
+        Rol=db_usuario.Rol,
+        ID_Grupo=db_usuario.ID_Grupo,
+        grupo=grupo
+    )
 
 @usuarios_router.put("/{user_id}", response_model=schemas.Usuario)
 def update_usuario(user_id: int, usuario_update: schemas.UsuarioUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_superadmin)):
