@@ -52,6 +52,8 @@ function CasosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createModalOpened, { open: _openModal, close: _closeModal }] = useDisclosure(false);
+  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
+  const [casoToDelete, setCasoToDelete] = useState<number | null>(null);
   const [deletingCasoId, setDeletingCasoId] = useState<number | null>(null);
   const [updatingEstadoCasoId, setUpdatingEstadoCasoId] = useState<number | null>(null);
   const [editingCasoId, setEditingCasoId] = useState<number | null>(null);
@@ -160,18 +162,22 @@ function CasosPage() {
   };
 
   const handleDeleteCaso = async (casoId: number) => {
-    if (!window.confirm(`¿Estás SEGURO de que quieres eliminar el caso ID ${casoId}? \n\n¡ATENCIÓN! Esta acción eliminará permanentemente el caso, TODOS sus archivos importados y TODAS las lecturas asociadas. Esta acción NO se puede deshacer.`)) {
-      return;
-    }
-    setDeletingCasoId(casoId);
+    setCasoToDelete(casoId);
+    openDeleteModal();
+  };
+
+  const confirmDeleteCaso = async () => {
+    if (!casoToDelete) return;
+    
+    setDeletingCasoId(casoToDelete);
     try {
-        await deleteCaso(casoId);
+        await deleteCaso(casoToDelete);
         notifications.show({
             title: 'Caso Eliminado',
-            message: `El caso ID ${casoId} y todos sus datos asociados han sido eliminados correctamente.`,
+            message: `El caso ID ${casoToDelete} y todos sus datos asociados han sido eliminados correctamente.`,
             color: 'teal'
         });
-        setCasos(prevList => prevList.filter(caso => caso.ID_Caso !== casoId));
+        setCasos(prevList => prevList.filter(caso => caso.ID_Caso !== casoToDelete));
     } catch (err: any) {
          console.error("Error al eliminar caso:", err);
          let errorMessage = err.response?.data?.detail || err.message || 'No se pudo eliminar el caso.';
@@ -182,6 +188,8 @@ function CasosPage() {
          });
     } finally {
         setDeletingCasoId(null);
+        closeDeleteModal();
+        setCasoToDelete(null);
     }
   };
 
@@ -454,7 +462,15 @@ function CasosPage() {
                                       </ActionIcon>
                                   </Tooltip>
                                   <Tooltip label="Eliminar Caso">
-                                      <ActionIcon variant="light" color="red" onClick={() => handleDeleteCaso(caso.ID_Caso)} loading={deletingCasoId === caso.ID_Caso}>
+                                      <ActionIcon 
+                                          variant="light" 
+                                          color="red" 
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteCaso(caso.ID_Caso);
+                                          }} 
+                                          loading={deletingCasoId === caso.ID_Caso}
+                                      >
                                           <IconTrash size={16} />
                                       </ActionIcon>
                                   </Tooltip>
@@ -545,7 +561,16 @@ function CasosPage() {
                                           </ActionIcon>
                                       </Tooltip>
                                       <Tooltip label="Eliminar Caso">
-                                          <ActionIcon variant="light" color="red" size="xs" onClick={() => handleDeleteCaso(caso.ID_Caso)} loading={deletingCasoId === caso.ID_Caso}>
+                                          <ActionIcon 
+                                              variant="light" 
+                                              color="red" 
+                                              size="xs" 
+                                              onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleDeleteCaso(caso.ID_Caso);
+                                              }} 
+                                              loading={deletingCasoId === caso.ID_Caso}
+                                          >
                                               <IconTrash size={14} />
                                           </ActionIcon>
                                       </Tooltip>
@@ -612,6 +637,35 @@ function CasosPage() {
              </Group>
            </Stack>
          </form>
+      </Modal>
+
+      {/* Modal de Confirmación de Eliminación */}
+      <Modal
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+        title="Confirmar Eliminación"
+        centered
+      >
+        <Stack>
+          <Text>
+            ¿Estás SEGURO de que quieres eliminar el caso ID {casoToDelete}?
+          </Text>
+          <Text c="red" size="sm">
+            ¡ATENCIÓN! Esta acción eliminará permanentemente el caso, TODOS sus archivos importados y TODAS las lecturas asociadas. Esta acción NO se puede deshacer.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={closeDeleteModal}>
+              Cancelar
+            </Button>
+            <Button 
+              color="red" 
+              onClick={confirmDeleteCaso}
+              loading={deletingCasoId === casoToDelete}
+            >
+              Eliminar
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
     </Box>
   );
