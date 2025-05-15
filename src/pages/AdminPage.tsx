@@ -565,21 +565,24 @@ function AdminPage() {
   };
 
   const handleCreateUsuario = async () => {
-    if (!newUser || !newGrupo) {
+    if (!newUser || (newRol !== 'superadmin' && !newGrupo)) {
       notifications.show({ title: 'Error', message: 'Usuario y grupo son obligatorios', color: 'red' });
       return;
     }
     try {
       setLoadingUsuarios(true);
+      const payload: any = {
+        User: String(newUser),
+        Rol: newRol,
+        Contraseña: newPass || newUser,
+      };
+      if (newRol !== 'superadmin') {
+        payload.ID_Grupo = newGrupo;
+      }
       const res = await fetch('/api/usuarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
-          User: String(newUser),
-          Rol: newRol,
-          ID_Grupo: newGrupo,
-          Contraseña: newPass || newUser,
-        })
+        body: JSON.stringify(payload)
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -1222,7 +1225,9 @@ function AdminPage() {
           <Stack>
             <TextInput label="Carné Profesional (User)" value={newUser} onChange={e => setNewUser(e.currentTarget.value.replace(/\D/g, ''))} maxLength={6} required />
             <Select label="Rol" value={newRol} onChange={v => setNewRol(v as any)} data={[{ value: 'admin_casos', label: 'Admin Casos' }, { value: 'superadmin', label: 'SuperAdmin' }]} required />
-            <Select label="Grupo" value={newGrupo?.toString() || ''} onChange={v => setNewGrupo(Number(v))} data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))} required searchable />
+            {newRol !== 'superadmin' && (
+              <Select label="Grupo" value={newGrupo?.toString() || ''} onChange={v => setNewGrupo(Number(v))} data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))} required searchable />
+            )}
             <TextInput label="Contraseña (opcional)" value={newPass} onChange={e => setNewPass(e.currentTarget.value)} type="password" />
             <Group justify="flex-end" mt="md">
               <Button variant="default" onClick={() => setUsuarioModalOpen(false)}>Cancelar</Button>

@@ -422,7 +422,7 @@ class RolUsuarioEnum(str, enum.Enum):
 class UsuarioBase(BaseModel):
     User: str = Field(..., example="12345")
     Rol: RolUsuarioEnum = Field(..., example="admin_casos")
-    ID_Grupo: int = Field(..., example=1)
+    ID_Grupo: Optional[int] = Field(None, example=1)
 
 class UsuarioCreate(UsuarioBase):
     Contraseña: str = Field(..., example="12345")
