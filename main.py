@@ -2326,8 +2326,9 @@ def create_usuario(
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
             
             # Verificar que sea superadmin
-            if db_user.Rol != 'superadmin':
-                logger.warning(f"[create_usuario] Usuario no es superadmin: {username}, Rol: {db_user.Rol}")
+            rol_str = db_user.Rol.value if hasattr(db_user.Rol, 'value') else db_user.Rol
+            if rol_str != 'superadmin':
+                logger.warning(f"[create_usuario] Usuario no es superadmin: {username}, Rol: {rol_str}")
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requiere rol de superadmin")
             
             logger.info(f"[create_usuario] Usuario autenticado correctamente: {username}")
