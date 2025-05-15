@@ -420,7 +420,7 @@ class RolUsuarioEnum(str, enum.Enum):
     admin_casos = "admin_casos"
 
 class UsuarioBase(BaseModel):
-    User: int = Field(..., example=12345)
+    User: str = Field(..., example="12345")
     Rol: RolUsuarioEnum = Field(..., example="admin_casos")
     ID_Grupo: int = Field(..., example=1)
 

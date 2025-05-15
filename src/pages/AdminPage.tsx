@@ -36,7 +36,7 @@ interface Grupo {
 }
 
 interface Usuario {
-  User: number;
+  User: string;
   Rol: 'superadmin' | 'admin_casos';
   ID_Grupo: number;
   grupo?: Grupo;
@@ -535,12 +535,30 @@ function AdminPage() {
   const fetchUsuarios = async () => {
     setLoadingUsuarios(true);
     try {
-      const res = await fetch('/api/usuarios', { headers: { ...getAuthHeader() } });
-      if (!res.ok) throw new Error('No autorizado o error al obtener usuarios');
+      console.log('Fetching usuarios...');
+      const res = await fetch('/api/usuarios', { 
+        headers: { 
+          ...getAuthHeader(),
+          'Accept': 'application/json'
+        } 
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Error response:', errorData);
+        throw new Error(errorData.detail || `Error ${res.status}: ${res.statusText}`);
+      }
+      
       const data = await res.json();
+      console.log('Usuarios recibidos:', data);
       setUsuarios(data);
-    } catch (e) {
-      notifications.show({ title: 'Error', message: 'No se pudieron obtener los usuarios', color: 'red' });
+    } catch (e: any) {
+      console.error('Error fetching usuarios:', e);
+      notifications.show({ 
+        title: 'Error', 
+        message: e.message || 'No se pudieron obtener los usuarios', 
+        color: 'red' 
+      });
     } finally {
       setLoadingUsuarios(false);
     }
@@ -663,6 +681,7 @@ function AdminPage() {
     fetchDbStatus();
     fetchBackups();
     fetchGrupos();
+    fetchUsuarios();
   }, []);
 
   useEffect(() => {
@@ -928,7 +947,11 @@ function AdminPage() {
                     Crear Usuario
                   </Button>
                 </Group>
-                {loadingUsuarios ? <Loader /> : (
+                {loadingUsuarios ? (
+                  <Loader />
+                ) : usuarios.length === 0 ? (
+                  <Text color="dimmed" ta="center" py="md">No hay usuarios registrados.</Text>
+                ) : (
                   <Table>
                     <Table.Thead>
                       <Table.Tr>

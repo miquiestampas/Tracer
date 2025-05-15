@@ -2278,7 +2278,16 @@ def get_current_superadmin(credentials: HTTPBasicCredentials = Depends(security)
 
 @usuarios_router.get("", response_model=List[schemas.Usuario])
 def get_usuarios(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_superadmin)):
-    return db.query(models.Usuario).all()
+    usuarios = db.query(models.Usuario).all()
+    return [
+        schemas.Usuario(
+            User=str(u.User),
+            Rol=u.Rol.value if hasattr(u.Rol, 'value') else u.Rol,
+            ID_Grupo=u.ID_Grupo,
+            grupo=u.grupo
+        )
+        for u in usuarios
+    ]
 
 @usuarios_router.post("", response_model=schemas.Usuario, status_code=201)
 def create_usuario(
@@ -2383,7 +2392,7 @@ def auth_me(credentials: HTTPBasicCredentials = Depends(security), db: Session =
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
     grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == user.ID_Grupo).first()
     return schemas.Usuario(
-        User=user.User,
+        User=str(user.User),
         Rol=user.Rol.value if hasattr(user.Rol, 'value') else user.Rol,
         ID_Grupo=user.ID_Grupo,
         grupo=grupo
