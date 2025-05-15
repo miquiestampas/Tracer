@@ -2339,18 +2339,26 @@ def create_usuario(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Error en autenticación")
     
     # Crear el nuevo usuario
-    db_usuario = models.Usuario(
-        User=str(usuario.User),  # Aseguramos que User sea string
-        Rol=usuario.Rol,
-        ID_Grupo=usuario.ID_Grupo,
-        Contraseña=usuario.Contraseña
-    )
+    if usuario.Rol == 'superadmin' or (hasattr(usuario.Rol, 'value') and usuario.Rol.value == 'superadmin'):
+        db_usuario = models.Usuario(
+            User=str(usuario.User),
+            Rol=usuario.Rol,
+            ID_Grupo=None,
+            Contraseña=usuario.Contraseña
+        )
+    else:
+        db_usuario = models.Usuario(
+            User=str(usuario.User),
+            Rol=usuario.Rol,
+            ID_Grupo=usuario.ID_Grupo,
+            Contraseña=usuario.Contraseña
+        )
     db.add(db_usuario)
     db.commit()
     db.refresh(db_usuario)
     
     # Obtener el grupo asociado
-    grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == db_usuario.ID_Grupo).first()
+    grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == db_usuario.ID_Grupo).first() if db_usuario.ID_Grupo else None
     
     # Devolver el usuario creado con el grupo
     return schemas.Usuario(
