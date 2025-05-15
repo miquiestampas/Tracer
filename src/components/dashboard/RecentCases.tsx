@@ -64,7 +64,7 @@ export function RecentCases({ cases }: RecentCasesProps) {
                 color={estadoColor[caso.Estado] || 'blue'}
                 fullWidth
                 mt="md"
-                radius="md"
+                radius="sm"
                 component={Link}
                 to={`/casos/detalle/${caso.ID_Caso}`}
               >
