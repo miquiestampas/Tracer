@@ -16,13 +16,11 @@ const apiClient = axios.create({
 // Interceptor para agregar el token de autenticación
 apiClient.interceptors.request.use(
   (config) => {
-    // Obtener el usuario del localStorage
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      const user = JSON.parse(userStr);
-      if (user.token) {
-        config.headers.Authorization = `Basic ${user.token}`;
-      }
+    // Obtener el token del localStorage (formato base64 usuario:contraseña)
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Basic ${token}`;
     }
     return config;
   },

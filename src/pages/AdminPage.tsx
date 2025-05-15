@@ -83,10 +83,6 @@ function AdminPage() {
   const [usuarioToEdit, setUsuarioToEdit] = useState<Usuario | null>(null);
   const [usuarioToDelete, setUsuarioToDelete] = useState<Usuario | null>(null);
   const [deleteUsuarioModalOpen, setDeleteUsuarioModalOpen] = useState(false);
-  const [superAdminPassModal, setSuperAdminPassModal] = useState(false);
-  const [superAdminPass, setSuperAdminPass] = useState('');
-  const [superAdminPassError, setSuperAdminPassError] = useState('');
-  const [superAdminCreds, setSuperAdminCreds] = useState<{user: string, pass: string} | null>(null);
   const [newUser, setNewUser] = useState('');
   const [newRol, setNewRol] = useState<'superadmin' | 'admin_casos'>('admin_casos');
   const [newGrupo, setNewGrupo] = useState<number | null>(null);
@@ -532,13 +528,11 @@ function AdminPage() {
   };
 
   const getAuthHeader = () => {
-    if (!superAdminCreds) return { 'Authorization': '' };
-    const token = btoa(`${superAdminCreds.user}:${superAdminCreds.pass}`);
-    return { 'Authorization': `Basic ${token}` };
+    if (!user?.token) return { 'Authorization': '' };
+    return { 'Authorization': `Basic ${user.token}` };
   };
 
   const fetchUsuarios = async () => {
-    if (!superAdminCreds) return;
     setLoadingUsuarios(true);
     try {
       const res = await fetch('/api/usuarios', { headers: { ...getAuthHeader() } });
@@ -563,19 +557,22 @@ function AdminPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
-          User: Number(newUser),
+          User: String(newUser),
           Rol: newRol,
           ID_Grupo: newGrupo,
           Contraseña: newPass || newUser,
         })
       });
-      if (!res.ok) throw new Error('No autorizado o error al crear usuario');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'No autorizado o error al crear usuario');
+      }
       notifications.show({ title: 'Éxito', message: 'Usuario creado', color: 'green' });
       setUsuarioModalOpen(false);
       setNewUser(''); setNewRol('admin_casos'); setNewGrupo(null); setNewPass('');
       fetchUsuarios();
-    } catch (e) {
-      notifications.show({ title: 'Error', message: 'No se pudo crear el usuario', color: 'red' });
+    } catch (e: any) {
+      notifications.show({ title: 'Error', message: e.message || 'No se pudo crear el usuario', color: 'red' });
     } finally {
       setLoadingUsuarios(false);
     }
@@ -594,13 +591,16 @@ function AdminPage() {
           Contraseña: editPass || undefined,
         })
       });
-      if (!res.ok) throw new Error('No autorizado o error al editar usuario');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'No autorizado o error al editar usuario');
+      }
       notifications.show({ title: 'Éxito', message: 'Usuario actualizado', color: 'green' });
       setEditUsuarioModalOpen(false);
       setUsuarioToEdit(null);
       fetchUsuarios();
-    } catch (e) {
-      notifications.show({ title: 'Error', message: 'No se pudo editar el usuario', color: 'red' });
+    } catch (e: any) {
+      notifications.show({ title: 'Error', message: e.message || 'No se pudo editar el usuario', color: 'red' });
     } finally {
       setLoadingUsuarios(false);
     }
@@ -614,13 +614,16 @@ function AdminPage() {
         method: 'DELETE',
         headers: { ...getAuthHeader() },
       });
-      if (!res.ok) throw new Error('No autorizado o error al eliminar usuario');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'No autorizado o error al eliminar usuario');
+      }
       notifications.show({ title: 'Éxito', message: 'Usuario eliminado', color: 'green' });
       setDeleteUsuarioModalOpen(false);
       setUsuarioToDelete(null);
       fetchUsuarios();
-    } catch (e) {
-      notifications.show({ title: 'Error', message: 'No se pudo eliminar el usuario', color: 'red' });
+    } catch (e: any) {
+      notifications.show({ title: 'Error', message: e.message || 'No se pudo eliminar el usuario', color: 'red' });
     } finally {
       setLoadingUsuarios(false);
     }
@@ -661,16 +664,6 @@ function AdminPage() {
     fetchBackups();
     fetchGrupos();
   }, []);
-
-  useEffect(() => {
-    if (user?.rol === 'superadmin' && !superAdminCreds) {
-      setSuperAdminPassModal(true);
-    }
-  }, [user, superAdminCreds]);
-
-  useEffect(() => {
-    if (superAdminCreds) fetchUsuarios();
-  }, [superAdminCreds]);
 
   useEffect(() => {
     if (!user) {
@@ -714,57 +707,8 @@ function AdminPage() {
     return new Date(dateStr).toLocaleString();
   };
 
-  const handleSuperAdminPass = async () => {
-    setSuperAdminPassError('');
-    // Validar la contraseña llamando a /api/auth/me
-    try {
-      const token = btoa(`${user?.user}:${superAdminPass}`);
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Basic ${token}` }
-      });
-      if (!res.ok) throw new Error('Contraseña incorrecta');
-      setSuperAdminCreds({ user: String(user?.user), pass: superAdminPass });
-      setSuperAdminPassModal(false);
-      setSuperAdminPass('');
-    } catch (e: any) {
-      setSuperAdminPassError(e.message || 'Contraseña incorrecta');
-    }
-  };
-
   return (
     <>
-      {superAdminPassModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          zIndex: 2000,
-          background: 'rgba(0,0,0,0.2)',
-          backdropFilter: 'blur(6px)',
-        }} />
-      )}
-      <Modal
-        opened={superAdminPassModal}
-        onClose={() => {}}
-        title="Confirmar contraseña SuperAdmin"
-        centered
-        withCloseButton={false}
-        zIndex={2100}
-      >
-        <Stack>
-          <PasswordInput
-            label="Contraseña SuperAdmin"
-            value={superAdminPass}
-            onChange={e => setSuperAdminPass(e.currentTarget.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleSuperAdminPass(); }}
-            autoFocus
-            error={superAdminPassError}
-          />
-          <Button onClick={handleSuperAdminPass}>Acceder</Button>
-        </Stack>
-      </Modal>
       <Container fluid style={{ paddingLeft: 32, paddingRight: 32, maxWidth: 1600 }}>
         <Title order={2} mt="md" mb="lg">Panel de Administración</Title>
         <Grid gutter="xl" align="flex-start">

@@ -1,186 +1,273 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Paper, TextInput, Button, Title, Stack, PasswordInput, Alert, Group, Text } from '@mantine/core';
-import { IconLock, IconFileSpreadsheet, IconFileText, IconClock } from '@tabler/icons-react';
+import { Paper, TextInput, Button, Title, Stack, PasswordInput, Alert, Group, Text, Modal } from '@mantine/core';
+import { IconLock, IconFileSpreadsheet, IconFileText, IconClock, IconMapPin } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
 
-const MAP_IMAGE_URL = 'https://a.tile.openstreetmap.org/6/32/24.png'; // Puedes cambiarla por otra imagen de mapa si lo prefieres
+const MAP_IMAGE_URL = '/heatmap-login.png'; // Imagen local para el fondo del login
 
 const LoginPage: React.FC = () => {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [firstTimeModalOpen, setFirstTimeModalOpen] = useState(false);
+  const [newSuperAdminUser, setNewSuperAdminUser] = useState('');
+  const [newSuperAdminPass, setNewSuperAdminPass] = useState('');
+  const [newSuperAdminPassConfirm, setNewSuperAdminPassConfirm] = useState('');
+  const [creatingSuperAdmin, setCreatingSuperAdmin] = useState(false);
+  const [superAdminError, setSuperAdminError] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
 
+  useEffect(() => {
+    checkSuperAdmin();
+  }, []);
+
+  const checkSuperAdmin = async () => {
+    try {
+      const response = await fetch('/api/auth/check-superadmin');
+      const data = await response.json();
+      console.log('Respuesta check-superadmin:', data);
+      if (!data.exists) {
+        setFirstTimeModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Error checking superadmin:', error);
+      // No mostrar el modal si hay error, solo loguear
+    }
+  };
+
+  const handleCreateSuperAdmin = async () => {
+    if (!newSuperAdminUser || !newSuperAdminPass) {
+      setSuperAdminError('Todos los campos son obligatorios');
+      return;
+    }
+
+    if (newSuperAdminPass !== newSuperAdminPassConfirm) {
+      setSuperAdminError('Las contraseñas no coinciden');
+      return;
+    }
+
+    setCreatingSuperAdmin(true);
+    setSuperAdminError('');
+
+    try {
+      const response = await fetch('/api/usuarios', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          User: newSuperAdminUser,
+          Contraseña: newSuperAdminPass,
+          Rol: 'superadmin',
+          ID_Grupo: 1
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al crear el superadmin');
+      }
+
+      // Iniciar sesión automáticamente con el nuevo superadmin
+      await login(newSuperAdminUser, newSuperAdminPass);
+      setFirstTimeModalOpen(false);
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Error creating superadmin:', error);
+      setSuperAdminError('Error al crear el superadmin. Por favor, intente nuevamente.');
+    } finally {
+      setCreatingSuperAdmin(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
+    setError('');
+
     try {
-      const token = btoa(`${user}:${pass}`);
-      const res = await fetch('/api/auth/me', {
-        headers: { 'Authorization': `Basic ${token}` }
-      });
-      if (!res.ok) throw new Error('Credenciales incorrectas');
-      const data = await res.json();
-      login({
-        user: data.User,
-        rol: data.Rol,
-        grupo: data.grupo,
-        token: token,
-        rawUser: user,
-        rawPass: pass
-      });
-      navigate('/');
-    } catch (e: any) {
-      setError(e.message || 'Error de autenticación');
+      await login(user, pass);
+      navigate('/dashboard');
+    } catch (error) {
+      setError('Usuario o contraseña incorrectos');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
+    <div style={{
+      display: 'flex',
+      minHeight: '100vh',
+      width: '100vw',
+    }}>
+      {/* Columna Izquierda: Login + fondo mapa difuminado */}
+      <div style={{
+        flex: 1,
         display: 'flex',
-        flexDirection: 'row',
-        background: '#f7fafc',
-      }}
-    >
-      {/* Panel Izquierdo: Login */}
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#fff',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Imagen de fondo heatmap difuminada */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage: 'url(/heatmap-login.png)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            filter: 'blur(5px)',
-            opacity: 0.18,
-            zIndex: 1,
-            pointerEvents: 'none',
-          }}
-        />
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Fondo de mapa difuminado */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `url(${MAP_IMAGE_URL})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'blur(2px)',
+          opacity: 0.18,
+          zIndex: 1,
+          pointerEvents: 'none',
+        }} />
         {/* Formulario de login */}
-        <Paper p="xl" radius="md" withBorder style={{ minWidth: 340, boxShadow: '0 4px 24px rgba(0,0,0,0.07)', position: 'relative', zIndex: 2 }}>
-          <Title order={2} mb="lg" style={{ color: '#172983', fontWeight: 800 }}>LPR Tracer</Title>
-          <Text c="dimmed" size="sm" mb="md">Inicie sesión para acceder al sistema</Text>
-          <form onSubmit={handleSubmit}>
-            <Stack gap="md">
-              <TextInput
-                label="Código de Usuario"
-                value={user}
-                onChange={e => setUser(e.currentTarget.value.replace(/\D/g, ''))}
-                maxLength={6}
-                required
-                autoFocus
-              />
-              <PasswordInput
-                label="Contraseña"
-                value={pass}
-                onChange={e => setPass(e.currentTarget.value)}
-                required
-              />
-              {error && <Alert color="red">{error}</Alert>}
-              <Button type="submit" loading={loading} fullWidth>Iniciar Sesión</Button>
-            </Stack>
-          </form>
-          <Text size="xs" mt="md" c="dimmed" style={{ textAlign: 'center' }}>
-            Los usuarios son creados por el administrador del sistema
-          </Text>
-        </Paper>
-      </div>
-
-      {/* Panel Derecho: Info + Fondo Mapa */}
-      <div
-        style={{
-          flex: 1,
-          position: 'relative',
-          background: '#172983',
-          color: 'white',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Imagen de mapa difuminada */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage: `url(${MAP_IMAGE_URL})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            filter: 'blur(8px)',
-            opacity: 0.25,
-            zIndex: 1,
-          }}
-        />
-        {/* Capa de color azul semitransparente para reforzar el color */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: '#172983',
-            opacity: 0.85,
-            zIndex: 2,
-          }}
-        />
-        {/* Contenido informativo */}
-        <div style={{ position: 'relative', zIndex: 3, maxWidth: 420, textAlign: 'left' }}>
-          <Title order={2} mb="md" style={{ fontWeight: 800, color: 'white' }}>
+        <Paper radius="md" p="xl" withBorder style={{ position: 'relative', zIndex: 2, maxWidth: 420, width: '100%', backgroundColor: 'rgba(255,255,255,0.95)' }}>
+          <Title order={2} mb="md" ta="center">
             LPR Tracer
           </Title>
-          <Text size="lg" mb="xl" style={{ color: 'white', opacity: 0.95 }}>
-            Plataforma integral para la gestión, análisis y visualización de lecturas de matrículas y dispositivos LPR.
+          <form onSubmit={handleSubmit}>
+            <Stack>
+              <TextInput
+                required
+                label="Usuario"
+                placeholder="Tu número de usuario"
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                disabled={loading}
+              />
+              <PasswordInput
+                required
+                label="Contraseña"
+                placeholder="Tu contraseña"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                disabled={loading}
+              />
+              {error && (
+                <Alert color="red" variant="filled">
+                  {error}
+                </Alert>
+              )}
+              <Button type="submit" loading={loading} fullWidth>
+                Iniciar Sesión
+              </Button>
+            </Stack>
+          </form>
+        </Paper>
+      </div>
+      {/* Columna Derecha: Información */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #172983 80%, #2b4fcf 100%)',
+        color: 'white',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        <div style={{ position: 'relative', zIndex: 3, maxWidth: 480, textAlign: 'left', width: '100%' }}>
+          <Text size="lg" mb="xl" style={{ color: 'white', opacity: 0.95, textAlign: 'justify' }}>
+            Plataforma integral para la investigación policial sobre matrículas procedentes de lecturas LPR y OCR, así como de dispositivos GPS. Gestión, análisis y visualización integral de los datos, organizados en una estructura de casos asignados a diferentes grupos o unidades.
           </Text>
-          <Stack gap="md">
-            <Group>
-              <IconFileSpreadsheet size={28} />
-              <div>
-                <Text fw={700} style={{ color: 'white' }}>Importación Inteligente</Text>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <IconFileSpreadsheet size={40} />
+              <div style={{ margin: 0 }}>
+                <Text fw={700} style={{ color: 'white', fontSize: 18 }}>Importación Inteligente</Text>
                 <Text size="sm" style={{ color: 'white', opacity: 0.8 }}>
                   Sube y procesa archivos Excel de lecturas de matrículas de forma automática y eficiente.
                 </Text>
               </div>
-            </Group>
-            <Group>
-              <IconFileText size={28} />
-              <div>
-                <Text fw={700} style={{ color: 'white' }}>Gestión de Casos y Vehículos</Text>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <IconFileText size={40} />
+              <div style={{ margin: 0 }}>
+                <Text fw={700} style={{ color: 'white', fontSize: 18 }}>Gestión de Casos y Vehículos</Text>
                 <Text size="sm" style={{ color: 'white', opacity: 0.8 }}>
                   Organiza, filtra y analiza casos, vehículos de interés y sus movimientos en el sistema.
                 </Text>
               </div>
-            </Group>
-            <Group>
-              <IconClock size={28} />
-              <div>
-                <Text fw={700} style={{ color: 'white' }}>Visualización y Análisis Geográfico</Text>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+              <IconMapPin size={40} />
+              <div style={{ margin: 0 }}>
+                <Text fw={700} style={{ color: 'white', fontSize: 18 }}>Visualización y Análisis Geográfico</Text>
                 <Text size="sm" style={{ color: 'white', opacity: 0.8 }}>
                   Visualiza los resultados de las lecturas y los análisis GPS sobre el mapa, detecta patrones de movimiento y obtén información geoespacial avanzada.
                 </Text>
               </div>
-            </Group>
-          </Stack>
+            </div>
+          </div>
+        </div>
+        {/* Copyright abajo a la derecha */}
+        <div style={{
+          position: 'absolute',
+          right: 32,
+          bottom: 24,
+          color: 'rgba(255,255,255,0.7)',
+          fontSize: 14,
+          zIndex: 4,
+        }}>
+          LPR Tracer - © {new Date().getFullYear()} - Herramienta de Análisis Forense
         </div>
       </div>
+      {/* Modal de primera inicialización */}
+      <Modal
+        opened={firstTimeModalOpen}
+        onClose={() => {}}
+        title="Primera Inicialización"
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+        withCloseButton={false}
+      >
+        <Stack>
+          <Text>
+            Bienvenido a Tracer. Como es la primera vez que ejecuta la aplicación, 
+            debe crear una cuenta de Super Administrador.
+          </Text>
+          <TextInput
+            required
+            label="Número de Usuario"
+            placeholder="Ingrese su número de usuario"
+            value={newSuperAdminUser}
+            onChange={(e) => setNewSuperAdminUser(e.target.value)}
+            disabled={creatingSuperAdmin}
+          />
+          <PasswordInput
+            required
+            label="Contraseña"
+            placeholder="Ingrese su contraseña"
+            value={newSuperAdminPass}
+            onChange={(e) => setNewSuperAdminPass(e.target.value)}
+            disabled={creatingSuperAdmin}
+          />
+          <PasswordInput
+            required
+            label="Confirmar Contraseña"
+            placeholder="Confirme su contraseña"
+            value={newSuperAdminPassConfirm}
+            onChange={(e) => setNewSuperAdminPassConfirm(e.target.value)}
+            disabled={creatingSuperAdmin}
+          />
+          {superAdminError && (
+            <Alert color="red" variant="filled">
+              {superAdminError}
+            </Alert>
+          )}
+          <Button 
+            onClick={handleCreateSuperAdmin} 
+            loading={creatingSuperAdmin}
+            fullWidth
+          >
+            Crear Super Administrador
+          </Button>
+        </Stack>
+      </Modal>
     </div>
   );
 };
