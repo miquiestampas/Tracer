@@ -88,7 +88,7 @@ export function RecentSuspectVehicles() {
                   color="red"
                   fullWidth
                   mt="md"
-                  radius="md"
+                  radius="xs"
                   onClick={() => handleCardClick(vehiculo)}
                   leftSection={<IconCar size={16} />}
                 >

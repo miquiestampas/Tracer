@@ -12,6 +12,7 @@ import type { Caso, CasoCreate, EstadoCaso } from '../types/data';
 import dayjs from 'dayjs'; // Para formatear fecha
 import _ from 'lodash'; // Para ordenar
 import { useAuth } from '../context/AuthContext';
+import './CasosPage.css'; // Asegúrate de importar el CSS para los estilos de hover
 
 // Lista de estados válidos
 const CASE_STATUSES: EstadoCaso[] = [
@@ -399,6 +400,7 @@ function CasosPage() {
                           padding="lg" 
                           radius="md" 
                           withBorder 
+                          className="caso-card-hover"
                           style={{
                               cursor: 'pointer',
                               borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`,
@@ -406,6 +408,10 @@ function CasosPage() {
                               display: 'flex',
                               flexDirection: 'column',
                               justifyContent: 'space-between'
+                          }}
+                          onClick={e => {
+                              e.stopPropagation();
+                              navigate(`/casos/${caso.ID_Caso}`);
                           }}
                       >
                           <Card.Section>
@@ -485,6 +491,7 @@ function CasosPage() {
                                   padding="lg" 
                                   radius="md" 
                                   withBorder 
+                                  className="caso-card-hover"
                                   style={{
                                       cursor: 'pointer',
                                       borderLeft: `8px solid var(--mantine-color-${getStatusColor(caso.Estado)}-6)`,
@@ -492,6 +499,10 @@ function CasosPage() {
                                       display: 'flex',
                                       flexDirection: 'column',
                                       justifyContent: 'space-between'
+                                  }}
+                                  onClick={e => {
+                                      e.stopPropagation();
+                                      navigate(`/casos/${caso.ID_Caso}`);
                                   }}
                               >
                                   <Card.Section>
@@ -572,7 +583,7 @@ function CasosPage() {
              />
              <TextInput
                label="NIV (Opcional)"
-               placeholder="Número de Identificación Vehicular"
+               placeholder="Número de Investigación"
                {...form.getInputProps('NIV')}
              />
              <Textarea

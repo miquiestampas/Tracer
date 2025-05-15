@@ -53,7 +53,7 @@ function App() {
                   }>
                     <Route index element={<HomePage />} />
                     <Route path="casos" element={<CasosPage />} />
-                    <Route path="casos/detalle/:idCaso" element={<CasoDetailPage />} />
+                    <Route path="casos/:idCaso" element={<CasoDetailPage />} />
                     <Route path="importar" element={<ImportarPage />} />
                     <Route path="lectores" element={<LectoresPage />} />
                     <Route path="busqueda" element={<BusquedaPage />} />

@@ -1,0 +1,8 @@
+.caso-card-hover {
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.caso-card-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  /* El color del borde se controla mediante el estilo inline que usa getStatusColor */
+} 
