@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, Stack } from '@mantine/core';
-import { IconPencil, IconEye, IconTrash, IconRefresh, IconBookmark } from '@tabler/icons-react';
+import { IconPencil, IconEye, IconTrash, IconRefresh, IconBookmark, IconStarOff, IconCar } from '@tabler/icons-react';
 
 const helpTexts = {
   'analisis-lpr': (
@@ -145,19 +145,25 @@ const helpTexts = {
       <Stack gap="xs">
         <Text size="md" fw={700} mb={2}>¿Qué es esta pestaña?</Text>
         <Text size="sm" mb="xs">
-          Aquí se recopilan todas las lecturas que has marcado manualmente como importantes (<IconBookmark size="0.8rem"/>) desde la pestaña "Lecturas LPR". Permite centrarse en los eventos clave de la investigación.
+          Aquí se recopilan todas las lecturas que has marcado manualmente como importantes (<IconBookmark size="0.8rem"/>). Permite centrarse en los eventos clave de la investigación.
         </Text>
         <Text size="md" fw={700} mb={2}>Funcionalidades</Text>
-        <Text size="sm" mb="xs">
-          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li><b>Visualización:</b> Muestra la tabla de lecturas marcadas. Puedes ordenar y paginar como en otras tablas.</li>
-            <li><b>Notas:</b> Edita (<IconPencil size="0.8rem"/>) o añade notas específicas a cada lectura relevante para recordar por qué es importante.</li>
-            <li><b>Desmarcar:</b> Elimina (<IconTrash size="0.8rem"/>) la marca de relevancia si una lectura ya no es crucial. Puedes hacerlo individualmente o para una selección.</li>
-            <li><b>Guardar Vehículo:</b> Guarda rápidamente la matrícula de una lectura relevante como un vehículo para seguimiento posterior.</li>
-            <li><b>Selección Múltiple:</b> Usa las casillas para seleccionar varias lecturas y desmarcarlas o guardar sus vehículos en bloque.</li>
-            <li><b>Actualizar:</b> Actualiza (<IconRefresh size="0.8rem"/>) la lista si has hecho cambios en otra pestaña.</li>
-          </ul>
-        </Text>
+        <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+          <li><strong>Visualización:</strong> Muestra la tabla de lecturas marcadas. Puedes ordenar y paginar como en otras tablas.</li>
+          <li><strong>Observaciones:</strong> Edita (<IconPencil size="0.8rem"/>) o añade observaciones específicas a cada lectura relevante para recordar por qué es importante.</li>
+          <li><strong>Desmarcar:</strong> Elimina (<IconStarOff size="0.8rem"/> o <IconTrash size="0.8rem"/>) la marca de relevancia si una lectura ya no es crucial. Puedes hacerlo individualmente o para una selección.</li>
+          <li><strong>Guardar Vehículo:</strong> Guarda rápidamente (<IconCar size="0.8rem"/>) la matrícula de una lectura relevante como un vehículo para seguimiento posterior.</li>
+          <li><strong>Selección Múltiple:</strong> Usa las casillas para seleccionar varias lecturas y desmarcarlas o guardar sus vehículos en bloque.</li>
+          <li><strong>Refrescar:</strong> Actualiza (<IconRefresh size="0.8rem"/>) la lista si has hecho cambios en otra pestaña.</li>
+          <li><strong>Exportar:</strong> Utiliza el botón <b>Exportar</b> para generar un informe de las lecturas relevantes. Puedes:
+            <ul style={{ margin: '4px 0 4px 20px' }}>
+              <li>Seleccionar las columnas que deseas incluir en la exportación.</li>
+              <li>Exportar la tabla a <b>Excel</b> (.xlsx), <b>Word</b> (.doc) o como <b>captura de pantalla</b> (.png).</li>
+              <li>La exportación a Word utiliza fuente Arial 12pt y respeta el orden y las columnas seleccionadas.</li>
+              <li>Ideal para adjuntar a informes policiales o compartir con otros equipos.</li>
+            </ul>
+          </li>
+        </ul>
         <Text size="md" fw={700} mb={2}>Consejos</Text>
         <Text size="sm" mb="xs">
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
