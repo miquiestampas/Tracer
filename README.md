@@ -1,147 +1,97 @@
 # Tracer LPR - Aplicación de Investigación sobre datos LPR y GPS de vehículos
 
-Aplicación web para la gestión y análisis de datos de lecturas de matrículas (LPR) y datos GPS asociados a casos de investigación.
+Aplicación web para la gestión y análisis de datos de lecturas de matrículas (LPR), datos GPS y rutas GPX/KML asociadas a casos de investigación.
 
-## Características Implementadas
+---
 
-*   **Gestión de Casos:**
-    *   Crear nuevos casos de investigación (Nombre, Año, NIV, Descripción, Estado).
-    *   Listar casos existentes.
-    *   Ver detalles de un caso específico.
-    *   Actualizar estado de un caso.
-    *   Eliminar casos (con eliminación en cascada de archivos y lecturas asociados).
-*   **Importación de Datos:**
-    *   Subir archivos Excel (`.xlsx`) de tipos LPR o GPS asociados a un caso.
-    *   Mapeo flexible de columnas desde el archivo Excel a los campos internos de la base de datos.
-    *   Validación de columnas obligatorias según el tipo de archivo.
-    *   Procesamiento de datos y almacenamiento estructurado de lecturas.
-    *   Creación automática de registros de `Lector` si se encuentran IDs nuevos en archivos LPR.
-    *   Almacenamiento seguro del archivo original subido.
-*   **Gestión de Lectores:**
-    *   Visualización de lectores en tabla paginada.
-    *   Edición de detalles del lector (Nombre, Carretera, Provincia, etc.).
-    *   Entrada/Actualización de coordenadas geoespaciales mediante:
-        *   Formato de texto `latitud, longitud` (con coma o espacio como separador).
-        *   Enlaces de Google Maps (`google.com/maps/...@lat,lon...`).
-    *   Visualización de lectores en una **vista de mapa** interactiva.
-    *   Filtrado dinámico de lectores en el mapa por Provincia y Carretera.
-*   **Gestión de Vehículos:**
-    *   CRUD (Crear, Leer, Actualizar, Eliminar) básico para vehículos asociados a matrículas.
-*   **Análisis de Lecturas (en Detalle de Caso):**
-    *   Visualización separada de lecturas LPR y GPS.
-    *   Paginación y filtrado de lecturas por:
-        *   Matrícula (búsqueda parcial).
-        *   Rango de Fecha y Hora.
-        *   ID de Lector (para LPR).
-        *   Lecturas marcadas como relevantes.
-    *   **Marcado de Relevancia:**
-        *   Marcar/Desmarcar lecturas individuales como relevantes.
-        *   Añadir/Editar notas de texto a las lecturas relevantes.
-    *   Visualización de lecturas LPR y GPS en **mapas interactivos** separados dentro de la vista de detalle del caso.
-*   **Tecnología:**
-    *   **Backend:** Python, FastAPI, SQLAlchemy (con SQLite), Pydantic, Pandas.
-    *   **Frontend:** TypeScript, React, Mantine UI, React Router, React Leaflet, Axios.
+## Características Principales
 
-## Configuración y Ejecución
+### Gestión de Casos
+- Crear, listar, editar y eliminar casos de investigación.
+- Visualizar detalles completos de cada caso.
+- Cambiar el estado del caso y gestionar su ciclo de vida.
+
+### Importación de Datos
+- Subida de archivos Excel (`.xlsx`, `.xls`) para lecturas LPR y GPS.
+- **Importación de archivos GPX/KML**: permite importar rutas GPS de dispositivos o plataformas externas, asociando la ruta a una matrícula.
+- Mapeo flexible y automático de columnas para todos los tipos de archivo.
+- Validación de campos obligatorios y advertencias de duplicados.
+- Visualización y gestión de archivos importados (descarga, eliminación, advertencias).
+
+### Gestión de Lectores
+- Visualización, edición y filtrado de lectores en tabla y en mapa.
+- Edición de coordenadas y detalles de cada lector.
+- Importación masiva de lectores desde Excel.
+
+### Gestión de Vehículos
+- CRUD completo de vehículos asociados a matrículas.
+- Visualización de lecturas y rutas asociadas a cada vehículo.
+
+### Análisis y Visualización
+- Visualización de lecturas LPR y GPS en tablas y mapas interactivos.
+- Filtros avanzados por matrícula, fecha, lector, etc.
+- Marcado de lecturas relevantes, notas y gestión de vehículos sospechosos.
+- Análisis avanzado: detección de convoyes, lanzaderas, vehículos rápidos y matrículas extranjeras.
+- Visualización de rutas GPX/KML importadas en el mapa GPS.
+
+### Seguridad y Sesión
+- Sistema de autenticación y control de sesión.
+- Aviso de expiración de sesión con botón "Seguir conectado" para renovar la sesión sin perder el trabajo.
+
+### Centro de Ayuda Integrado
+- Ayuda contextual y detallada para cada módulo, incluyendo instrucciones para importar archivos GPX/KML.
+
+### Otras Funcionalidades
+- Eliminación segura de archivos y casos con confirmación modal.
+- Notificaciones visuales para todas las acciones importantes.
+- Soporte para multi-caso y búsqueda cruzada de vehículos.
+
+---
+
+## Instalación y Ejecución
 
 ### Prerrequisitos
+- Python 3.8+
+- Node.js 18.x o 20.x LTS (no usar 22.x)
+- npm
 
-*   Python 3.8+
-*   Node.js y npm (o yarn)
+### Instalación rápida
 
-### Instalación
-
-1.  **Clonar el repositorio:**
-    ```bash
-    git clone <URL_DEL_REPOSITORIO>
-    cd <NOMBRE_CARPETA_PROYECTO>
-    ```
-2.  **Configurar Backend (Python):**
-    *   (Opcional pero recomendado) Crear y activar un entorno virtual:
-        ```bash
-        python -m venv venv
-        # Windows
-        .\venv\Scripts\activate
-        # macOS/Linux
-        source venv/bin/activate
-        ```
-    *   Instalar dependencias Python:
-        ```bash
-        pip install -r requirements.txt
-        ```
-3.  **Configurar Frontend (Node.js):**
-    *   Navegar a la carpeta `src` (o la raíz si `package.json` está ahí):
-        ```bash
-        # cd src # Ajustar si es necesario
-        ```
-    *   Instalar dependencias Node.js:
-        ```bash
-        npm install
-        # o si usas yarn:
-        # yarn install
-        ```
-
-### Ejecución
-
-1.  **Iniciar Backend:**
-    *   Desde la carpeta raíz del proyecto (donde está `main.py`), ejecuta:
-        ```bash
-        uvicorn main:app --reload --port 8000
-        ```
-    *   La API estará disponible en `http://localhost:8000`.
-2.  **Iniciar Frontend:**
-    *   Desde la carpeta donde está `package.json` (probablemente la raíz o `src`), ejecuta:
-        ```bash
-        npm run dev
-        # o si usas yarn:
-        # yarn dev
-        ```
-    *   Abre tu navegador y ve a la dirección indicada (normalmente `http://localhost:5173` o similar).
-
-## Estructura del Proyecto (Simplificada)
-
-## Requisitos Previos
-
-- Node.js (versión 18.x o 20.x LTS)
-- npm (incluido con Node.js)
-
-## Instalación
-
-1. Clonar el repositorio:
 ```bash
-git clone [URL_DEL_REPOSITORIO]
-cd lpr-tracer
-```
-
-2. Instalar dependencias:
-```bash
+git clone <URL_DEL_REPOSITORIO>
+cd <NOMBRE_CARPETA_PROYECTO>
+# Backend
+python -m venv venv
+source venv/bin/activate  # o .\venv\Scripts\activate en Windows
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+# Frontend
 npm install
-```
-
-3. Iniciar el servidor de desarrollo:
-```bash
 npm run dev
 ```
 
+Accede a la app en `http://localhost:5173`
+
+---
+
 ## Scripts Disponibles
 
-- `npm run dev` - Inicia el servidor de desarrollo
-- `npm run build` - Construye la aplicación para producción
-- `npm run preview` - Previsualiza la versión de producción localmente
+- `npm run dev` - Servidor de desarrollo
+- `npm run build` - Build de producción
+- `npm run preview` - Previsualización local
+
+---
 
 ## Estructura del Proyecto
 
-[Descripción básica de la estructura del proyecto]
+- `/src` - Código fuente frontend (React, Mantine, Leaflet)
+- `/backend` o raíz - Código fuente backend (FastAPI, SQLAlchemy)
+- `/help` - Textos de ayuda y documentación contextual
 
-## Tecnologías Principales
-
-- React
-- Vite
-- Mantine UI
-- Leaflet (para mapas)
-- TypeScript
+---
 
 ## Notas Importantes
 
-- Asegúrate de usar Node.js versión 18.x o 20.x LTS
-- No uses Node.js versión 22.x o superior, ya que puede causar problemas de compatibilidad
+- Usa Node.js 18.x o 20.x LTS para evitar problemas de compatibilidad.
+- El sistema soporta importación de archivos Excel, GPX y KML.
+- El centro de ayuda explica cómo importar cada tipo de archivo y cómo aprovechar las funcionalidades avanzadas.
