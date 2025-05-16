@@ -35,14 +35,11 @@ class LecturaBase(BaseModel):
 
 class VehiculoBase(BaseModel):
     Matricula: str = Field(..., example="1234ABC")
-    Marca: Optional[str] = Field(None, example="Seat")
-    Modelo: Optional[str] = Field(None, example="Ibiza")
-    Color: Optional[str] = Field(None, example="Rojo")
-    Propiedad: Optional[str] = Field(None, example="Juan Pérez")
-    Alquiler: bool = Field(default=False)
-    Observaciones: Optional[str] = Field(None, example="Visto cerca del lugar")
-    Comprobado: bool = Field(default=False)
-    Sospechoso: bool = Field(default=False)
+    Marca: Optional[str] = Field(None, example="Toyota")
+    Modelo: Optional[str] = Field(None, example="Corolla")
+    Color: Optional[str] = Field(None, example="Azul")
+    Propietario: Optional[str] = Field(None, example="Juan Pérez")
+    Observaciones: Optional[str] = Field(None, example="Visto en múltiples puntos")
 
 # --- Schemas para Creación (POST) ---
 class GrupoCreate(GrupoBase):
@@ -57,17 +54,30 @@ class ArchivoExcelCreate(ArchivoExcelBase):
 class LecturaCreate(LecturaBase):
     ID_Archivo: int
 
-class VehiculoCreate(BaseModel):
-    # Solo matrícula obligatoria, el resto opcional al crear
-    Matricula: str = Field(..., example="1234ABC")
-    Marca: Optional[str] = Field(None, example="Seat")
-    Modelo: Optional[str] = Field(None, example="Ibiza")
-    Color: Optional[str] = Field(None, example="Rojo")
-    Propiedad: Optional[str] = Field(None, example="Juan Pérez")
-    Alquiler: Optional[bool] = Field(None)
-    Observaciones: Optional[str] = Field(None, example="Visto cerca del lugar")
-    Comprobado: Optional[bool] = Field(None)
-    Sospechoso: Optional[bool] = Field(None)
+class VehiculoCreate(VehiculoBase):
+    pass
+
+class VehiculoUpdate(BaseModel):
+    Marca: Optional[str] = None
+    Modelo: Optional[str] = None
+    Color: Optional[str] = None
+    Propietario: Optional[str] = None
+    Observaciones: Optional[str] = None
+
+class Vehiculo(VehiculoBase):
+    ID_Vehiculo: int
+    
+    class Config:
+        from_attributes = True
+
+# Nuevo esquema para vehículos con estadísticas
+class VehiculoWithStats(Vehiculo):
+    """Esquema de vehículo con estadísticas adicionales para optimizar consultas"""
+    num_lecturas_lpr: int = Field(0, description="Número de lecturas LPR asociadas a este vehículo")
+    num_lecturas_gps: int = Field(0, description="Número de lecturas GPS asociadas a este vehículo")
+    
+    class Config:
+        from_attributes = True
 
 # --- Actualizar Schemas Lector ---
 
