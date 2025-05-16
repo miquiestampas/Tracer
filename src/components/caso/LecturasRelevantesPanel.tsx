@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Box, LoadingOverlay, Title, Stack, Text, Button, Group, Modal, Textarea, Tooltip, ActionIcon, Checkbox, Paper, Collapse, Alert } from '@mantine/core';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Box, LoadingOverlay, Title, Stack, Text, Button, Group, Modal, Textarea, Tooltip, ActionIcon, Checkbox, Paper, Collapse, Alert, Menu, MultiSelect } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { DataTable, type DataTableProps, type DataTableColumn, type DataTableSortStatus } from 'mantine-datatable';
-import { IconStarOff, IconPencil, IconTrash, IconCar, IconX, IconRefresh } from '@tabler/icons-react';
+import { IconStarOff, IconPencil, IconTrash, IconCar, IconX, IconRefresh, IconFileExport, IconFileSpreadsheet, IconFileText, IconCamera, IconTableOptions } from '@tabler/icons-react';
 import { openConfirmModal } from '@mantine/modals';
 import dayjs from 'dayjs';
 import _ from 'lodash';
 import type { Lectura, Lector } from '../../types/data';
+import * as XLSX from 'xlsx';
+import html2canvas from 'html2canvas';
+import { saveAs } from 'file-saver';
 
 // --- NUEVA INTERFAZ DE PROPS ---
 interface LecturasRelevantesPanelProps {
@@ -34,6 +37,15 @@ interface LecturasRelevantesPanelProps {
     onRefresh: () => void | Promise<void>;
 }
 
+// --- ESTILO GLOBAL PARA EL PAGINADOR DEL DATATABLE ---
+const datatablePaginationStyle = `
+.mantine-DataTable-pagination, .mantine-DataTable-paginationRoot {
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  min-height: 0 !important;
+}
+`;
+
 function LecturasRelevantesPanel({
     lecturas,
     loading,
@@ -55,6 +67,131 @@ function LecturasRelevantesPanel({
 }: LecturasRelevantesPanelProps) {
 
     const [ayudaAbierta, setAyudaAbierta] = useState(false);
+    const [highlightedRows, setHighlightedRows] = useState<number[]>([]);
+    const [exportColumns, setExportColumns] = useState<string[]>([]);
+    const tableRef = useRef<HTMLDivElement>(null);
+
+    // Columnas disponibles para exportación
+    const availableExportColumns = useMemo(() => [
+        { value: 'Fecha_y_Hora', label: 'Fecha y Hora' },
+        { value: 'Matricula', label: 'Matrícula' },
+        { value: 'ID_Lector', label: 'ID Lector' },
+        { value: 'Carril', label: 'Carril' },
+        { value: 'relevancia.Nota', label: 'Observaciones' }
+    ], []);
+
+    // Inicializar columnas de exportación con todas las columnas
+    useEffect(() => {
+        setExportColumns(availableExportColumns.map(col => col.value));
+    }, [availableExportColumns]);
+
+    // Función para exportar a Excel
+    const exportToExcel = useCallback(() => {
+        if (!lecturas.length) return;
+
+        const selectedData = lecturas.map(lectura => {
+            const row: any = {};
+            exportColumns.forEach(col => {
+                if (col === 'Fecha_y_Hora') {
+                    row[col] = dayjs(lectura[col]).format('DD/MM/YYYY HH:mm:ss');
+                } else if (col === 'relevancia.Nota') {
+                    row['Nota'] = lectura.relevancia?.Nota || '-';
+                } else {
+                    row[col] = lectura[col] || '-';
+                }
+            });
+            return row;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(selectedData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Lecturas Relevantes');
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(data, 'lecturas_relevantes.xlsx');
+    }, [lecturas, exportColumns]);
+
+    // Función para exportar a Word
+    const exportToWord = useCallback(() => {
+        if (!lecturas.length) return;
+
+        const table = document.createElement('table');
+        table.style.borderCollapse = 'collapse';
+        table.style.width = '100%';
+
+        // Crear encabezados
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        exportColumns.forEach(col => {
+            const th = document.createElement('th');
+            th.style.border = '1px solid black';
+            th.style.padding = '8px';
+            th.textContent = availableExportColumns.find(c => c.value === col)?.label || col;
+            headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Crear filas de datos
+        const tbody = document.createElement('tbody');
+        lecturas.forEach(lectura => {
+            const tr = document.createElement('tr');
+            exportColumns.forEach(col => {
+                const td = document.createElement('td');
+                td.style.border = '1px solid black';
+                td.style.padding = '8px';
+                if (col === 'Fecha_y_Hora') {
+                    td.textContent = dayjs(lectura[col]).format('DD/MM/YYYY HH:mm:ss');
+                } else if (col === 'relevancia.Nota') {
+                    td.textContent = lectura.relevancia?.Nota || '-';
+                } else {
+                    td.textContent = lectura[col] || '-';
+                }
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+
+        const html = `
+            <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 12pt; }
+                        th, td { border: 1px solid black; padding: 8px; font-family: Arial, sans-serif; font-size: 12pt; }
+                    </style>
+                </head>
+                <body>
+                    ${table.outerHTML}
+                </body>
+            </html>
+        `;
+
+        const blob = new Blob([html], { type: 'application/msword' });
+        saveAs(blob, 'lecturas_relevantes.doc');
+    }, [lecturas, exportColumns, availableExportColumns]);
+
+    // Función para exportar como captura de pantalla
+    const exportAsScreenshot = useCallback(async () => {
+        if (!tableRef.current) return;
+
+        try {
+            const canvas = await html2canvas(tableRef.current);
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    saveAs(blob, 'lecturas_relevantes.png');
+                }
+            });
+        } catch (error) {
+            console.error('Error al generar la captura:', error);
+            notifications.show({
+                title: 'Error',
+                message: 'No se pudo generar la captura de pantalla',
+                color: 'red'
+            });
+        }
+    }, []);
 
     // --- Lógica de Selección (adaptada a props y con useCallback) ---
     const handleCheckboxChange = useCallback((id: number, checked: boolean) => {
@@ -123,7 +260,7 @@ function LecturasRelevantesPanel({
         { accessor: 'Carril', title: 'Carril', render: (r) => r.Carril || '-', sortable: true, width: 70 },
         { 
             accessor: 'relevancia.Nota',
-            title: 'Nota', 
+            title: 'Observaciones', 
             render: (r) => r.relevancia?.Nota || '-', 
             width: 200,
         },
@@ -157,13 +294,52 @@ function LecturasRelevantesPanel({
     }, [lecturas, selectedRecordIds, onEditNota, onGuardarVehiculo, onDesmarcar, handleCheckboxChange, handleSelectAll]);
 
     return (
-        <Box style={{ position: 'relative' }}>
-            <LoadingOverlay visible={loading} />
-            <Stack>
-                <Paper shadow="sm" p="md" withBorder>
+        <>
+            <style>{datatablePaginationStyle}</style>
+            <Box style={{ position: 'relative' }}>
+                <Stack style={{ marginBottom: 0, paddingBottom: 0 }}>
                     <Group justify="space-between" align="center" mb="sm">
                         <Title order={4}>Lecturas Marcadas como Relevantes ({totalRecords})</Title>
-                        <Group gap="xs"> 
+                        <Group gap="xs">
+                            <MultiSelect
+                                data={availableExportColumns}
+                                value={exportColumns}
+                                onChange={setExportColumns}
+                                placeholder="Seleccionar columnas para exportar"
+                                style={{ width: 400 }}
+                                size="xs"
+                            />
+                            <Menu shadow="md" width={200}>
+                                <Menu.Target>
+                                    <Button
+                                        variant="light"
+                                        size="xs"
+                                        leftSection={<IconFileExport size={16} />}
+                                    >
+                                        Exportar
+                                    </Button>
+                                </Menu.Target>
+                                <Menu.Dropdown>
+                                    <Menu.Item
+                                        leftSection={<IconFileSpreadsheet size={16} />}
+                                        onClick={exportToExcel}
+                                    >
+                                        Exportar a Excel
+                                    </Menu.Item>
+                                    <Menu.Item
+                                        leftSection={<IconFileText size={16} />}
+                                        onClick={exportToWord}
+                                    >
+                                        Exportar a Word
+                                    </Menu.Item>
+                                    <Menu.Item
+                                        leftSection={<IconCamera size={16} />}
+                                        onClick={exportAsScreenshot}
+                                    >
+                                        Captura de Pantalla
+                                    </Menu.Item>
+                                </Menu.Dropdown>
+                            </Menu>
                             <Button
                                 color="red"
                                 variant="light"
@@ -200,29 +376,45 @@ function LecturasRelevantesPanel({
                         <Text c="dimmed">No hay lecturas marcadas como relevantes para este caso.</Text>
                     )}
                     {totalRecords > 0 && (
-                        <DataTable<Lectura>
-                            records={sortedAndPaginatedRecords}
-                            columns={columns}
-                            totalRecords={totalRecords}
-                            recordsPerPage={pageSize}
-                            page={page}
-                            onPageChange={onPageChange}
-                            sortStatus={sortStatus}
-                            onSortStatusChange={onSortStatusChange}
-                            idAccessor="ID_Lectura"
-                            withTableBorder
-                            borderRadius="sm"
-                            withColumnBorders
-                            striped
-                            highlightOnHover
-                            minHeight={200}
-                            noRecordsText=""
-                            noRecordsIcon={<></>}
-                        />
+                        <Box ref={tableRef} style={{ paddingBottom: 0, marginBottom: 0 }}>
+                            <DataTable<Lectura>
+                                records={sortedAndPaginatedRecords}
+                                columns={columns}
+                                totalRecords={totalRecords}
+                                recordsPerPage={pageSize}
+                                page={page}
+                                onPageChange={onPageChange}
+                                sortStatus={sortStatus}
+                                onSortStatusChange={onSortStatusChange}
+                                idAccessor="ID_Lectura"
+                                withTableBorder
+                                borderRadius="sm"
+                                withColumnBorders
+                                striped
+                                highlightOnHover
+                                noRecordsText=""
+                                noRecordsIcon={<></>}
+                                rowStyle={(record: Lectura) => ({
+                                    backgroundColor: highlightedRows.includes(record.ID_Lectura) ? 'var(--mantine-color-blue-0)' : undefined
+                                })}
+                                onRowClick={({ record }: { record: Lectura }) => {
+                                    setHighlightedRows(prev => 
+                                        prev.includes(record.ID_Lectura)
+                                            ? prev.filter(id => id !== record.ID_Lectura)
+                                            : [...prev, record.ID_Lectura]
+                                    );
+                                }}
+                                styles={{
+                                    pagination: { marginBottom: 0, paddingBottom: 0 },
+                                    root: { marginBottom: 0, paddingBottom: 0 }
+                                }}
+                                fetching={loading}
+                            />
+                        </Box>
                     )}
-                </Paper>
-            </Stack>
-        </Box>
+                </Stack>
+            </Box>
+        </>
     );
 }
 
