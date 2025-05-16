@@ -312,31 +312,37 @@ function AdminPage() {
     if (!backupToRestore) return;
     setRestoringBackup(true);
     try {
-      // Descargar el archivo backup como blob
-      const response = await fetch(`/api/admin/database/backups/${backupToRestore.filename}/download`);
-      if (!response.ok) throw new Error('No se pudo descargar el backup');
-      const blob = await response.blob();
-      const file = new File([blob], backupToRestore.filename, { type: 'application/octet-stream' });
-      // Subirlo como FormData al endpoint de restauración
-      const formData = new FormData();
-      formData.append('backup_file', file);
-      const restoreResponse = await fetch('/api/admin/database/restore', {
+      const restoreResponse = await fetch('/api/admin/database/restore_from_filename', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ filename: backupToRestore.filename }),
       });
-      if (!restoreResponse.ok) throw new Error('Error al restaurar la base de datos');
+
+      if (!restoreResponse.ok) {
+        let errorDetail = 'Error al restaurar la base de datos';
+        try {
+          const errorData = await restoreResponse.json();
+          errorDetail = errorData.detail || errorDetail;
+        } catch (e) {
+          // No hacer nada si el cuerpo del error no es JSON
+        }
+        throw new Error(errorDetail);
+      }
+
       notifications.show({
         title: 'Éxito',
-        message: 'Base de datos restaurada correctamente',
+        message: 'Base de datos restaurada correctamente desde el backup seleccionado.',
         color: 'green',
       });
       await Promise.all([fetchDbStatus(), fetchBackups()]);
       setRestoreBackupModalOpen(false);
       setBackupToRestore(null);
-    } catch (error) {
+    } catch (error: any) {
       notifications.show({
         title: 'Error',
-        message: 'No se pudo restaurar la base de datos',
+        message: error.message || 'No se pudo restaurar la base de datos',
         color: 'red',
       });
     } finally {
