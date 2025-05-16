@@ -19,7 +19,9 @@ import {
     Tooltip,
     Collapse,
     SimpleGrid,
-    LoadingOverlay
+    LoadingOverlay,
+    Paper,
+    TextInput
 } from '@mantine/core';
 import { IconUpload, IconAlertCircle, IconFileSpreadsheet, IconSettings, IconCheck, IconX, IconDownload, IconTrash } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
@@ -33,14 +35,16 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ProgressOverlay } from '../components/common/ProgressOverlay';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
-const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
+const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS' | 'GPX_KML']: string[] } = {
   LPR: ['Matricula', 'Fecha', 'Hora', 'ID_Lector'],
   GPS: ['Matricula', 'Fecha', 'Hora'],
+  GPX_KML: ['Fecha', 'Hora', 'Coordenada_X', 'Coordenada_Y'],
 };
 // Campos opcionales
-const OPTIONAL_FIELDS: { [key in 'LPR' | 'GPS']: string[] } = {
+const OPTIONAL_FIELDS: { [key in 'LPR' | 'GPS' | 'GPX_KML']: string[] } = {
     LPR: ['Carril', 'Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
     GPS: ['ID_Lector', 'Sentido', 'Velocidad', 'Coordenada_X', 'Coordenada_Y'],
+    GPX_KML: ['Velocidad', 'Altitud', 'Precision'],
 };
 
 // --- NUEVO: Diccionario de Términos para Auto-Mapeo ---
@@ -78,7 +82,7 @@ function ImportarPage() {
   const [errorCasos, setErrorCasos] = useState<string | null>(null);
   const [selectedCasoId, setSelectedCasoId] = useState<string | null>(null);
   const [selectedCasoName, setSelectedCasoName] = useState<string | null>(null);
-  const [fileType, setFileType] = useState<'LPR' | 'GPS'>('LPR');
+  const [fileType, setFileType] = useState<'LPR' | 'GPS' | 'GPX_KML'>('LPR');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
   // Estados para el mapeo
@@ -103,6 +107,14 @@ function ImportarPage() {
 
   // Estado para advertencia visual de importación
   const [importWarning, setImportWarning] = useState<React.ReactNode | null>(null);
+
+  const [matriculaModalOpened, { open: openMatriculaModal, close: closeMatriculaModal }] = useDisclosure(false);
+  const [matricula, setMatricula] = useState<string>('');
+  const [processedGpxKmlData, setProcessedGpxKmlData] = useState<any[]>([]);
+
+  // --- NUEVO: Estado para el modal de confirmación de eliminación ---
+  const [deleteModalOpened, setDeleteModalOpened] = useState(false);
+  const [archivoToDelete, setArchivoToDelete] = useState<ArchivoExcel | null>(null);
 
   // Cargar casos para el selector
   useEffect(() => {
@@ -176,81 +188,206 @@ function ImportarPage() {
     }
   }, [selectedCasoId, fetchArchivos]);
 
+  // --- NUEVO: Función para procesar archivos GPX/KML ---
+  const processGpxKmlFile = async (file: File): Promise<{ headers: string[], data: any[] }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = async (e) => {
+        try {
+          const content = e.target?.result as string;
+          if (!content) throw new Error('No se pudo leer el archivo');
+
+          let points: any[] = [];
+          
+          if (file.name.toLowerCase().endsWith('.gpx')) {
+            // Procesar archivo GPX
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(content, 'text/xml');
+            const trackPoints = xmlDoc.getElementsByTagName('trkpt');
+            
+            points = Array.from(trackPoints).map(point => {
+              const lat = parseFloat(point.getAttribute('lat') || '0');
+              const lon = parseFloat(point.getAttribute('lon') || '0');
+              const time = point.getElementsByTagName('time')[0]?.textContent || '';
+              const ele = point.getElementsByTagName('ele')[0]?.textContent || '';
+              const speed = point.getElementsByTagName('speed')[0]?.textContent || '';
+              
+              const date = new Date(time);
+              
+              return {
+                Fecha: date.toISOString().split('T')[0],
+                Hora: date.toTimeString().split(' ')[0],
+                Coordenada_X: lon,
+                Coordenada_Y: lat,
+                Altitud: ele ? parseFloat(ele) : null,
+                Velocidad: speed ? parseFloat(speed) : null
+              };
+            });
+          } else if (file.name.toLowerCase().endsWith('.kml')) {
+            // Procesar archivo KML
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(content, 'text/xml');
+            const coordinates = xmlDoc.getElementsByTagName('coordinates')[0]?.textContent || '';
+            
+            points = coordinates.split(' ').filter(coord => coord.trim()).map(coord => {
+              const [lon, lat, alt] = coord.split(',').map(Number);
+              const date = new Date(); // KML no suele incluir timestamp, usamos fecha actual
+              
+              return {
+                Fecha: date.toISOString().split('T')[0],
+                Hora: date.toTimeString().split(' ')[0],
+                Coordenada_X: lon,
+                Coordenada_Y: lat,
+                Altitud: alt || null
+              };
+            });
+          }
+
+          if (points.length === 0) {
+            throw new Error('No se encontraron puntos en el archivo');
+          }
+
+          // Crear cabeceras basadas en los campos disponibles
+          const headers = Object.keys(points[0]);
+          
+          resolve({
+            headers,
+            data: points
+          });
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      reader.onerror = () => {
+        reject(new Error('Error al leer el archivo'));
+      };
+
+      reader.readAsText(file);
+    });
+  };
+
   // --- MODIFICADO: Leer cabeceras y aplicar auto-mapeo ---
   const readExcelHeaders = useCallback(async (file: File) => {
     setIsReadingHeaders(true);
     setExcelHeaders([]);
     setColumnMapping({}); 
     setMappingError(null);
-    const reader = new FileReader();
 
-    reader.onload = (e) => {
-      try {
-        const data = e.target?.result;
-        if (!data) throw new Error('No se pudo leer el archivo');
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    try {
+      if (fileType === 'GPX_KML') {
+        const { headers, data } = await processGpxKmlFile(file);
+        setExcelHeaders(headers);
+        
+        // Auto-mapeo para GPX/KML
+        const initialMapping: ColumnMapping = {};
+        const allFields = [...REQUIRED_FIELDS[fileType], ...OPTIONAL_FIELDS[fileType]];
+        
+        allFields.forEach(field => {
+          initialMapping[field] = headers.find(h => h === field) || null;
+        });
+        
+        setColumnMapping(initialMapping);
+        
+        // Guardar los datos procesados para la subida
+        setProcessedGpxKmlData(data);
+        
+        notifications.show({ 
+          title: 'Archivo Procesado', 
+          message: `Se procesaron ${data.length} puntos del archivo ${file.name.toLowerCase().endsWith('.gpx') ? 'GPX' : 'KML'}.`, 
+          color: 'blue', 
+          autoClose: 5000 
+        });
 
-        if (jsonData && jsonData.length > 0) {
-          const headers = jsonData[0]
-                            .map(header => String(header || '').trim())
-                            .filter(header => header.length > 0);
-          setExcelHeaders(headers);
+        // Abrir modal para solicitar matrícula
+        openMatriculaModal();
+      } else {
+        // Lógica existente para Excel
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = e.target?.result;
+            if (!data) throw new Error('No se pudo leer el archivo');
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-          // --- Lógica de Auto-Mapeo ---
-          const initialMapping: ColumnMapping = {};
-          const allFields = [...REQUIRED_FIELDS[fileType], ...OPTIONAL_FIELDS[fileType]];
-          const lowercaseHeaders = headers.map(h => h.toLowerCase());
-          const mappedHeaders = new Set<string>(); // Para evitar mapear la misma cabecera a múltiples campos
+            if (jsonData && jsonData.length > 0) {
+              const headers = jsonData[0]
+                                .map(header => String(header || '').trim())
+                                .filter(header => header.length > 0);
+              setExcelHeaders(headers);
 
-          allFields.forEach(field => {
-            initialMapping[field] = null; // Inicializar a null
-            const terms = AUTO_MAP_TERMS[field];
-            if (terms) {
-              // Buscar la primera cabecera que coincida y no esté ya mapeada
-              for (const header of headers) {
-                  const lowerHeader = header.toLowerCase();
-                  if (terms.includes(lowerHeader) && !mappedHeaders.has(lowerHeader)) {
-                      initialMapping[field] = header; // Usar el nombre original de la cabecera
+              // --- Lógica de Auto-Mapeo ---
+              const initialMapping: ColumnMapping = {};
+              const allFields = [...REQUIRED_FIELDS[fileType], ...OPTIONAL_FIELDS[fileType]];
+              const lowercaseHeaders = headers.map(h => h.toLowerCase());
+              const mappedHeaders = new Set<string>();
+
+              allFields.forEach(field => {
+                initialMapping[field] = null;
+                const terms = AUTO_MAP_TERMS[field];
+                if (terms) {
+                  for (const header of headers) {
+                    const lowerHeader = header.toLowerCase();
+                    if (terms.includes(lowerHeader) && !mappedHeaders.has(lowerHeader)) {
+                      initialMapping[field] = header;
                       mappedHeaders.add(lowerHeader);
-                      break; // Pasar al siguiente campo una vez encontrado
+                      break;
+                    }
                   }
-              }
+                }
+              });
+
+              setColumnMapping(initialMapping);
+              notifications.show({ 
+                title: 'Cabeceras Leídas', 
+                message: 'Se intentó un mapeo automático. Revisa la configuración.', 
+                color: 'blue', 
+                autoClose: 5000 
+              });
+            } else {
+              throw new Error('El archivo Excel está vacío o no tiene cabeceras.');
             }
-          });
-          // --- Fin Auto-Mapeo ---
-
-          setColumnMapping(initialMapping);
-          notifications.show({ 
-              title: 'Cabeceras Leídas', 
-              message: 'Se intentó un mapeo automático. Revisa la configuración.', 
-              color: 'blue', 
-              autoClose: 5000 
+          } catch (error: any) {
+            setMappingError(`Error al leer las cabeceras: ${error.message}`);
+            notifications.show({ 
+              title: 'Error de Lectura', 
+              message: `No se pudieron leer las cabeceras: ${error.message}`, 
+              color: 'red' 
             });
+            setSelectedFile(null);
+          } finally {
+            setIsReadingHeaders(false);
+          }
+        };
 
-        } else {
-          throw new Error('El archivo Excel está vacío o no tiene cabeceras.');
-        }
-      } catch (error: any) {
-        setMappingError(`Error al leer las cabeceras: ${error.message}`)
-        notifications.show({ title: 'Error de Lectura', message: `No se pudieron leer las cabeceras del Excel: ${error.message}`, color: 'red' });
-        setSelectedFile(null); 
-      } finally {
-        setIsReadingHeaders(false);
+        reader.onerror = () => {
+          setMappingError('Error al leer el archivo.');
+          notifications.show({ 
+            title: 'Error de Archivo', 
+            message: 'Ocurrió un error al intentar leer el archivo seleccionado.', 
+            color: 'red' 
+          });
+          setSelectedFile(null);
+          setIsReadingHeaders(false);
+        };
+
+        reader.readAsArrayBuffer(file);
       }
-    };
-
-    reader.onerror = (error) => {
-        setMappingError('Error al leer el archivo.')
-        notifications.show({ title: 'Error de Archivo', message: 'Ocurrió un error al intentar leer el archivo seleccionado.', color: 'red' });
-        setSelectedFile(null);
-        setIsReadingHeaders(false);
-    };
-
-    reader.readAsArrayBuffer(file);
-  }, [fileType]); // Asegurar que fileType está en dependencias para que se re-evalúe si cambia
+    } catch (error: any) {
+      setMappingError(`Error al procesar el archivo: ${error.message}`);
+      notifications.show({ 
+        title: 'Error de Procesamiento', 
+        message: error.message, 
+        color: 'red' 
+      });
+      setSelectedFile(null);
+      setIsReadingHeaders(false);
+    }
+  }, [fileType, openMatriculaModal]);
 
   // Efecto para leer cabeceras cuando cambia el archivo
   useEffect(() => {
@@ -299,172 +436,221 @@ function ImportarPage() {
     return REQUIRED_FIELDS[fileType].every(field => !!columnMapping[field]);
   }
 
-  // Manejar el envío del formulario de importación
+  // --- NUEVO: Función para procesar datos con matrícula ---
+  const processDataWithMatricula = (data: any[], matricula: string) => {
+    return data.map(point => ({
+      ...point,
+      Matricula: matricula
+    }));
+  };
+
+  // --- MODIFICADO: Manejar el envío del formulario de importación ---
   const handleImport = async () => {
     if (!selectedCasoId || !selectedFile) {
       notifications.show({ title: 'Faltan datos', message: 'Selecciona un caso y un archivo.', color: 'orange' });
+      setIsUploading(false);
+      setIsReadingHeaders(false);
       return;
     }
     if (!isMappingComplete()) {
-        notifications.show({ title: 'Mapeo Incompleto', message: 'Configura el mapeo de columnas antes de importar.', color: 'orange' });
-        openMappingModal();
-        return;
+      notifications.show({ title: 'Mapeo Incompleto', message: 'Configura el mapeo de columnas antes de importar.', color: 'orange' });
+      openMappingModal();
+      setIsUploading(false);
+      setIsReadingHeaders(false);
+      return;
+    }
+
+    if (fileType === 'GPX_KML' && !matricula) {
+      openMatriculaModal();
+      setIsUploading(false);
+      setIsReadingHeaders(false);
+      return;
     }
 
     setIsUploading(true);
     setUploadError(null);
 
     try {
-        const finalMapping = Object.entries(columnMapping)
-            .filter(([_, value]) => value !== null)
-            .reduce((obj, [key, value]) => {
-                obj[key] = value as string;
-                return obj;
-            }, {} as { [key: string]: string });
+      const finalMapping = Object.entries(columnMapping)
+        .filter(([_, value]) => value !== null)
+        .reduce((obj, [key, value]) => {
+          obj[key] = value as string;
+          return obj;
+        }, {} as { [key: string]: string });
 
-        const resultado: UploadResponse = await uploadArchivoExcel(
-            selectedCasoId,
-            fileType,
-            selectedFile,
-            JSON.stringify(finalMapping)
+      let resultado: UploadResponse;
+
+      if (fileType === 'GPX_KML') {
+        // Procesar archivo GPX/KML con matrícula
+        const dataWithMatricula = processDataWithMatricula(processedGpxKmlData, matricula);
+        
+        // Convertir los datos a formato Excel
+        const ws = XLSX.utils.json_to_sheet(dataWithMatricula);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Datos");
+        
+        // Convertir a blob
+        const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const processedFile = new File([blob], selectedFile.name.replace(/\.(gpx|kml)$/i, '.xlsx'), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        // Subir el archivo procesado
+        resultado = await uploadArchivoExcel(
+          selectedCasoId,
+          'GPS', // Usar tipo GPS para los datos procesados
+          processedFile,
+          JSON.stringify(finalMapping)
         );
+      } else {
+        // Lógica existente para Excel
+        resultado = await uploadArchivoExcel(
+          selectedCasoId,
+          fileType,
+          selectedFile,
+          JSON.stringify(finalMapping)
+        );
+      }
 
-        // En handleImport, reemplazar notificación flotante por setImportWarning
-        if (resultado.total_registros === 0 && resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0) {
-          setImportWarning(
-            <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
-              <Text size="sm" fw={500} c="yellow.8">Todos los registros del archivo ya existían en el sistema y fueron ignorados como duplicados.</Text>
-              <Text size="sm" mt="xs">Ejemplos de duplicados:</Text>
-              <Text size="xs" component="ul" mt="xs">
-                {resultado.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
-                  <li key={index}>{duplicado}</li>
-                ))}
-                {resultado.lecturas_duplicadas.length > 5 && (
-                  <li>...y {resultado.lecturas_duplicadas.length - 5} más</li>
-                )}
-              </Text>
-            </Alert>
-          );
-        } else if (resultado.total_registros === 0) {
-          setImportWarning(
-            <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
-              No se importaron registros. Esto puede deberse a que el archivo está vacío, los datos no son válidos o todos los registros ya existían previamente (duplicados).
-            </Alert>
-          );
-        } else {
+      // En handleImport, reemplazar notificación flotante por setImportWarning
+      if (resultado.total_registros === 0 && resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0) {
+        setImportWarning(
+          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
+            <Text size="sm" fw={500} c="yellow.8">Todos los registros del archivo ya existían en el sistema y fueron ignorados como duplicados.</Text>
+            <Text size="sm" mt="xs">Ejemplos de duplicados:</Text>
+            <Text size="xs" component="ul" mt="xs">
+              {resultado.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
+                <li key={index}>{duplicado}</li>
+              ))}
+              {resultado.lecturas_duplicadas.length > 5 && (
+                <li>...y {resultado.lecturas_duplicadas.length - 5} más</li>
+              )}
+            </Text>
+          </Alert>
+        );
+      } else if (resultado.total_registros === 0) {
+        setImportWarning(
+          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
+            No se importaron registros. Esto puede deberse a que el archivo está vacío, los datos no son válidos o todos los registros ya existían previamente (duplicados).
+          </Alert>
+        );
+      } else {
         notifications.show({
             title: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'Importación con Advertencias' : 'Éxito',
-            message: (
-              <Box>
-                <Text size="sm">Archivo "{resultado.archivo.Nombre_del_Archivo}" importado correctamente</Text>
-                <Text size="sm">Total de registros importados: {resultado.total_registros}</Text>
-                {resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 && (
+          message: (
+            <Box>
+              <Text size="sm">Archivo "{resultado.archivo.Nombre_del_Archivo}" importado correctamente</Text>
+              <Text size="sm">Total de registros importados: {resultado.total_registros}</Text>
+              {resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 && (
                   <Alert color="yellow" title="¡Atención! Se encontraron lecturas duplicadas" mt="xs" icon={<IconAlertCircle size={16} />}> 
                     <Text size="sm" fw={500}>Se ignoraron {resultado.lecturas_duplicadas.length} lecturas duplicadas:</Text>
-                    <Text size="xs" component="ul" mt="xs">
+                  <Text size="xs" component="ul" mt="xs">
                       {resultado.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
                         <li key={index}>{duplicado}</li>
                       ))}
                       {resultado.lecturas_duplicadas.length > 5 && (
                         <li>...y {resultado.lecturas_duplicadas.length - 5} más</li>
                       )}
-                    </Text>
+                  </Text>
                     <Text size="xs" mt="xs" c="dimmed">Estas lecturas ya existían en el sistema y no fueron importadas.</Text>
-                  </Alert>
-                )}
-              </Box>
-            ),
-            color: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
-            autoClose: false
+                </Alert>
+              )}
+            </Box>
+          ),
+          color: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
+          autoClose: false
         });
-        }
+      }
 
-        // --- Notificación de Nuevos Lectores --- 
-        if (resultado.nuevos_lectores_creados && resultado.nuevos_lectores_creados.length > 0) {
-            const numNuevos = resultado.nuevos_lectores_creados.length;
-            notifications.show({
-                title: 'Lectores Nuevos Creados',
-                message: (
-                    <Box>
-                        <Text size="sm">Se crearon automáticamente {numNuevos} lectores nuevos.</Text>
-                        <Text size="sm">Se recomienda revisar y completar su información.</Text>
-                        <Button 
-                            size="xs" 
-                            variant="light" 
-                            mt="xs" 
-                            onClick={() => navigate('/lectores')} // O la ruta correcta
-                        >
-                            Ir a Gestión de Lectores
-                        </Button>
-                    </Box>
-                ),
-                color: 'blue',
-                autoClose: 10000, // Dar más tiempo para leer y hacer clic
-                withCloseButton: true,
-            });
-        }
-        // --- Fin Notificación --- 
+      // --- Notificación de Nuevos Lectores --- 
+      if (resultado.nuevos_lectores_creados && resultado.nuevos_lectores_creados.length > 0) {
+          const numNuevos = resultado.nuevos_lectores_creados.length;
+          notifications.show({
+              title: 'Lectores Nuevos Creados',
+              message: (
+                  <Box>
+                      <Text size="sm">Se crearon automáticamente {numNuevos} lectores nuevos.</Text>
+                      <Text size="sm">Se recomienda revisar y completar su información.</Text>
+                      <Button 
+                          size="xs" 
+                          variant="light" 
+                          mt="xs" 
+                          onClick={() => navigate('/lectores')} // O la ruta correcta
+                      >
+                          Ir a Gestión de Lectores
+                      </Button>
+                  </Box>
+              ),
+              color: 'blue',
+              autoClose: 10000, // Dar más tiempo para leer y hacer clic
+              withCloseButton: true,
+          });
+      }
+      // --- Fin Notificación --- 
 
-        // Limpiar formulario
-        setSelectedFile(null);
-        setExcelHeaders([]);
-        setColumnMapping({});
+      // Limpiar formulario
+      setSelectedFile(null);
+      setExcelHeaders([]);
+      setColumnMapping({});
 
-        // Recargar lista de archivos
-        if (selectedCasoId) {
-            await fetchArchivos(selectedCasoId);
-        }
+      // Recargar lista de archivos
+      if (selectedCasoId) {
+          await fetchArchivos(selectedCasoId);
+      }
 
     } catch (err: any) {
-        let message = 'Error al importar el archivo.';
-        let detail = err.response?.data?.detail; // Obtener el detalle
+      let message = 'Error al importar el archivo.';
+      let detail = err.response?.data?.detail; // Obtener el detalle
 
-        console.error("Error completo recibido:", err.response || err); // Loguear el error completo en consola del navegador
+      console.error("Error completo recibido:", err.response || err); // Loguear el error completo en consola del navegador
 
-        if (detail) {
-            // Intentar formatear el detalle, sea string, objeto o array
-            try {
-                if (typeof detail === 'string') {
-                    message = `${message} Detalle: ${detail}`;
-                } else {
-                    // Convertir objeto/array a JSON string formateado
-                    message = `${message} Detalle: \n${JSON.stringify(detail, null, 2)}`;
-                }
-            } catch (jsonError) {
-                message = `${message} (No se pudo formatear detalle del error)`;
-            }
-        } else if (err.message) {
-            message = `${message} Mensaje: ${err.message}`;
-        }
-        // Limitar longitud del mensaje para que quepa en el Alert
-        if (message.length > 500) {
-            message = message.substring(0, 497) + "...";
-        }
-        setUploadError(message);
+      if (detail) {
+          // Intentar formatear el detalle, sea string, objeto o array
+          try {
+              if (typeof detail === 'string') {
+                  message = `${message} Detalle: ${detail}`;
+              } else {
+                  // Convertir objeto/array a JSON string formateado
+                  message = `${message} Detalle: \n${JSON.stringify(detail, null, 2)}`;
+              }
+          } catch (jsonError) {
+              message = `${message} (No se pudo formatear detalle del error)`;
+          }
+      } else if (err.message) {
+          message = `${message} Mensaje: ${err.message}`;
+      }
+      // Limitar longitud del mensaje para que quepa en el Alert
+      if (message.length > 500) {
+          message = message.substring(0, 497) + "...";
+      }
+      setUploadError(message);
     } finally {
       setIsUploading(false);
+      setIsReadingHeaders(false);
     }
   };
 
   // --- NUEVO: Manejar la eliminación de un archivo ---
   const handleDeleteArchivo = async (archivoId: number) => {
-    // Pedir confirmación
-    if (!window.confirm(`¿Estás seguro de que quieres eliminar el archivo ID ${archivoId} y todas sus lecturas asociadas? Esta acción no se puede deshacer.`)) {
-      return;
-    }
+    // Buscar el archivo a eliminar
+    const archivo = archivosList.find(a => a.ID_Archivo === archivoId) || null;
+    setArchivoToDelete(archivo);
+    setDeleteModalOpened(true);
+  };
 
-    setDeletingArchivoId(archivoId); // Mostrar indicador de carga
+  // --- NUEVO: Confirmar eliminación ---
+  const confirmDeleteArchivo = async () => {
+    if (!archivoToDelete) return;
+    setDeletingArchivoId(archivoToDelete.ID_Archivo); // Mostrar indicador de carga
+    setDeleteModalOpened(false);
     try {
-      await deleteArchivo(archivoId);
+      await deleteArchivo(archivoToDelete.ID_Archivo);
       notifications.show({
         title: 'Archivo Eliminado',
-        message: `El archivo ID ${archivoId} ha sido eliminado correctamente.`,
+        message: `El archivo ID ${archivoToDelete.ID_Archivo} ha sido eliminado correctamente.`,
         color: 'teal',
         icon: <IconCheck size={18} />
       });
-      // Actualizar la lista de archivos localmente para reflejar la eliminación
-      setArchivosList(prevList => prevList.filter(archivo => archivo.ID_Archivo !== archivoId));
-      
+      setArchivosList(prevList => prevList.filter(archivo => archivo.ID_Archivo !== archivoToDelete.ID_Archivo));
     } catch (err: any) {
       console.error("Error al eliminar archivo:", err);
       notifications.show({
@@ -474,123 +660,8 @@ function ImportarPage() {
         icon: <IconAlertCircle />
       });
     } finally {
-      setDeletingArchivoId(null); // Ocultar indicador de carga
-    }
-  };
-
-  // Subir el archivo al backend
-  const handleUpload = async () => {
-    if (!selectedFile || !selectedCasoId || Object.keys(columnMapping).length === 0) {
-      notifications.show({
-        title: 'Faltan Datos',
-        message: 'Selecciona un caso, un archivo y configura el mapeo de columnas.',
-        color: 'orange'
-      });
-      return;
-    }
-
-    // Validar mapeo antes de subir
-    const missingMappings = REQUIRED_FIELDS[fileType].filter(field => !columnMapping[field]);
-    if (missingMappings.length > 0) {
-        notifications.show({
-            title: 'Mapeo Incompleto',
-            message: `Completa el mapeo para los campos requeridos: ${missingMappings.join(', ')}`,
-            color: 'orange'
-        });
-        return;
-    }
-
-    // Convertir el mapeo a JSON string para enviarlo
-    const mappingJson = JSON.stringify(columnMapping);
-
-    setIsUploading(true);
-    setUploadError(null);
-
-    try {
-      const response = await uploadArchivoExcel(
-        selectedCasoId,
-        fileType,
-        selectedFile,
-        mappingJson
-      );
-      
-      // Mostrar advertencia visual de importación (igual que en handleImport)
-      if (response.total_registros === 0 && response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0) {
-        setImportWarning(
-          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
-            <Text size="sm" fw={500} c="yellow.8">Todos los registros del archivo ya existían en el sistema y fueron ignorados como duplicados.</Text>
-            <Text size="sm" mt="xs">Ejemplos de duplicados:</Text>
-            <Text size="xs" component="ul" mt="xs">
-              {response.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
-                <li key={index}>{duplicado}</li>
-              ))}
-              {response.lecturas_duplicadas.length > 5 && (
-                <li>...y {response.lecturas_duplicadas.length - 5} más</li>
-              )}
-            </Text>
-          </Alert>
-        );
-      } else if (response.total_registros === 0) {
-        setImportWarning(
-          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
-            No se importaron registros. Esto puede deberse a que el archivo está vacío, los datos no son válidos o todos los registros ya existían previamente (duplicados).
-          </Alert>
-        );
-      } else {
-        setImportWarning(null);
-      notifications.show({
-          title: response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 ? 'Importación con Advertencias' : 'Éxito',
-        message: (
-          <Box>
-            <Text size="sm">Archivo "{response.archivo.Nombre_del_Archivo}" importado correctamente</Text>
-            <Text size="sm">Total de registros importados: {response.total_registros}</Text>
-            {response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 && (
-                <Alert color="yellow" title="¡Atención! Se encontraron lecturas duplicadas" mt="xs" icon={<IconAlertCircle size={16} />}> 
-                  <Text size="sm" fw={500}>Se ignoraron {response.lecturas_duplicadas.length} lecturas duplicadas:</Text>
-                <Text size="xs" component="ul" mt="xs">
-                    {response.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
-                    <li key={index}>{duplicado}</li>
-                  ))}
-                    {response.lecturas_duplicadas.length > 5 && (
-                      <li>...y {response.lecturas_duplicadas.length - 5} más</li>
-                    )}
-                </Text>
-                  <Text size="xs" mt="xs" c="dimmed">Estas lecturas ya existían en el sistema y no fueron importadas.</Text>
-              </Alert>
-            )}
-          </Box>
-        ),
-          color: response.lecturas_duplicadas && response.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
-        autoClose: false
-      });
-        // Limpiar el formulario solo si la importación fue exitosa
-      setSelectedFile(null);
-      setExcelHeaders([]);
-      setColumnMapping({});
-      // Recargar la lista de archivos
-      fetchArchivos(selectedCasoId);
-      }
-    } catch (error: any) {
-      console.error('Error al subir el archivo:', error);
-      setUploadError(error instanceof Error ? error.message : 'Error al subir el archivo');
-      
-      // Mostrar notificación de error específica para archivos duplicados
-      if (error.response?.data?.detail?.includes('Ya existe un archivo con el nombre')) {
-        notifications.show({
-          title: 'Archivo Duplicado',
-          message: error.response.data.detail,
-          color: 'red',
-          icon: <IconAlertCircle />
-        });
-      } else {
-        notifications.show({
-          title: 'Error',
-          message: 'No se pudo subir el archivo. Por favor, intenta de nuevo.',
-          color: 'red'
-        });
-      }
-    } finally {
-      setIsUploading(false);
+      setDeletingArchivoId(null);
+      setArchivoToDelete(null);
     }
   };
 
@@ -604,8 +675,8 @@ function ImportarPage() {
     <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
       <Title order={2} mb="xl">Importar Datos desde Excel</Title>
       
-      {/* Overlay global de carga */}
-      {(isUploading || isReadingHeaders) && (
+      {/* Overlay global de carga - Solo mostrar si no está abierto el modal de matrícula */}
+      {(isUploading || isReadingHeaders) && !matriculaModalOpened && (
         <div style={{
           position: 'absolute',
           top: 0,
@@ -642,188 +713,118 @@ function ImportarPage() {
         </div>
       )}
 
-      {/* Formulario de importación principal */}
-      <Stack gap="lg">
-        {/* Selector de Caso y botón Ir al Caso */}
-        <Group align="flex-end" justify="space-between" mb="md">
-          <Box style={{ flex: 1 }}>
-            <Select
-              label="Selecciona un Caso"
-              placeholder="Elige el caso al que importar el archivo"
-              data={casosList}
-              value={selectedCasoId}
-              onChange={(value) => {
-                setSelectedCasoId(value);
-                // --- Buscar y guardar el nombre del caso ---
-                const selectedOption = casosList.find(option => option.value === value);
-                setSelectedCasoName(selectedOption ? selectedOption.label.split(' - ')[1].split(' (')[0] : null);
-                // --- Fin Buscar y guardar el nombre ---
-                // Limpiar errores y estado del archivo al cambiar de caso
-                setSelectedFile(null);
-                setExcelHeaders([]);
-                setColumnMapping({});
-                setUploadError(null);
-                setMappingError(null);
-              }}
-              searchable
-              nothingFoundMessage="No se encontraron casos"
-              disabled={loadingCasos || isUploading}
-              error={errorCasos}
-              required
-            />
-          </Box>
-          <Button
-            leftSection={<IconFileSpreadsheet size={18} />}
-            onClick={() => navigate(`/casos/detalle/${selectedCasoId}`)}
-            disabled={!selectedCasoId}
-            variant="filled"
-            color="#234be7"
-            style={{ minWidth: 160 }}
+      <Paper shadow="sm" p="md" withBorder>
+        {/* Formulario de importación principal */}
+        <Stack gap="lg">
+          {/* Selector de Caso y botón Ir al Caso */}
+          <Group align="flex-end" justify="space-between" mb="md">
+            <Box style={{ flex: 1 }}>
+              <Select
+                label="Selecciona un Caso"
+                placeholder="Elige el caso al que importar el archivo"
+                data={casosList}
+                value={selectedCasoId}
+                onChange={(value) => {
+                  setSelectedCasoId(value);
+                  // --- Buscar y guardar el nombre del caso ---
+                  const selectedOption = casosList.find(option => option.value === value);
+                  setSelectedCasoName(selectedOption ? selectedOption.label.split(' - ')[1].split(' (')[0] : null);
+                  // --- Fin Buscar y guardar el nombre ---
+                  // Limpiar errores y estado del archivo al cambiar de caso
+                  setSelectedFile(null);
+                  setExcelHeaders([]);
+                  setColumnMapping({});
+                  setUploadError(null);
+                  setMappingError(null);
+                }}
+                searchable
+                nothingFoundMessage="No se encontraron casos"
+                disabled={loadingCasos || isUploading}
+                error={errorCasos}
+                required
+              />
+            </Box>
+            <Button
+              leftSection={<IconFileSpreadsheet size={18} />}
+              onClick={() => navigate(`/casos/detalle/${selectedCasoId}`)}
+              disabled={!selectedCasoId}
+              variant="filled"
+              color="#234be7"
+              style={{ minWidth: 160 }}
+            >
+              Ir al Caso
+            </Button>
+          </Group>
+
+          {/* Tipo de Archivo */}
+          <Radio.Group
+            name="fileType"
+            label="Tipo de Archivo a Importar"
+            value={fileType}
+            onChange={(value) => setFileType(value as 'LPR' | 'GPS' | 'GPX_KML')}
+            required
+            mb="md"
           >
-            Ir al Caso
+            <Group mt="xs">
+              <Radio value="LPR" label="Datos LPR" disabled={isUploading || isReadingHeaders} />
+              <Radio value="GPS" label="Datos GPS" disabled={isUploading || isReadingHeaders} />
+              <Radio value="GPX_KML" label="Archivo GPX/KML" disabled={isUploading || isReadingHeaders} />
+            </Group>
+          </Radio.Group>
+
+          {/* Input de Archivo */}
+          <FileInput
+            label="Archivo"
+            placeholder={
+              fileType === 'GPX_KML' 
+                ? "Selecciona o arrastra un archivo (.gpx, .kml)" 
+                : "Selecciona o arrastra un archivo (.xlsx, .xls)"
+            }
+            leftSection={<IconFileSpreadsheet size={rem(18)} />}
+            value={selectedFile}
+            onChange={setSelectedFile}
+            accept={fileType === 'GPX_KML' ? ".gpx,.kml" : ".xlsx,.xls"}
+            disabled={!selectedCasoId || isUploading || isReadingHeaders}
+            clearable
+            required
+          />
+
+          {/* Botón Configurar Mapeo */}
+          <Button
+              leftSection={<IconSettings size={18} />}
+              onClick={openMappingModal}
+              disabled={!selectedFile || isUploading || isReadingHeaders}
+              variant="outline"
+              mt="xs"
+          >
+              Configurar Mapeo de Columnas
           </Button>
-        </Group>
 
-        {/* Tipo de Archivo */}
-        <Radio.Group
-          name="fileType"
-          label="Tipo de Archivo a Importar"
-          value={fileType}
-          onChange={(value) => setFileType(value as 'LPR' | 'GPS')}
-          required
-          mb="md"
-        >
-          <Group mt="xs">
-            <Radio value="LPR" label="Datos LPR" disabled={isUploading || isReadingHeaders} />
-            <Radio value="GPS" label="Datos GPS" disabled={isUploading || isReadingHeaders} />
-          </Group>
-        </Radio.Group>
+          {/* Alerta de error de mapeo */}
+          {mappingError && <Alert title="Error de Lectura" color="red" icon={<IconAlertCircle />}>{mappingError}</Alert>}
 
-        {/* Input de Archivo */}
-        <FileInput
-          label="Archivo Excel"
-          placeholder={selectedFile ? selectedFile.name : "Selecciona o arrastra un archivo (.xlsx, .xls)"}
-          leftSection={<IconFileSpreadsheet size={rem(18)} />}
-          value={selectedFile}
-          onChange={setSelectedFile}
-          accept=".xlsx, .xls"
-          disabled={!selectedCasoId || isUploading || isReadingHeaders}
-          clearable
-          required
-        />
+          {/* Botón Importar */}
+          <Button
+            leftSection={<IconUpload size={18} />}
+            onClick={handleImport}
+            loading={isUploading}
+            disabled={!selectedCasoId || !selectedFile || !isMappingComplete() || isReadingHeaders}
+            mt="lg"
+            fullWidth
+          >
+            Importar Archivo
+          </Button>
 
-        {/* Botón Configurar Mapeo */}
-        <Button
-            leftSection={<IconSettings size={18} />}
-            onClick={openMappingModal}
-            disabled={!selectedFile || isUploading || isReadingHeaders}
-            variant="outline"
-            mt="xs"
-        >
-            Configurar Mapeo de Columnas
-        </Button>
+          {/* Alerta de error de subida */}
+          {uploadError && <Alert title="Error de Subida" color="red" icon={<IconAlertCircle />}>{uploadError}</Alert>}
 
-         {/* Alerta de error de mapeo */}
-        {mappingError && <Alert title="Error de Lectura" color="red" icon={<IconAlertCircle />}>{mappingError}</Alert>}
-
-
-        {/* Botón Importar */}
-        <Button
-          leftSection={<IconUpload size={18} />}
-          onClick={handleImport}
-          loading={isUploading}
-          disabled={!selectedCasoId || !selectedFile || !isMappingComplete() || isReadingHeaders}
-          mt="lg"
-          fullWidth
-        >
-          Importar Archivo
-        </Button>
-
-        {/* Alerta de error de subida */}
-        {uploadError && <Alert title="Error de Importación" color="red" withCloseButton onClose={() => setUploadError(null)} icon={<IconAlertCircle />}>{uploadError}</Alert>}
-
-        {/* Alerta de advertencia de importación */}
-        {importWarning}
-      </Stack>
-
-      {/* Modal de Mapeo */}
-      <Modal
-        opened={mappingModalOpened}
-        onClose={closeMappingModal}
-        title={`Mapeo de Columnas para Archivo ${fileType}`}
-        size="lg"
-        centered
-        overlayProps={{
-            backgroundOpacity: 0.55,
-            blur: 3,
-        }}
-      >
-        <Stack>
-          <Text size="sm" mb="md">
-            Asocia las columnas de tu archivo Excel con los campos del sistema.
-            Los campos marcados con * son obligatorios.
-          </Text>
-
-          <SimpleGrid cols={2} spacing="xl">
-            {/* Columna Izquierda: Campos Requeridos */}
-            <Box>
-              <Text fw={500} mb="xs" c="red">Campos Requeridos *</Text>
-              {REQUIRED_FIELDS[fileType].map((field) => (
-                <Select
-                  key={field}
-                  label={field}
-                  placeholder="Seleccionar columna"
-                  data={excelHeaders}
-                  value={columnMapping[field] || null}
-                  onChange={(value) => handleMappingChange(field, value)}
-                  required
-                  mb="xs"
-                />
-              ))}
-            </Box>
-
-            {/* Columna Derecha: Campos Opcionales */}
-            <Box>
-              <Text fw={500} mb="xs" c="dimmed">Campos Opcionales</Text>
-              {OPTIONAL_FIELDS[fileType].map((field) => (
-                <Select
-                  key={field}
-                  label={field}
-                  placeholder="Seleccionar columna"
-                  data={excelHeaders}
-                  value={columnMapping[field] || null}
-                  onChange={(value) => handleMappingChange(field, value)}
-                  clearable
-                  mb="xs"
-                />
-              ))}
-            </Box>
-          </SimpleGrid>
-
-          {/* Vista previa de cabeceras */}
-          {excelHeaders.length > 0 && (
-            <Box mt="md">
-              <Text fw={500} mb="xs">Cabeceras del Excel</Text>
-              <Text size="sm" c="dimmed">
-                {excelHeaders.join(', ')}
-              </Text>
-            </Box>
-          )}
-
-          <Group justify="flex-end" mt="xl">
-            <Button variant="default" onClick={closeMappingModal}>
-              Cancelar
-            </Button>
-            <Button onClick={saveMapping} disabled={!isMappingComplete()}>
-              Guardar Mapeo
-            </Button>
-          </Group>
+          {/* Advertencia de importación */}
+          {importWarning}
         </Stack>
-      </Modal>
+      </Paper>
 
-      {/* Tabla de Archivos Importados */}
       {selectedCasoId && (
-        <Box mt="xl">
+        <Paper shadow="sm" p="md" withBorder mt="xl">
           <Title order={3} mb="md">Archivos Importados</Title>
           
           <LoadingOverlay visible={loadingArchivos} />
@@ -861,23 +862,172 @@ function ImportarPage() {
                   </Table.Td>
                   <Table.Td>{archivo.Total_Registros}</Table.Td>
                   <Table.Td>
-                    <Tooltip label="Eliminar Archivo">
-                      <ActionIcon
-                        color="red"
-                        variant="subtle"
-                        onClick={() => handleDeleteArchivo(archivo.ID_Archivo)}
-                        loading={deletingArchivoId === archivo.ID_Archivo}
-                      >
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Tooltip>
+                    <Group gap={4}>
+                      <Tooltip label="Descargar">
+                        <ActionIcon
+                          variant="subtle"
+                          color="blue"
+                          onClick={() => window.open(`/api/archivos/${archivo.ID_Archivo}/download`, '_blank')}
+                        >
+                          <IconDownload size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Eliminar">
+                        <ActionIcon
+                          variant="subtle"
+                          color="red"
+                          onClick={() => handleDeleteArchivo(archivo.ID_Archivo)}
+                          loading={deletingArchivoId === archivo.ID_Archivo}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
           </Table>
-        </Box>
+        </Paper>
       )}
+
+      {/* Modal de Mapeo */}
+      <Modal
+        opened={mappingModalOpened}
+        onClose={closeMappingModal}
+        title="Configurar Mapeo de Columnas"
+        size="lg"
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Selecciona qué columna del archivo Excel corresponde a cada campo requerido.
+          </Text>
+          
+          <Divider my="sm" />
+          
+          <SimpleGrid cols={2}>
+            {REQUIRED_FIELDS[fileType].map((field) => (
+              <Select
+                key={field}
+                label={field}
+                placeholder={`Selecciona columna para ${field}`}
+                data={excelHeaders}
+                value={columnMapping[field] || null}
+                onChange={(value) => handleMappingChange(field, value)}
+                required
+              />
+            ))}
+          </SimpleGrid>
+
+          <Divider my="sm" />
+
+          <Text size="sm" fw={500}>Campos Opcionales</Text>
+          <Text size="xs" c="dimmed" mb="md">
+            Estos campos no son obligatorios, pero si están disponibles en tu archivo, puedes mapearlos.
+          </Text>
+
+          <SimpleGrid cols={2}>
+            {OPTIONAL_FIELDS[fileType].map((field) => (
+              <Select
+                key={field}
+                label={field}
+                placeholder={`Selecciona columna para ${field}`}
+                data={excelHeaders}
+                value={columnMapping[field] || null}
+                onChange={(value) => handleMappingChange(field, value)}
+                clearable
+              />
+            ))}
+          </SimpleGrid>
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="outline" onClick={closeMappingModal}>
+              Cancelar
+            </Button>
+            <Button onClick={saveMapping}>
+              Guardar Mapeo
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Modal de Matrícula para GPX/KML */}
+      <Modal
+        opened={matriculaModalOpened}
+        onClose={() => {
+          closeMatriculaModal();
+          setIsUploading(false);
+          setIsReadingHeaders(false);
+        }}
+        title="Especificar Matrícula"
+        size="md"
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Para procesar correctamente los datos GPX/KML, necesitamos asignar una matrícula a los puntos.
+          </Text>
+          
+          <TextInput
+            label="Matrícula"
+            placeholder="Ingresa la matrícula del vehículo"
+            value={matricula}
+            onChange={(e) => setMatricula(e.target.value)}
+            required
+          />
+
+          <Group justify="flex-end" mt="md">
+            <Button variant="outline" onClick={() => {
+              closeMatriculaModal();
+              setIsUploading(false);
+              setIsReadingHeaders(false);
+            }}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={async () => {
+                if (!matricula) {
+                  notifications.show({
+                    title: 'Matrícula Requerida',
+                    message: 'Debes especificar una matrícula para continuar.',
+                    color: 'red'
+                  });
+                  return;
+                }
+                closeMatriculaModal();
+                setTimeout(() => { handleImport(); }, 0);
+              }}
+            >
+              Continuar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Modal de Confirmación de Eliminación */}
+      <Modal
+        opened={deleteModalOpened}
+        onClose={() => { setDeleteModalOpened(false); setArchivoToDelete(null); }}
+        title="Confirmar Eliminación"
+        size="md"
+        centered
+      >
+        <Stack>
+          <Text size="md">
+            ¿Estás seguro de que quieres eliminar el archivo <b>{archivoToDelete?.Nombre_del_Archivo}</b> (ID {archivoToDelete?.ID_Archivo}) y todas sus lecturas asociadas?
+          </Text>
+          <Text size="sm" c="red.7">
+            Esta acción no se puede deshacer.
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button variant="outline" onClick={() => { setDeleteModalOpened(false); setArchivoToDelete(null); }}>
+              Cancelar
+            </Button>
+            <Button color="red" onClick={confirmDeleteArchivo} loading={deletingArchivoId === archivoToDelete?.ID_Archivo}>
+              Eliminar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Box>
   );
 }

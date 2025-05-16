@@ -230,26 +230,34 @@ const helpTexts = {
   ),
   'archivos': (
     <Box maw={900}>
-      <Text fw={700} mb="sm" size="lg" c="blue.8">¿Cómo funciona la pestaña Archivos Importados?</Text>
+      <Text fw={700} mb="sm" size="lg" c="blue.8">¿Cómo funciona la pestaña Importar Datos?</Text>
       <Stack gap="xs">
         <Text size="md" fw={700} mb={2}>¿Qué es esta pestaña?</Text>
         <Text size="sm" mb="xs">
-          Aquí puedes importar archivos Excel con lecturas LPR o GPS y gestionarlos para su análisis en el caso.
+          Aquí puedes importar archivos Excel con lecturas LPR o GPS y gestionarlos para su análisis en el caso. También puedes importar archivos <b>GPX/KML</b> de rutas GPS y convertirlos automáticamente para su análisis. Toda la gestión se realiza desde la pestaña <b>Importar Datos</b>.
         </Text>
         <Text size="md" fw={700} mb={2}>¿Cómo importar?</Text>
         <Text size="sm" mb="xs">
           <ol style={{ paddingLeft: '20px', margin: '4px 0' }}>
             <li>Selecciona el caso al que quieres asociar los archivos.</li>
-            <li>Elige el tipo de archivo (LPR o GPS).</li>
-            <li>Sube el archivo Excel y mapea las columnas a los campos requeridos.</li>
+            <li>Elige el tipo de archivo: <b>LPR</b>, <b>GPS</b> o <b>GPX/KML</b>.</li>
+            <li>Si eliges <b>GPX/KML</b>:
+              <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+                <li>Selecciona un archivo <b>.gpx</b> o <b>.kml</b> exportado de un dispositivo GPS o plataforma de rutas.</li>
+                <li>Al subirlo, el sistema te pedirá la <b>matrícula</b> a la que asociar la ruta.</li>
+                <li>El sistema convertirá automáticamente los puntos de la ruta a registros GPS y los asociará a la matrícula indicada.</li>
+                <li>Puedes revisar y eliminar el archivo importado como cualquier otro archivo GPS.</li>
+              </ul>
+            </li>
+            <li>Si eliges <b>LPR</b> o <b>GPS</b>, sube el archivo Excel y mapea las columnas a los campos requeridos.</li>
             <li>Confirma la importación y revisa los archivos ya cargados.</li>
           </ol>
         </Text>
         <Text size="md" fw={700} mb={2}>Funcionalidades</Text>
         <Text size="sm" mb="xs">
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
-            <li><b>Listado de archivos:</b> Visualiza todos los archivos importados asociados al caso.</li>
-            <li><b>Eliminación:</b> Puedes eliminar archivos importados si te has equivocado.</li>
+            <li><b>Listado de archivos:</b> Visualiza todos los archivos importados asociados al caso desde la pestaña <b>Importar Datos</b>.</li>
+            <li><b>Eliminación:</b> Puedes eliminar archivos importados si te has equivocado, desde la misma pestaña.</li>
             <li><b>Mapeo automático:</b> El sistema intentará mapear automáticamente las columnas, pero revisa siempre el mapeo antes de confirmar.</li>
             <li><b>Actualización:</b> Refresca la lista para ver los archivos más recientes.</li>
           </ul>
@@ -258,6 +266,7 @@ const helpTexts = {
         <Text size="sm" mb="xs">
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
             <li>Asegúrate de que tu archivo tenga cabeceras claras y todos los campos obligatorios.</li>
+            <li>Para archivos GPX/KML, revisa que la ruta y los puntos sean correctos antes de importar.</li>
             <li>Revisa el mapeo de columnas antes de confirmar la importación.</li>
             <li>Elimina archivos incorrectos para mantener la base de datos limpia.</li>
           </ul>
