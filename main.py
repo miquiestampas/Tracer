@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRouter
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session, joinedload, contains_eager, relationship
-from sqlalchemy.sql import func, extract, select, label
+from sqlalchemy.sql import func, extract, select, label, text
 import models, schemas
 from database import SessionLocal, engine, get_db
 from models import security  # Add this import
@@ -49,15 +49,42 @@ logger = logging.getLogger(__name__)
 # Eliminar la llamada directa aquí
 # models.create_db_and_tables()
 
+# Importar las funciones de optimización
+from optimizations import create_optimized_indices, optimize_common_queries, vacuum_database
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Ejecutando evento de inicio: Creando tablas si no existen...")
+    logger.info("Iniciando aplicación Tracer...")
+    
+    # Verificar tablas de base de datos
     models.create_db_and_tables()
-    logger.info("Evento de inicio completado.")
+    logger.info("Tablas de base de datos verificadas")
+    
+    # Aplicar optimizaciones de base de datos
+    create_optimized_indices()
+    
+    # Optimizar consultas comunes (necesita una sesión)
+    db = SessionLocal()
+    try:
+        optimize_common_queries(db)
+    except Exception as e:
+        logger.error(f"Error al optimizar consultas: {e}")
+    finally:
+        db.close()
+    
+    # Ejecutar vacío de base de datos (optimización de almacenamiento)
+    try:
+        vacuum_database()
+    except Exception as e:
+        logger.error(f"Error al ejecutar VACUUM: {e}")
+    
+    logger.info("Optimizaciones de base de datos aplicadas")
+    
     yield
+    
     # Shutdown
-    logger.info("Cerrando aplicación...")
+    logger.info("Cerrando aplicación Tracer...")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -1027,51 +1054,112 @@ def update_vehiculo(vehiculo_id: int, vehiculo_update: schemas.VehiculoUpdate, d
         logger.error(f"Error al actualizar vehículo ID {vehiculo_id}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al actualizar vehículo: {e}")
 
-@app.get("/casos/{caso_id}/vehiculos", response_model=List[schemas.Vehiculo], tags=["Vehículos"])
-def get_vehiculos_por_caso(caso_id: int, db: Session = Depends(get_db)):
-    """
-    Obtiene la lista de vehículos cuyas matrículas aparecen en las lecturas 
-    (LPR o GPS) asociadas a los archivos de un caso específico.
-    Incluye el conteo de lecturas LPR para cada vehículo DENTRO de este caso.
-    """
-    # Verificar que el caso existe
+@app.get("/casos/{caso_id}/vehiculos", response_model=List[schemas.VehiculoWithStats])
+def get_vehiculos_by_caso(caso_id: int, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(security)):
+    # Verificar que el caso existe y el usuario tiene acceso
     caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if not caso:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Caso con ID {caso_id} no encontrado")
 
-    # Subconsulta para obtener las matrículas únicas de las lecturas de este caso
-    matriculas_en_caso_query = db.query(models.Lectura.Matricula)\
-        .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
-        .filter(models.ArchivoExcel.ID_Caso == caso_id)\
-        .distinct()
-
-    # Obtener los vehículos cuya matrícula está en la subconsulta
-    vehiculos_db = db.query(models.Vehiculo)\
-        .filter(models.Vehiculo.Matricula.in_(matriculas_en_caso_query))\
-        .order_by(models.Vehiculo.Matricula)\
-        .all()
-
-    # --- NUEVO: Calcular conteo de lecturas LPR por vehículo DENTRO del caso --- 
-    vehiculos_con_conteo = []
-    for vehiculo in vehiculos_db:
-        # Contar lecturas LPR para esta matrícula DENTRO de este caso
-        count_lpr = db.query(func.count(models.Lectura.ID_Lectura))\
-                      .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
-                      .filter(
-                          models.ArchivoExcel.ID_Caso == caso_id, 
-                          models.Lectura.Matricula == vehiculo.Matricula,
-                          models.Lectura.Tipo_Fuente == 'LPR' # Solo contar LPR
-                      ).scalar() or 0
-        
-        # Convertir el objeto SQLAlchemy a un diccionario o usar el schema
-        vehiculo_schema = schemas.Vehiculo.model_validate(vehiculo, from_attributes=True)
-        vehiculo_schema.total_lecturas_lpr_caso = count_lpr # Asignar el conteo
-        vehiculos_con_conteo.append(vehiculo_schema)
-        logger.debug(f"Vehículo {vehiculo.Matricula}: Conteo LPR en caso {caso_id} = {count_lpr}")
-    # --- FIN NUEVO ---
+    # Verificar autenticación
+    user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
+    if not user or user.Contraseña != credentials.password:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
     
-    logger.info(f"Encontrados {len(vehiculos_con_conteo)} vehículos para el caso ID {caso_id} con conteo LPR.")
-    return vehiculos_con_conteo # Devolver la lista con el conteo añadido
+    # Verificar permisos: SuperAdmin puede acceder a cualquier caso
+    is_superadmin = (hasattr(user.Rol, 'value') and user.Rol.value == 'superadmin') or (not hasattr(user.Rol, 'value') and user.Rol == 'superadmin')
+    if not is_superadmin and caso.ID_Grupo != user.ID_Grupo:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para acceder a este caso")
+
+    try:
+        # Intentar usar la vista optimizada si existe
+        try:
+            # Consulta optimizada usando la vista vehiculos_por_caso
+            vista_exists = db.execute(text("SELECT name FROM sqlite_master WHERE type='view' AND name='vehiculos_por_caso'")).scalar() is not None
+            
+            if vista_exists:
+                logger.info(f"Usando vista optimizada para vehículos del caso {caso_id}")
+                # Consulta a través de la vista
+                result = db.execute(
+                    text("""
+                    SELECT v.*, vpc.total_lecturas 
+                    FROM Vehiculos v
+                    JOIN vehiculos_por_caso vpc ON v.Matricula = vpc.Matricula
+                    WHERE vpc.ID_Caso = :caso_id
+                    ORDER BY v.Matricula
+                    """),
+                    {"caso_id": caso_id}
+                )
+                
+                # Construir los objetos VehiculoWithStats
+                vehiculos_with_stats = []
+                for row in result:
+                    # Convertir la fila a diccionario para crear el objeto
+                    vehiculo_dict = {col: getattr(row, col) for col in row._mapping.keys() if hasattr(row, col)}
+                    vehiculo = models.Vehiculo(**{k: v for k, v in vehiculo_dict.items() if k in ['ID_Vehiculo', 'Matricula', 'Marca', 'Modelo', 'Color', 'Propietario', 'Observaciones']})
+                    
+                    # Crear VehiculoWithStats con estadísticas
+                    vehiculos_with_stats.append(schemas.VehiculoWithStats(
+                        **vehiculo.__dict__,
+                        num_lecturas_lpr=row.total_lecturas,
+                        num_lecturas_gps=0  # Se podría añadir esta métrica en la vista
+                    ))
+                
+                logger.info(f"Obtenidos {len(vehiculos_with_stats)} vehículos del caso {caso_id} mediante vista optimizada")
+                return vehiculos_with_stats
+        except Exception as e:
+            logger.warning(f"Error al usar vista optimizada, usando consulta estándar: {e}")
+        
+        # Consulta estándar si la vista no existe o hay error
+        # Subconsulta para obtener las matrículas únicas de las lecturas de este caso
+        matriculas_en_caso_query = db.query(models.Lectura.Matricula)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+            .distinct()
+
+        # Obtener los vehículos cuya matrícula está en la subconsulta
+        vehiculos_db = db.query(models.Vehiculo)\
+            .filter(models.Vehiculo.Matricula.in_(matriculas_en_caso_query))\
+            .order_by(models.Vehiculo.Matricula)\
+            .all()
+
+        # --- NUEVO: Calcular conteo de lecturas LPR por vehículo DENTRO del caso ---
+        vehiculos_with_stats = []
+        for vehiculo in vehiculos_db:
+            # Contar lecturas LPR para este vehículo en este caso
+            count_lpr = db.query(func.count(models.Lectura.ID_Lectura))\
+                        .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                        .filter(
+                            models.ArchivoExcel.ID_Caso == caso_id,
+                            models.Lectura.Matricula == vehiculo.Matricula,
+                            models.Lectura.Tipo_Fuente == 'LPR' # Solo contar LPR
+                        ).scalar() or 0
+            
+            # Contar lecturas GPS (si aplica)
+            count_gps = db.query(func.count(models.Lectura.ID_Lectura))\
+                        .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                        .filter(
+                            models.ArchivoExcel.ID_Caso == caso_id,
+                            models.Lectura.Matricula == vehiculo.Matricula,
+                            models.Lectura.Tipo_Fuente == 'GPS' # Solo contar GPS
+                        ).scalar() or 0
+            
+            # Crear VehiculoWithStats
+            vehiculos_with_stats.append(schemas.VehiculoWithStats(
+                **vehiculo.__dict__,
+                num_lecturas_lpr=count_lpr,
+                num_lecturas_gps=count_gps
+            ))
+        
+        logger.info(f"Obtenidos {len(vehiculos_with_stats)} vehículos del caso {caso_id} mediante consulta estándar")
+        return vehiculos_with_stats
+    
+    except Exception as e:
+        logger.error(f"Error al obtener vehículos del caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener vehículos: {e}"
+        )
 
 @app.get("/vehiculos/{vehiculo_id}/lecturas", response_model=List[schemas.Lectura], tags=["Vehículos"])
 def get_lecturas_por_vehiculo(
