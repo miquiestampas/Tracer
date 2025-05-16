@@ -119,6 +119,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (logoutTimeout) clearTimeout(logoutTimeout);
   };
 
+  // --- Función para seguir conectado ---
+  const keepAlive = () => {
+    // Renovar timestamp de sesión
+    localStorage.setItem('token_timestamp', Date.now().toString());
+    setShowSessionWarning(false);
+    // Cancelar timeouts existentes
+    if (warningTimeout) clearTimeout(warningTimeout);
+    if (logoutTimeout) clearTimeout(logoutTimeout);
+    // Reprogramar aviso y logout
+    const toWarning = setTimeout(() => {
+      setShowSessionWarning(true);
+      playWarningSound();
+      const toLogout = setTimeout(() => {
+        logout();
+      }, SESSION_WARNING_MS);
+      setLogoutTimeout(toLogout);
+    }, SESSION_DURATION_MS - SESSION_WARNING_MS);
+    setWarningTimeout(toWarning);
+  };
+
   return (
     <AuthContext.Provider value={{ isAuthenticated, user, login, logout }}>
       {children}
@@ -136,7 +156,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           boxShadow: '0 4px 24px rgba(0,0,0,0.12)'
         }}>
           <b>¡Atención!</b> Tu sesión expirará en menos de 1 minuto.<br />
-          Si necesitas más tiempo, vuelve a iniciar sesión tras el cierre automático.
+          Si necesitas más tiempo, vuelve a iniciar sesión tras el cierre automático.<br />
+          <button
+            style={{
+              marginTop: 16,
+              background: '#228be6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              padding: '8px 18px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontSize: 16
+            }}
+            onClick={keepAlive}
+          >
+            Seguir conectado
+          </button>
         </div>
       )}
     </AuthContext.Provider>

@@ -746,7 +746,7 @@ function ImportarPage() {
             </Box>
             <Button
               leftSection={<IconFileSpreadsheet size={18} />}
-              onClick={() => navigate(`/casos/detalle/${selectedCasoId}`)}
+              onClick={() => navigate(`/casos/${selectedCasoId}`)}
               disabled={!selectedCasoId}
               variant="filled"
               color="#234be7"
