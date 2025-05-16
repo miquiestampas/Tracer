@@ -2415,3 +2415,34 @@ def check_superadmin(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error checking superadmin: {e}")
         return {"exists": False}
+
+# --- Configuración del Footer (persistencia en JSON) ---
+import json
+from pydantic import BaseModel
+
+FOOTER_CONFIG_PATH = "footer_config.json"
+
+class FooterConfig(BaseModel):
+    text: str
+
+def load_footer_config() -> FooterConfig:
+    try:
+        with open(FOOTER_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return FooterConfig(**data)
+    except Exception:
+        # Valor por defecto si no existe el archivo
+        return FooterConfig(text="JSP Madrid - Brigada Provincial de Policía Judicial")
+
+def save_footer_config(config: FooterConfig):
+    with open(FOOTER_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config.dict(), f, ensure_ascii=False, indent=2)
+
+@app.get("/config/footer", response_model=FooterConfig)
+def get_footer_config():
+    return load_footer_config()
+
+@app.post("/config/footer")
+def set_footer_config(config: FooterConfig):
+    save_footer_config(config)
+    return {"ok": True}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Container, Title, Paper, Group, Button, Text, Stack, Select, Alert, Loader, Table, Badge, ActionIcon, Tooltip, Modal, TextInput, Textarea, Grid, PasswordInput } from '@mantine/core';
+import { Container, Title, Paper, Group, Button, Text, Stack, Select, Alert, Loader, Table, Badge, ActionIcon, Tooltip, Modal, TextInput, Textarea, Grid, PasswordInput, SimpleGrid, Card, Divider, Box, FileInput, NumberInput, Switch } from '@mantine/core';
 import { IconDatabase, IconRefresh, IconTrash, IconDeviceFloppy, IconRestore, IconDownload, IconEdit, IconPlus } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getCasos, getArchivosPorCaso, deleteCaso, updateCaso } from '../services/casosApi';
 import type { Caso, ArchivoExcel } from '../types/data';
+import { updateFooterConfig } from '../services/configApi';
 
 interface DbStatus {
   status: string;
@@ -96,6 +97,8 @@ function AdminPage() {
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [casoToReassign, setCasoToReassign] = useState<Caso | null>(null);
   const [nuevoGrupoId, setNuevoGrupoId] = useState<number | null>(null);
+  const [footerText, setFooterText] = useState('JSP Madrid - Brigada Provincial de Policía Judicial');
+  const [footerModalOpen, setFooterModalOpen] = useState(false);
 
   const fetchDbStatus = async () => {
     try {
@@ -677,6 +680,16 @@ function AdminPage() {
       setCasoToReassign(null);
     } catch (e) {
       notifications.show({ title: 'Error', message: 'No se pudo reasignar el caso', color: 'red' });
+    }
+  };
+
+  const handleSaveFooter = async () => {
+    try {
+      await updateFooterConfig(footerText);
+      setFooterModalOpen(false);
+      notifications.show({ title: 'Éxito', message: 'Texto del footer actualizado', color: 'green' });
+    } catch (e) {
+      notifications.show({ title: 'Error', message: 'No se pudo actualizar el texto del footer', color: 'red' });
     }
   };
 
@@ -1277,6 +1290,42 @@ function AdminPage() {
               <Button onClick={handleReassignGrupo}>Reasignar</Button>
             </Group>
           </Stack>
+        </Modal>
+
+        {/* Módulo de Personalización del Footer */}
+        <Paper withBorder p="md" mt="xl">
+          <Title order={3} mb="md">Personalización del Footer</Title>
+          <Text size="sm" c="dimmed" mb="md">
+            Personaliza el texto que aparece en el footer del Sidebar.
+          </Text>
+          <Group>
+            <TextInput
+              label="Texto del Footer"
+              value={footerText}
+              onChange={(e) => setFooterText(e.currentTarget.value)}
+              style={{ flex: 1 }}
+            />
+            <Button onClick={() => setFooterModalOpen(true)} mt={24}>
+              Guardar Cambios
+            </Button>
+          </Group>
+        </Paper>
+
+        {/* Modal de confirmación para guardar el footer */}
+        <Modal opened={footerModalOpen} onClose={() => setFooterModalOpen(false)} title="Confirmar Cambios" centered>
+          <Text mb="md">
+            ¿Estás seguro de que quieres cambiar el texto del footer a:
+            <br />
+            <b>{footerText}</b>
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setFooterModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveFooter}>
+              Confirmar
+            </Button>
+          </Group>
         </Modal>
       </Container>
     </>

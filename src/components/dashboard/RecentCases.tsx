@@ -66,7 +66,7 @@ export function RecentCases({ cases }: RecentCasesProps) {
                 mt="md"
                 radius="sm"
                 component={Link}
-                to={`/casos/detalle/${caso.ID_Caso}`}
+                to={`/casos/${caso.ID_Caso}`}
               >
                 Ver caso
               </Button>

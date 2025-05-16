@@ -3,6 +3,7 @@ import { Stack, Text, UnstyledButton, useMantineTheme } from '@mantine/core';
 import { IconHome2, IconFolder, IconFileImport, IconArrowsExchange, IconDeviceCctv } from '@tabler/icons-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getFooterConfig } from '../../services/configApi';
 
 const navItems = [
   { icon: IconHome2, label: 'Home', path: '/' },
@@ -17,6 +18,20 @@ const Navbar: React.FC = () => {
   const theme = useMantineTheme();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [footerText, setFooterText] = React.useState('JSP Madrid - Brigada Provincial de Policía Judicial');
+
+  // Cargar el texto del footer al montar el componente
+  React.useEffect(() => {
+    const loadFooterConfig = async () => {
+      try {
+        const config = await getFooterConfig();
+        setFooterText(config.text);
+      } catch (error) {
+        console.error('Error al cargar la configuración del footer:', error);
+      }
+    };
+    loadFooterConfig();
+  }, []);
 
   return (
     <div
@@ -79,7 +94,9 @@ const Navbar: React.FC = () => {
               <Text size="md" style={{ color: '#fff' }}>Panel de Administración</Text>
             </UnstyledButton>
           )}
-          <Text size="sm" style={{ color: '#fff', background: 'rgba(128, 128, 128, 0.5)', padding: '8px 16px', borderRadius: theme.radius.sm, textAlign: 'center' }}>JSP Madrid - Brigada Provincial de Policía Judicial</Text>
+          <Text size="sm" style={{ color: '#fff', background: 'rgba(128, 128, 128, 0.5)', padding: '8px 16px', borderRadius: theme.radius.sm, textAlign: 'center' }}>
+            {footerText}
+          </Text>
         </Stack>
       </Stack>
     </div>
