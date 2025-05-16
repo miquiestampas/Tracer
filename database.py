@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, NullPool
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -15,9 +15,10 @@ engine = create_engine(
         "check_same_thread": False,  # Necesario para SQLite con FastAPI/async
         "timeout": 30  # Aumentar timeout para operaciones largas
     },
-    # Aumentar el pool_size para permitir más conexiones concurrentes
-    pool_size=20,
-    max_overflow=40,
+    poolclass=NullPool,
+    # Aumentar el pool_size para permitir más conexiones concurrentes (ya no aplica con NullPool)
+    # pool_size=20,
+    # max_overflow=40,
     # Habilitar el echo solo en modo debug
     echo=False
 )

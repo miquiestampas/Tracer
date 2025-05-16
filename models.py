@@ -179,7 +179,7 @@ class Usuario(Base):
     User = Column(Integer, primary_key=True, index=True, unique=True, autoincrement=False)
     Contraseña = Column(String(128), nullable=False)
     Rol = Column(SQLAlchemyEnum(RolUsuarioEnum), nullable=False, default=RolUsuarioEnum.admin_casos.value)
-    ID_Grupo = Column(Integer, ForeignKey("Grupos.ID_Grupo"), nullable=False)
+    ID_Grupo = Column(Integer, ForeignKey("Grupos.ID_Grupo"), nullable=True)
 
     grupo = relationship("Grupo")
 
