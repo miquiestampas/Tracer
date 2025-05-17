@@ -77,7 +77,7 @@ const Navbar: React.FC = () => {
         </Stack>
         <Stack gap={4} align="center" mb={8}>
           <Text size="md" style={{ color: '#fff' }}>Administrador</Text>
-          {user?.rol === 'superadmin' && (
+          {user?.Rol === 'superadmin' && (
             <UnstyledButton
               onClick={() => navigate('/admin')}
               style={{
