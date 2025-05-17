@@ -44,7 +44,7 @@ function Layout() {
           {user && (
             <Group>
               <Text size="sm" c="#222">
-                {user.user} - {user.grupo?.Nombre || 'Sin grupo'}
+                {user.User} - {user.grupo?.Nombre || 'Sin grupo'}
               </Text>
               <Button variant="default" size="xs" onClick={() => setHelpOpen(true)}>
                 Mostrar ayuda

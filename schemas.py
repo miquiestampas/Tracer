@@ -430,7 +430,7 @@ class RolUsuarioEnum(str, enum.Enum):
     admin_casos = "admin_casos"
 
 class UsuarioBase(BaseModel):
-    User: str = Field(..., example="12345")
+    User: int = Field(..., example=12345)
     Rol: RolUsuarioEnum = Field(..., example="admin_casos")
     ID_Grupo: Optional[int] = Field(None, example=1)
 
@@ -444,5 +444,15 @@ class UsuarioUpdate(BaseModel):
 
 class Usuario(UsuarioBase):
     grupo: Optional[Grupo] = None
+
     class Config:
         from_attributes = True
+
+# --- Schemas para Autenticación con Tokens ---
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+    # Podríamos añadir roles u otros datos aquí si fuera necesario en el payload del token

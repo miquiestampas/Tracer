@@ -7,9 +7,8 @@ import { useAuth } from '../context/AuthContext';
 const MAP_IMAGE_URL = '/heatmap-login.png'; // Imagen local para el fondo del login
 
 const LoginPage: React.FC = () => {
-  const [user, setUser] = useState('');
+  const [username, setUsername] = useState('');
   const [pass, setPass] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [firstTimeModalOpen, setFirstTimeModalOpen] = useState(false);
   const [newSuperAdminUser, setNewSuperAdminUser] = useState('');
@@ -18,23 +17,34 @@ const LoginPage: React.FC = () => {
   const [creatingSuperAdmin, setCreatingSuperAdmin] = useState(false);
   const [superAdminError, setSuperAdminError] = useState('');
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isLoading, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    checkSuperAdmin();
-  }, []);
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
 
-  const checkSuperAdmin = async () => {
+  useEffect(() => {
+    if (!isAuthenticated && !firstTimeModalOpen) {
+        checkInitialSetup();
+    }
+  }, [isAuthenticated, firstTimeModalOpen]);
+
+  const checkInitialSetup = async () => {
     try {
-      const response = await fetch('/api/auth/check-superadmin');
+      const response = await fetch('/api/setup/status');
+      if (!response.ok) {
+        throw new Error('Error al verificar el estado de configuración');
+      }
       const data = await response.json();
-      console.log('Respuesta check-superadmin:', data);
-      if (!data.exists) {
+      console.log('Respuesta /api/setup/status:', data);
+      if (data.needs_superadmin_setup) {
         setFirstTimeModalOpen(true);
       }
-    } catch (error) {
-      console.error('Error checking superadmin:', error);
-      // No mostrar el modal si hay error, solo loguear
+    } catch (err) {
+      console.error('Error checking initial setup:', err);
+      setError('No se pudo verificar la configuración inicial del sistema.'); 
     }
   };
 
@@ -43,7 +53,10 @@ const LoginPage: React.FC = () => {
       setSuperAdminError('Todos los campos son obligatorios');
       return;
     }
-
+    if (newSuperAdminUser.length < 4) {
+        setSuperAdminError('El número de usuario debe tener al menos 4 dígitos.');
+        return;
+    }
     if (newSuperAdminPass !== newSuperAdminPassConfirm) {
       setSuperAdminError('Las contraseñas no coinciden');
       return;
@@ -59,24 +72,25 @@ const LoginPage: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          User: newSuperAdminUser,
+          User: parseInt(newSuperAdminUser, 10),
           Contraseña: newSuperAdminPass,
           Rol: 'superadmin',
-          ID_Grupo: 1
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Error al crear el superadmin');
+        const errorData = await response.json().catch(() => null);
+        const detail = errorData?.detail || 'Error desconocido al crear superadmin.';
+        throw new Error(detail);
       }
-
-      // Iniciar sesión automáticamente con el nuevo superadmin
+      
       await login(newSuperAdminUser, newSuperAdminPass);
       setFirstTimeModalOpen(false);
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Error creating superadmin:', error);
-      setSuperAdminError('Error al crear el superadmin. Por favor, intente nuevamente.');
+      navigate('/');
+
+    } catch (err: any) {
+      console.error('Error creating superadmin:', err);
+      setSuperAdminError(err.message || 'Error al crear el superadmin. Por favor, intente nuevamente.');
     } finally {
       setCreatingSuperAdmin(false);
     }
@@ -84,16 +98,13 @@ const LoginPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     try {
-      await login(user, pass);
-      navigate('/dashboard');
-    } catch (error) {
-      setError('Usuario o contraseña incorrectos');
-    } finally {
-      setLoading(false);
+      await login(username, pass);
+    } catch (err) {
+      setError('Usuario o contraseña incorrectos. Verifique los datos e intente de nuevo.');
+      console.error("Login page error after authContext.login failed:", err);
     }
   };
 
@@ -134,10 +145,10 @@ const LoginPage: React.FC = () => {
               <TextInput
                 required
                 label="Usuario"
-                placeholder="Tu número de usuario"
-                value={user}
-                onChange={(e) => setUser(e.target.value)}
-                disabled={loading}
+                placeholder="Tu número de usuario (ej: 117020)"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={isLoading}
               />
               <PasswordInput
                 required
@@ -145,14 +156,14 @@ const LoginPage: React.FC = () => {
                 placeholder="Tu contraseña"
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
-                disabled={loading}
+                disabled={isLoading}
               />
               {error && (
-                <Alert color="red" variant="filled">
+                <Alert color="red" title="Error de acceso" variant="filled" icon={<IconLock />}>
                   {error}
                 </Alert>
               )}
-              <Button type="submit" loading={loading} fullWidth>
+              <Button type="submit" loading={isLoading} fullWidth>
                 Iniciar Sesión
               </Button>
             </Stack>
@@ -219,52 +230,52 @@ const LoginPage: React.FC = () => {
       {/* Modal de primera inicialización */}
       <Modal
         opened={firstTimeModalOpen}
-        onClose={() => {}}
-        title="Primera Inicialización"
+        onClose={() => { /* No permitir cerrar manualmente si es necesario el setup */ }}
+        title="Configuración Inicial Requerida"
         closeOnClickOutside={false}
         closeOnEscape={false}
         withCloseButton={false}
+        size="md"
       >
         <Stack>
           <Text>
-            Bienvenido a Tracer. Como es la primera vez que ejecuta la aplicación, 
-            debe crear una cuenta de Super Administrador.
+            Bienvenido a Tracer. Es necesario configurar la cuenta del primer Super Administrador 
+            para poder utilizar la aplicación.
           </Text>
           <TextInput
             required
-            label="Número de Usuario"
-            placeholder="Ingrese su número de usuario"
+            label="Número de Usuario para Super Administrador"
+            placeholder="Ej: 117020"
             value={newSuperAdminUser}
             onChange={(e) => setNewSuperAdminUser(e.target.value)}
             disabled={creatingSuperAdmin}
+            error={superAdminError.includes("usuario") ? superAdminError : null}
           />
           <PasswordInput
             required
-            label="Contraseña"
-            placeholder="Ingrese su contraseña"
+            label="Contraseña para Super Administrador"
+            placeholder="Ingrese la contraseña"
             value={newSuperAdminPass}
             onChange={(e) => setNewSuperAdminPass(e.target.value)}
             disabled={creatingSuperAdmin}
+            error={superAdminError.includes("contraseña") && !superAdminError.includes("coinciden") ? superAdminError : null}
           />
           <PasswordInput
             required
             label="Confirmar Contraseña"
-            placeholder="Confirme su contraseña"
+            placeholder="Confirme la contraseña"
             value={newSuperAdminPassConfirm}
             onChange={(e) => setNewSuperAdminPassConfirm(e.target.value)}
             disabled={creatingSuperAdmin}
+            error={superAdminError.includes("coinciden") ? superAdminError : null}
           />
-          {superAdminError && (
-            <Alert color="red" variant="filled">
-              {superAdminError}
-            </Alert>
+          {superAdminError && !superAdminError.includes("usuario") && !superAdminError.includes("contraseña") && (
+             <Alert color="red" title="Error" variant="filled">
+                {superAdminError}
+             </Alert>
           )}
-          <Button 
-            onClick={handleCreateSuperAdmin} 
-            loading={creatingSuperAdmin}
-            fullWidth
-          >
-            Crear Super Administrador
+          <Button onClick={handleCreateSuperAdmin} loading={creatingSuperAdmin} fullWidth>
+            Crear Super Administrador e Iniciar Sesión
           </Button>
         </Stack>
       </Modal>

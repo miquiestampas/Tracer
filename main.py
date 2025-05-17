@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Query, Body
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session, joinedload, contains_eager, relationship
 from sqlalchemy.sql import func, extract, select, label, text
 import models, schemas
 from database import SessionLocal, engine, get_db
-from models import security  # Add this import
 import pandas as pd
 from io import BytesIO
 import datetime
@@ -30,7 +29,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import or_
 from sqlalchemy import and_, not_
 from pydantic import BaseModel
-from datetime import datetime, timedelta, date, time
+from datetime import datetime, timedelta, date, time, timezone
 from sqlalchemy import func, select, and_, literal_column
 from sqlalchemy.orm import aliased
 from sqlalchemy import over
@@ -42,6 +41,10 @@ from models import LocalizacionInteres
 from schemas import LocalizacionInteresCreate, LocalizacionInteresUpdate, LocalizacionInteresOut
 from admin.database_manager import router as admin_database_router
 
+from auth_utils import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, verify_password, get_password_hash # ADDED
+from jose import JWTError, jwt # ADDED
+from schemas import Token, TokenData # ADDED
+
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,6 +54,127 @@ logger = logging.getLogger(__name__)
 
 # Importar las funciones de optimización
 from optimizations import create_optimized_indices, optimize_common_queries, vacuum_database
+
+# --- START JWT/OAuth2 Core Setup ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token", auto_error=False) # MODIFIED: auto_error=False for optional token
+
+# === DEFINICIÓN DE get_current_active_user y get_current_active_superadmin ===
+# (Deben estar definidas ANTES de ser usadas en auth_router y otros endpoints)
+async def get_current_active_user(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> Optional[models.Usuario]: # MODIFIED: Optional token and return
+    if not token:
+        return None # Si no hay token, devolver None en lugar de error inmediato
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            # Esto no debería pasar si el token fue emitido correctamente, pero es una salvaguarda
+            raise credentials_exception 
+        token_data = TokenData(username=username)
+    except JWTError as e: # ADDED 'as e'
+        # Token inválido (expirado, malformado, etc.)
+        logger.error(f"JWTError en get_current_active_user: {e}", exc_info=True) # ADDED logging
+        raise credentials_exception # Aquí sí lanzamos error porque se proveyó un token inválido
+    
+    # Convertir el username (str desde el token) a int para la búsqueda en BD
+    try:
+        user_id_from_token = int(token_data.username)
+    except (ValueError, TypeError):
+        # Si username no es un int válido, no se puede buscar el usuario
+        logger.error(f"Error convirtiendo token_data.username ({token_data.username}) a int.", exc_info=True)
+        raise credentials_exception
+
+    user = db.query(models.Usuario).filter(models.Usuario.User == user_id_from_token).first()
+    if user is None:
+        # Usuario no encontrado en DB para el token dado
+        raise credentials_exception
+    return user
+
+async def get_current_active_superadmin(current_user: models.Usuario = Depends(get_current_active_user)) -> models.Usuario:
+    if current_user is None: # Si get_current_active_user devolvió None (sin token válido)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol_value.lower() != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Not enough permissions. Superadmin role required."
+        )
+    return current_user
+
+# Nueva dependencia opcional para superadmin
+async def get_current_active_superadmin_optional(current_user: Optional[models.Usuario] = Depends(get_current_active_user)) -> Optional[models.Usuario]:
+    if current_user is None:
+        return None # No hay usuario autenticado, devuelve None
+    
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol_value.lower() == "superadmin":
+        return current_user # Es superadmin, devuélvelo
+    return None # No es superadmin (o no está autenticado), devuelve None
+
+# Dependency to get the current active user (can be used by other routers too)
+# Esta se mantiene, pero get_current_active_user ahora es más flexible
+async def get_current_user_dependency(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)): # Renombrada para evitar conflicto si la usamos directo
+    return await get_current_active_user(token=token, db=db)
+# --- END DEFINICIÓN DE FUNCIONES DE DEPENDENCIA ---
+
+auth_router = APIRouter()
+
+@auth_router.post("/token", response_model=Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # form_data.username es str. models.Usuario.User es int.
+    try:
+        user_id_to_query = int(form_data.username) # Convertir el username del form a int
+    except ValueError:
+        # Si no se puede convertir a int, no es un User ID válido
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password", # Mensaje genérico
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = db.query(models.Usuario).filter(models.Usuario.User == user_id_to_query).first() # Comparar int con int
+    if not user or not verify_password(form_data.password, user.Contraseña):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.User}, expires_delta=access_token_expires # user.User (int) se convertirá a str en create_access_token
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@auth_router.get("/me", response_model=schemas.Usuario)
+async def read_users_me(current_user: Optional[models.Usuario] = Depends(get_current_active_user), db: Session = Depends(get_db)): # Added db dependency, made current_user Optional explicitly
+    if current_user is None:
+        # This case implies no token was provided or it was invalid in a way that get_current_active_user returned None (e.g. auto_error=False and no token)
+        # However, get_current_active_user is designed to raise HTTPException for invalid/expired tokens.
+        # If auto_error=False and no token, get_current_active_user returns None.
+        # So, if current_user is None here, it means no valid authentication was established.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated to access /me",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Asegurar que el grupo se carga si existe para la respuesta
+    if current_user.ID_Grupo and not current_user.grupo:
+        # Need db session here
+        current_user.grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == current_user.ID_Grupo).first()
+    return current_user
+
+@auth_router.get("/check-superadmin")
+async def check_superadmin_status(current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    return {"is_superadmin": True, "user": current_user.User}
+# --- END JWT/OAuth2 Setup ---
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -87,6 +211,10 @@ async def lifespan(app: FastAPI):
     logger.info("Cerrando aplicación Tracer...")
 
 app = FastAPI(lifespan=lifespan)
+
+# --- INCLUDE auth_router EARLY ---
+app.include_router(auth_router, prefix="/api/auth", tags=["Autenticación"]) # MODIFIED: Added /api prefix
+# --- END INCLUDE auth_router EARLY ---
 
 # Configurar CORS
 app.add_middleware(
@@ -230,68 +358,6 @@ def parsear_ubicacion(ubicacion_str: str) -> Optional[Tuple[float, float]]:
     logger.warning(f"Formato de ubicación no reconocido: '{ubicacion_str}'")
     return None
 
-# --- Helper functions para importación ---
-def get_optional_float(value):
-    if value is None or value == '' or pd.isna(value):
-        return None
-    try:
-        # Si es string, extraer el primer número (entero o decimal)
-        if isinstance(value, str):
-            import re
-            match = re.search(r"[-+]?[0-9]*\.?[0-9]+", value)
-            if match:
-                return float(match.group(0))
-            else:
-                return None
-        return float(value)
-    except (ValueError, TypeError):
-        return None
-
-def get_optional_str(value):
-    return str(value).strip() if pd.notna(value) else None
-
-def parse_flexible_datetime(dt_str: Optional[str]) -> Optional[datetime]:
-    """
-    Parsea una cadena de fecha/hora en varios formatos comunes.
-    Retorna None si no se puede parsear.
-    """
-    if not dt_str:
-        return None
-        
-    formats = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%d",
-        "%d/%m/%Y %H:%M:%S",
-        "%d/%m/%Y %H:%M",
-        "%d/%m/%Y"
-    ]
-    
-    for fmt in formats:
-        try:
-            return datetime.strptime(dt_str, fmt)
-        except ValueError:
-            continue
-            
-    return None
-
-def translate_plate_pattern(pattern: str) -> str:
-    """
-    Traduce un patrón de búsqueda de matrícula amigable a sintaxis SQL.
-    ? -> _ (un carácter cualquiera)
-    * -> % (cero o más caracteres cualquiera)
-    """
-    if not pattern:
-        return pattern
-    # Escapar caracteres especiales de SQL excepto ? y *
-    special_chars = ['%', '_']
-    escaped_pattern = pattern
-    for char in special_chars:
-        escaped_pattern = escaped_pattern.replace(char, f"\\{char}")
-    # Traducir los comodines
-    translated = escaped_pattern.replace('?', '_').replace('*', '%')
-    return translated
-
 # --- Endpoints API REST ---
 
 @app.get("/")
@@ -300,150 +366,171 @@ def read_root():
 
 # === CASOS ===
 @app.post("/casos", response_model=schemas.Caso, status_code=status.HTTP_201_CREATED)
-def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(security)):
-    logger.info(f"Solicitud POST /casos con datos: {caso}")
+def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    logger.info(f"Usuario {current_user.User} (Rol: {getattr(current_user.Rol, 'value', current_user.Rol)}) creando caso: {caso.Nombre_del_Caso}")
     
-    # Verificar autenticación
-    user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
-    if not user or user.Contraseña != credentials.password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol_value == 'superadmin'
     
-    # Verificar si es superadmin
-    is_superadmin = (hasattr(user.Rol, 'value') and user.Rol.value == 'superadmin') or (not hasattr(user.Rol, 'value') and user.Rol == 'superadmin')
-    
-    # Verificar duplicados
+    # Check for duplicate case name and year
     existing_caso = db.query(models.Caso).filter(
         models.Caso.Nombre_del_Caso == caso.Nombre_del_Caso,
         models.Caso.Año == caso.Año
     ).first()
     if existing_caso:
-        logger.warning(f"Intento de crear caso duplicado: {caso.Nombre_del_Caso} ({caso.Año})")
+        logger.warning(f"Intento de crear caso duplicado: {caso.Nombre_del_Caso} ({caso.Año}) por usuario {current_user.User}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ya existe un caso con el mismo nombre y año.")
     
     try:
-        caso_data = caso.model_dump(exclude_unset=True) 
-        estado_str = models.EstadoCasoEnum.NUEVO.value # Default
-        if 'Estado' in caso_data and caso_data['Estado'] is not None:
-            estado_str = caso_data['Estado']
-            # Validar que el string es un valor válido del Enum
-            if estado_str not in [item.value for item in models.EstadoCasoEnum]:
-                logger.error(f"Valor de Estado inválido proporcionado: {estado_str}")
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor de Estado inválido: {estado_str}")
+        caso_data = caso.model_dump(exclude_unset=True)
         
-        # Si no es superadmin, verificar que el ID_Grupo coincide con el del usuario
-        if not is_superadmin and caso_data.get('ID_Grupo') != user.ID_Grupo:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para crear casos en este grupo")
+        # Handle Estado: Use provided, else default to NUEVO. Validate enum value.
+        estado_str = caso_data.get('Estado', models.EstadoCasoEnum.NUEVO.value)
+        if estado_str not in [item.value for item in models.EstadoCasoEnum]:
+            logger.error(f"Valor de Estado inválido '{estado_str}' proporcionado por usuario {current_user.User}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor de Estado inválido: {estado_str}")
         
+        assigned_id_grupo = caso_data.get('ID_Grupo')
+
+        if not is_superadmin:
+            # Non-superadmin: Must create case in their own group.
+            if current_user.ID_Grupo is None:
+                logger.warning(f"Usuario {current_user.User} (sin grupo) intentó crear caso. Prohibido.")
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene un grupo asignado. No puede crear casos.")
+            
+            if assigned_id_grupo is not None and assigned_id_grupo != current_user.ID_Grupo:
+                logger.warning(f"Usuario {current_user.User} (Grupo: {current_user.ID_Grupo}) intentó crear caso para grupo ajeno ({assigned_id_grupo}). Prohibido.")
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para crear casos en un grupo diferente al suyo.")
+            assigned_id_grupo = current_user.ID_Grupo # Assign to user's group
+        else:
+            # Superadmin: Can assign to any existing group, or no group (None).
+            if assigned_id_grupo is not None:
+                grupo_exists = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == assigned_id_grupo).first()
+                if not grupo_exists:
+                    logger.warning(f"Superadmin {current_user.User} intentó crear caso para grupo inexistente ID: {assigned_id_grupo}.")
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"El grupo especificado (ID: {assigned_id_grupo}) no existe.")
+            # If superadmin and assigned_id_grupo is None from payload, it remains None (case without group).
+
         db_caso = models.Caso(
             Nombre_del_Caso=caso_data['Nombre_del_Caso'],
             Año=caso_data['Año'],
             NIV=caso_data.get('NIV'),
             Descripcion=caso_data.get('Descripcion'),
             Estado=estado_str,
-            ID_Grupo=caso_data.get('ID_Grupo') if is_superadmin else user.ID_Grupo
+            ID_Grupo=assigned_id_grupo
         )
         db.add(db_caso)
-        db.commit() 
+        db.commit()
         db.refresh(db_caso)
-        logger.info(f"Caso creado exitosamente con ID: {db_caso.ID_Caso}")
+        logger.info(f"Caso ID: {db_caso.ID_Caso} (Nombre: {db_caso.Nombre_del_Caso}, Grupo: {db_caso.ID_Grupo}) creado exitosamente por usuario {current_user.User}")
         return db_caso
     except HTTPException as http_exc:
+        # Re-raise HTTPExceptions for FastAPI to handle
         raise http_exc
     except Exception as e:
         db.rollback()
-        logger.error(f"Error al crear el caso: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al crear el caso: {e}")
+        logger.error(f"Error al crear el caso '{caso.Nombre_del_Caso}' para usuario {current_user.User}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al crear el caso.")
 
 @app.get("/casos", response_model=List[schemas.Caso])
-def read_casos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(security)):
-    logger.info(f"Intento de autenticación en /casos con usuario: {credentials.username}")
-    user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
-    if not user:
-        logger.warning(f"Usuario no encontrado: {credentials.username}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
-    logger.info(f"Usuario encontrado: {user.User}, Rol: {getattr(user.Rol, 'value', user.Rol)}, Contraseña en BD: {user.Contraseña}, Contraseña recibida: {credentials.password}")
-    if user.Contraseña != credentials.password:
-        logger.warning(f"Contraseña incorrecta para usuario: {credentials.username}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
+def read_casos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    logger.info(f"Usuario {current_user.User} (Rol: {getattr(current_user.Rol, 'value', current_user.Rol)}) solicitando lista de casos (GET /casos) con skip: {skip}, limit: {limit}")
     
-    is_superadmin = (hasattr(user.Rol, 'value') and user.Rol.value == 'superadmin') or (not hasattr(user.Rol, 'value') and user.Rol == 'superadmin')
-    logger.info(f"¿Es superadmin?: {is_superadmin}")
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol_value == 'superadmin'
+
     if is_superadmin:
-        casos_db = db.query(models.Caso).order_by(models.Caso.ID_Caso).offset(skip).limit(limit).all()
+        # Superadmin puede ver todos los casos
+        casos_db = db.query(models.Caso).order_by(models.Caso.ID_Caso.desc()).offset(skip).limit(limit).all()
+        logger.info(f"Superadmin {current_user.User} obtuvo {len(casos_db)} casos.")
     else:
-        casos_db = db.query(models.Caso).filter(models.Caso.ID_Grupo == user.ID_Grupo).order_by(models.Caso.ID_Caso).offset(skip).limit(limit).all()
-    logger.info(f"Se obtuvieron {len(casos_db)} casos de la BD para el usuario {user.User} (rol: {getattr(user.Rol, 'value', user.Rol)})")
+        # Usuario normal solo ve casos de su grupo
+        if current_user.ID_Grupo is None:
+            logger.warning(f"Usuario {current_user.User} no es superadmin y no tiene ID_Grupo asignado. No puede ver casos.")
+            return [] # Devuelve lista vacía si no tiene grupo y no es superadmin
+        
+        casos_db = db.query(models.Caso).filter(models.Caso.ID_Grupo == current_user.ID_Grupo).order_by(models.Caso.ID_Caso.desc()).offset(skip).limit(limit).all()
+        logger.info(f"Usuario {current_user.User} (Grupo: {current_user.ID_Grupo}) obtuvo {len(casos_db)} casos.")
+        
     return casos_db
 
 @app.get("/casos/{caso_id}", response_model=schemas.Caso)
-def read_caso(caso_id: int, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(security)):
-    user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
-    if not user or user.Contraseña != credentials.password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
-    
-    # Consultar el caso
+def read_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    logger.info(f"Usuario {current_user.User} (Rol: {getattr(current_user.Rol, 'value', current_user.Rol)}) solicitando GET /casos/{caso_id}")
+
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
+        logger.warning(f"Caso ID {caso_id} no encontrado (solicitado por {current_user.User}).")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol_value == 'superadmin'
+
+    if not is_superadmin:
+        if current_user.ID_Grupo is None:
+            logger.warning(f"Usuario {current_user.User} (sin grupo) intentó acceder al caso {caso_id}. Prohibido.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene un grupo asignado. No puede acceder a casos.")
+        
+        if db_caso.ID_Grupo != current_user.ID_Grupo:
+            logger.warning(f"Usuario {current_user.User} (Grupo: {current_user.ID_Grupo}) intentó acceder al caso {caso_id} (Grupo: {db_caso.ID_Grupo}). Prohibido.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para acceder a este caso.")
     
-    # Verificar permisos: SuperAdmin puede acceder a cualquier caso
-    is_superadmin = (hasattr(user.Rol, 'value') and user.Rol.value == 'superadmin') or (not hasattr(user.Rol, 'value') and user.Rol == 'superadmin')
-    if not is_superadmin and db_caso.ID_Grupo != user.ID_Grupo:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para acceder a este caso")
-    
+    logger.info(f"Usuario {current_user.User} autorizado para acceder al caso {caso_id}.")
     return db_caso
 
 @app.put("/casos/{caso_id}/estado", response_model=schemas.Caso)
-def update_caso_estado(caso_id: int, estado_update: schemas.CasoEstadoUpdate, db: Session = Depends(get_db)):
-    logger.info(f"Solicitud PUT para actualizar estado del caso ID: {caso_id} a {estado_update.Estado}")
+def update_caso_estado(caso_id: int, estado_update: schemas.CasoEstadoUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)): # MODIFIED
+    logger.info(f"Usuario {current_user.User} solicitando PUT para actualizar estado del caso ID: {caso_id} a {estado_update.Estado}") # MODIFIED
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
-        logger.warning(f"[Update Estado Caso] Caso con ID {caso_id} no encontrado.")
+        logger.warning(f"[Update Estado Caso] Caso con ID {caso_id} no encontrado (solicitado por {current_user.User}).") # MODIFIED
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
     
     # Validar que el nuevo estado (string) es válido
     nuevo_estado_str = estado_update.Estado
     if nuevo_estado_str not in [item.value for item in models.EstadoCasoEnum]:
-         logger.error(f"Valor de Estado inválido para actualizar: {nuevo_estado_str}")
+         logger.error(f"Valor de Estado inválido '{nuevo_estado_str}' para actualizar caso {caso_id} (solicitado por {current_user.User}).") # MODIFIED
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Valor de Estado inválido: {nuevo_estado_str}")
 
+    # TODO: Add authorization: Check if current_user can modify db_caso (e.g., is superadmin or belongs to db_caso.ID_Grupo)
+
     try:
-        db_caso.Estado = nuevo_estado_str # Asignar el string validado
+        db_caso.Estado = nuevo_estado_str
         db.commit()
         db.refresh(db_caso)
-        logger.info(f"[Update Estado Caso] Estado del caso ID {caso_id} actualizado a {db_caso.Estado}")
+        logger.info(f"[Update Estado Caso] Estado del caso ID {caso_id} actualizado a {db_caso.Estado} por usuario {current_user.User}.") # MODIFIED
         return db_caso
     except Exception as e:
         db.rollback()
-        logger.error(f"[Update Estado Caso] Error al actualizar estado del caso ID {caso_id}. Rollback: {e}", exc_info=True)
+        logger.error(f"[Update Estado Caso] Error al actualizar estado del caso ID {caso_id} por usuario {current_user.User}. Rollback: {e}", exc_info=True) # MODIFIED
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al actualizar el estado del caso.")
 
 @app.delete("/casos/{caso_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_caso(caso_id: int, db: Session = Depends(get_db)):
-    logger.info(f"Solicitud DELETE para caso ID: {caso_id} (con eliminación en cascada)")
+def delete_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    logger.info(f"Usuario {current_user.User} (Rol: {getattr(current_user.Rol, 'value', current_user.Rol)}) solicitando DELETE para caso ID: {caso_id} (con eliminación en cascada)")
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
-        logger.warning(f"[Delete Caso Casc] Caso con ID {caso_id} no encontrado.")
+        logger.warning(f"[Delete Caso Casc] Caso con ID {caso_id} no encontrado (solicitado por {current_user.User}).")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado.")
     try:
         archivos_a_eliminar = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
-        logger.info(f"[Delete Caso Casc] Se encontraron {len(archivos_a_eliminar)} archivos asociados al caso {caso_id}.")
+        logger.info(f"[Delete Caso Casc] Se encontraron {len(archivos_a_eliminar)} archivos asociados al caso {caso_id} (solicitud por {current_user.User}).")
         for db_archivo in archivos_a_eliminar:
             archivo_id_actual = db_archivo.ID_Archivo
             nombre_archivo_actual = db_archivo.Nombre_del_Archivo
-            logger.info(f"[Delete Caso Casc] Procesando archivo ID: {archivo_id_actual} ({nombre_archivo_actual})")
+            logger.info(f"[Delete Caso Casc] Procesando archivo ID: {archivo_id_actual} ({nombre_archivo_actual}) para caso {caso_id} (solicitud por {current_user.User}).")
             lecturas_eliminadas = db.query(models.Lectura).filter(models.Lectura.ID_Archivo == archivo_id_actual).delete(synchronize_session=False)
-            logger.info(f"[Delete Caso Casc] {lecturas_eliminadas} lecturas asociadas al archivo {archivo_id_actual} marcadas para eliminar.")
+            logger.info(f"[Delete Caso Casc] {lecturas_eliminadas} lecturas asociadas al archivo {archivo_id_actual} marcadas para eliminar (caso {caso_id}, usuario {current_user.User}).")
             if nombre_archivo_actual:
                 file_path_to_delete = UPLOADS_DIR / nombre_archivo_actual
                 if os.path.isfile(file_path_to_delete):
                     try:
                         os.remove(file_path_to_delete)
-                        logger.info(f"[Delete Caso Casc] Archivo físico eliminado: {file_path_to_delete}")
+                        logger.info(f"[Delete Caso Casc] Archivo físico eliminado: {file_path_to_delete} (caso {caso_id}, usuario {current_user.User}).")
                     except OSError as e:
-                        logger.error(f"[Delete Caso Casc] Error al eliminar archivo físico {file_path_to_delete}: {e}. Continuando...", exc_info=True)
+                        logger.error(f"[Delete Caso Casc] Error al eliminar archivo físico {file_path_to_delete}: {e}. Continuando... (caso {caso_id}, usuario {current_user.User}).", exc_info=True)
                 else:
-                    logger.warning(f"[Delete Caso Casc] Archivo físico no encontrado en {file_path_to_delete}, no se elimina.")
+                    logger.warning(f"[Delete Caso Casc] Archivo físico no encontrado en {file_path_to_delete}, no se elimina (caso {caso_id}, usuario {current_user.User}).")
             else:
                 logger.warning(f"[Delete Caso Casc] Registro ArchivoExcel ID {archivo_id_actual} no tiene nombre, no se puede eliminar archivo físico.")
             db.delete(db_archivo)
@@ -1055,21 +1142,26 @@ def update_vehiculo(vehiculo_id: int, vehiculo_update: schemas.VehiculoUpdate, d
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al actualizar vehículo: {e}")
 
 @app.get("/casos/{caso_id}/vehiculos", response_model=List[schemas.VehiculoWithStats])
-def get_vehiculos_by_caso(caso_id: int, db: Session = Depends(get_db), credentials: HTTPBasicCredentials = Depends(security)):
-    # Verificar que el caso existe y el usuario tiene acceso
+def get_vehiculos_by_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)): # MODIFIED
+    logger.info(f"Usuario {current_user.User} (Rol: {getattr(current_user.Rol, 'value', current_user.Rol)}) solicitando vehículos para caso ID: {caso_id}") # ADDED
+    # Verificar que el caso existe
     caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if not caso:
+        logger.warning(f"Caso con ID {caso_id} no encontrado (solicitado por {current_user.User}).") # ADDED
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Caso con ID {caso_id} no encontrado")
 
-    # Verificar autenticación
-    user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
-    if not user or user.Contraseña != credentials.password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
+    # Autenticación ya manejada por Depends(get_current_active_user)
+    # user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first() # REMOVED
+    # if not user or user.Contraseña != credentials.password: # REMOVED
+    #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas") # REMOVED
     
     # Verificar permisos: SuperAdmin puede acceder a cualquier caso
-    is_superadmin = (hasattr(user.Rol, 'value') and user.Rol.value == 'superadmin') or (not hasattr(user.Rol, 'value') and user.Rol == 'superadmin')
-    if not is_superadmin and caso.ID_Grupo != user.ID_Grupo:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para acceder a este caso")
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol # MODIFIED
+    is_superadmin = user_rol_value == 'superadmin' # MODIFIED
+    
+    if not is_superadmin and caso.ID_Grupo != current_user.ID_Grupo: # MODIFIED
+        logger.warning(f"Usuario {current_user.User} (Grupo: {current_user.ID_Grupo}) no autorizado para acceder a vehículos del caso {caso_id} (Grupo caso: {caso.ID_Grupo}).") # ADDED
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para acceder a los vehículos de este caso")
 
     try:
         # Intentar usar la vista optimizada si existe
@@ -1351,32 +1443,43 @@ def read_lecturas(
 def marcar_lectura_relevante(
     id_lectura: int, 
     # Usar el schema actualizado que puede incluir caso_id
-    payload: schemas.LecturaRelevanteUpdate | None = None, 
-    db: Session = Depends(get_db)
+    payload: Optional[schemas.LecturaRelevanteUpdate] = None, # MODIFICADO: payload puede ser Optional
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user) # NUEVO
 ):
-    """Marca una lectura como relevante, asegurando que pertenezca al caso si se proporciona."""
-    db_lectura = db.query(models.Lectura).options(joinedload(models.Lectura.archivo)).filter(models.Lectura.ID_Lectura == id_lectura).first()
+    """Marca una lectura como relevante, opcionalmente con una nota."""
+    logger.info(f"Usuario {current_user.User} solicitando marcar lectura ID {id_lectura} como relevante.") # NUEVO log
+
+    # Obtener la lectura y su caso asociado para verificar permisos
+    db_lectura = db.query(models.Lectura)\
+        .options(joinedload(models.Lectura.archivo).joinedload(models.ArchivoExcel.caso))\
+        .filter(models.Lectura.ID_Lectura == id_lectura)\
+        .first()
+
     if not db_lectura:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lectura no encontrada.")
-
-    # --- Validación de Caso (SI se proporciona caso_id en el payload) ---
-    if payload and payload.caso_id is not None:
-        if not db_lectura.archivo or db_lectura.archivo.ID_Caso != payload.caso_id:
-            # Simplificar f-string
-            caso_real = db_lectura.archivo.ID_Caso if db_lectura.archivo else "DESCONOCIDO"
-            logger.warning(f"Intento de marcar lectura {id_lectura} (caso real: {caso_real}) como relevante para caso incorrecto ({payload.caso_id}).")
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="La lectura no pertenece al caso especificado.")
-        else:
-             logger.info(f"Validación de caso OK: Lectura {id_lectura} pertenece a caso {payload.caso_id}.")
-    # --- Fin Validación --- 
     
-    # Verificar si ya está marcada
+    # NUEVO BLOQUE DE AUTORIZACIÓN
+    if not db_lectura.archivo or not db_lectura.archivo.caso:
+        logger.error(f"Error de datos: Lectura ID {id_lectura} (solicitada por {current_user.User}) no está correctamente asociada a un archivo y caso.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de datos: Lectura no asociada a un caso.")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol == models.RolUsuarioEnum.superadmin.value
+    caso_de_lectura = db_lectura.archivo.caso
+
+    if not is_superadmin and (current_user.ID_Grupo is None or caso_de_lectura.ID_Grupo != current_user.ID_Grupo):
+        logger.warning(f"Usuario {current_user.User} no autorizado para marcar relevante la lectura ID {id_lectura} (caso ID {caso_de_lectura.ID_Caso}, grupo caso {caso_de_lectura.ID_Grupo}, grupo user {current_user.ID_Grupo}).")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para modificar lecturas de este caso.")
+    # FIN NUEVO BLOQUE DE AUTORIZACIÓN
+
+    # Verificar si ya está marcada como relevante
     db_relevante_existente = db.query(models.LecturaRelevante).filter(models.LecturaRelevante.ID_Lectura == id_lectura).first()
     if db_relevante_existente:
-        logger.warning(f"Lectura {id_lectura} ya estaba marcada como relevante.")
-        # Actualizar nota si se proporciona
+        logger.info(f"Lectura {id_lectura} ya estaba marcada como relevante por {current_user.User}. Actualizando nota si se proporciona.") # MODIFICADO: log
         if payload and payload.Nota is not None:
             db_relevante_existente.Nota = payload.Nota
+            db_relevante_existente.Fecha_Modificacion = datetime.now(timezone.utc) # NUEVO: Actualizar fecha modificación
             db.commit()
             db.refresh(db_relevante_existente)
             return db_relevante_existente
@@ -1384,207 +1487,68 @@ def marcar_lectura_relevante(
              return db_relevante_existente
 
     # Crear nueva entrada
-    nueva_relevante = models.LecturaRelevante(
-        ID_Lectura=id_lectura,
-        Nota=payload.Nota if payload else None
-    )
+    nueva_relevante_data = {"ID_Lectura": id_lectura} # MODIFICADO: Crear dict
+    if payload and payload.Nota is not None: # MODIFICADO: Añadir nota al dict
+        nueva_relevante_data["Nota"] = payload.Nota
+    # Fecha_Creacion y Fecha_Modificacion se manejan por defecto en el modelo
+    
+    nueva_relevante = models.LecturaRelevante(**nueva_relevante_data) # MODIFICADO: Usar dict
     db.add(nueva_relevante)
     try:
         db.commit()
         db.refresh(nueva_relevante)
-        logger.info(f"Lectura {id_lectura} marcada como relevante.")
+        logger.info(f"Lectura {id_lectura} marcada como relevante por usuario {current_user.User}.") # MODIFICADO: log
         return nueva_relevante
     except Exception as e:
         db.rollback()
-        logger.error(f"Error al marcar lectura {id_lectura} como relevante: {e}", exc_info=True)
+        logger.error(f"Error al marcar lectura {id_lectura} como relevante por {current_user.User}: {e}", exc_info=True) # MODIFICADO: log
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al marcar la lectura.")
 
-
 @app.delete("/lecturas/{id_lectura}/desmarcar_relevante", status_code=status.HTTP_204_NO_CONTENT)
-def desmarcar_lectura_relevante(id_lectura: int, db: Session = Depends(get_db)):
+def desmarcar_lectura_relevante(
+    id_lectura: int,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
     """Elimina la marca de relevancia de una lectura."""
+    logger.info(f"Usuario {current_user.User} solicitando desmarcar lectura ID {id_lectura} como relevante.")
+
     db_relevante = db.query(models.LecturaRelevante).filter(models.LecturaRelevante.ID_Lectura == id_lectura).first()
     if not db_relevante:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="La lectura no estaba marcada como relevante.")
 
+    # BLOQUE DE AUTORIZACIÓN
+    db_lectura = db.query(models.Lectura)\
+        .options(joinedload(models.Lectura.archivo).joinedload(models.ArchivoExcel.caso))\
+        .filter(models.Lectura.ID_Lectura == db_relevante.ID_Lectura)\
+        .first()
+
+    if not db_lectura:
+        logger.error(f"Error de datos: LecturaRelevante ID {db_relevante.ID_Relevante} (lectura ID {id_lectura}) existe, pero la lectura asociada no. Solicitado por {current_user.User}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de consistencia de datos.")
+
+    if not db_lectura.archivo or not db_lectura.archivo.caso:
+        logger.error(f"Error de datos: Lectura ID {id_lectura} (solicitada por {current_user.User}) no está correctamente asociada a un archivo y caso para desmarcar relevancia.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de datos: Lectura no asociada a un caso.")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol == models.RolUsuarioEnum.superadmin.value
+    caso_de_lectura = db_lectura.archivo.caso
+
+    if not is_superadmin and (current_user.ID_Grupo is None or caso_de_lectura.ID_Grupo != current_user.ID_Grupo):
+        logger.warning(f"Usuario {current_user.User} no autorizado para desmarcar relevante la lectura ID {id_lectura} (caso ID {caso_de_lectura.ID_Caso}, grupo caso {caso_de_lectura.ID_Grupo}, grupo user {current_user.ID_Grupo}).")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para modificar lecturas de este caso.")
+    # FIN BLOQUE DE AUTORIZACIÓN
+
     db.delete(db_relevante)
     try:
         db.commit()
-        logger.info(f"Marca de relevante eliminada para lectura {id_lectura}.")
+        logger.info(f"Marca de relevante eliminada para lectura {id_lectura} por usuario {current_user.User}.")
         return None
     except Exception as e:
         db.rollback()
-        logger.error(f"Error al desmarcar lectura {id_lectura}: {e}", exc_info=True)
+        logger.error(f"Error al desmarcar lectura {id_lectura} por usuario {current_user.User}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al desmarcar la lectura.")
-
-@app.put("/lecturas_relevantes/{id_relevante}/nota", response_model=schemas.LecturaRelevante)
-def actualizar_nota_relevante(id_relevante: int, nota_update: schemas.LecturaRelevanteUpdate, db: Session = Depends(get_db)):
-    """Actualiza la nota de una lectura marcada como relevante."""
-    db_relevante = db.query(models.LecturaRelevante).filter(models.LecturaRelevante.ID_Relevante == id_relevante).first()
-    if not db_relevante:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de lectura relevante no encontrado.")
-
-    # Actualizar la nota (permitir string vacío o null para borrarla)
-    db_relevante.Nota = nota_update.Nota
-    try:
-        db.commit()
-        db.refresh(db_relevante)
-        logger.info(f"Nota actualizada para LecturaRelevante ID {id_relevante}.")
-        return db_relevante
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error al actualizar nota de LecturaRelevante ID {id_relevante}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al actualizar la nota.")
-
-
-# === ENDPOINT DE PRUEBA ===
-@app.get("/ping")
-async def pong():
-    logger.info("¡Recibida solicitud GET /ping!")
-    return {"message": "pong"}
-
-# --- Para ejecutar con Uvicorn (si no usas un comando externo) ---
-# import uvicorn
-# if __name__ == "__main__":
-#    uvicorn.run(app, host="0.0.0.0", port=8000) 
-
-# --- NUEVO ENDPOINT POST PARA INTERSECCIÓN (Usar schemas.LecturaIntersectionRequest) --- 
-@app.post("/lecturas/por_matriculas_y_filtros_combinados", response_model=List[schemas.Lectura])
-def read_lecturas_por_matriculas(
-    request_data: schemas.LecturaIntersectionRequest, # Usar el schema importado
-    db: Session = Depends(get_db)
-):
-    logger.info(f"POST /lecturas/por_matriculas - Caso ID: {request_data.caso_id}, Matrículas: {len(request_data.matriculas)}, Tipo: {request_data.tipo_fuente}")
-    if not request_data.matriculas:
-        logger.warning("Se recibió una lista de matrículas vacía.")
-        return [] # No hay matrículas para buscar
-
-    try:
-        query = db.query(models.Lectura)\
-                  .options(joinedload(models.Lectura.lector)) # Eager load lector
-        
-        # Filtrar por las matrículas proporcionadas
-        query = query.filter(models.Lectura.Matricula.in_(request_data.matriculas))
-
-        # Filtrar por tipo de fuente
-        query = query.filter(models.Lectura.Tipo_Fuente == request_data.tipo_fuente)
-
-        # Filtrar por caso_id (requiere join)
-        query = query.join(models.ArchivoExcel)\
-                     .filter(models.ArchivoExcel.ID_Caso == request_data.caso_id)
-        
-        # Podríamos añadir aquí filtros adicionales si vinieran en el request_data (fechas, etc.)
-        
-        # Ordenar por fecha/hora para una visualización consistente
-        query = query.order_by(models.Lectura.Fecha_y_Hora)
-
-        # Aplicar un límite razonable para evitar sobrecarga si no se implementa paginación aquí
-        lecturas = query.limit(10000).all()
-        
-        logger.info(f"Encontradas {len(lecturas)} lecturas para la intersección.")
-        return lecturas
-        
-    except Exception as e:
-        logger.error(f"Error al consultar lecturas por matrículas: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al buscar lecturas por matrículas.")
-
-# --- NUEVO: Endpoint para obtener filtros disponibles para un caso específico ---
-@app.get("/casos/{caso_id}/filtros_disponibles", response_model=schemas.FiltrosDisponiblesResponse)
-async def get_filtros_disponibles_por_caso(caso_id: int, db: Session = Depends(get_db)):
-    logger.info(f"GET /casos/{caso_id}/filtros_disponibles - Obteniendo lectores y carreteras únicos.")
-    try:
-        # 1. Encontrar ID_Lector únicos para el caso
-        distinct_lector_ids = db.query(models.Lectura.ID_Lector)\
-                                .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
-                                .filter(models.ArchivoExcel.ID_Caso == caso_id)\
-                                .distinct()\
-                                .all()
-        
-        # Extraer los IDs de la lista de tuplas
-        lector_ids_list = [lector_id[0] for lector_id in distinct_lector_ids if lector_id[0] is not None]
-        logger.debug(f"Lectores únicos encontrados para caso {caso_id}: {lector_ids_list}")
-        
-        if not lector_ids_list:
-            # Si no hay lecturas/lectores para este caso, devolver listas vacías
-            logger.warning(f"No se encontraron lectores con lecturas para el caso {caso_id}.")
-            return schemas.FiltrosDisponiblesResponse(lectores=[], carreteras=[])
-
-        # 2. Obtener detalles de esos lectores (incluyendo la carretera)
-        lectores_en_caso = db.query(models.Lector)\
-                             .filter(models.Lector.ID_Lector.in_(lector_ids_list))\
-                             .order_by(models.Lector.Nombre)\
-                             .all()
-
-        # 3. Formatear lectores para SelectOption
-        lectores_options: List[schemas.SelectOption] = [
-            schemas.SelectOption(value=l.ID_Lector, label=f"{l.Nombre or 'Sin Nombre'} ({l.ID_Lector})")
-            for l in lectores_en_caso
-        ]
-        
-        # 4. Obtener carreteras únicas de estos lectores y formatear
-        carreteras_unicas = sorted(list(set(l.Carretera for l in lectores_en_caso if l.Carretera)))
-        carreteras_options: List[schemas.SelectOption] = [
-            schemas.SelectOption(value=c, label=c) for c in carreteras_unicas
-        ]
-        
-        logger.info(f"Filtros disponibles para caso {caso_id}: {len(lectores_options)} lectores, {len(carreteras_options)} carreteras.")
-        return schemas.FiltrosDisponiblesResponse(lectores=lectores_options, carreteras=carreteras_options)
-
-    except Exception as e:
-        logger.error(f"Error al obtener filtros disponibles para caso {caso_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al obtener filtros disponibles.")
-
-# --- NUEVO: Endpoint para obtener lecturas relevantes por caso ---
-@app.get("/casos/{caso_id}/lecturas_relevantes", response_model=List[schemas.Lectura])
-async def get_lecturas_relevantes_por_caso(caso_id: int, db: Session = Depends(get_db)):
-    """
-    Obtiene todas las lecturas marcadas como relevantes para un caso específico.
-    """
-    logger.info(f"GET /casos/{caso_id}/lecturas_relevantes - Obteniendo lecturas relevantes.")
-    try:
-        lecturas_relevantes = db.query(models.Lectura)\
-            .options(joinedload(models.Lectura.lector), joinedload(models.Lectura.relevancia))\
-            .join(models.LecturaRelevante, models.Lectura.ID_Lectura == models.LecturaRelevante.ID_Lectura)\
-            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
-            .filter(models.ArchivoExcel.ID_Caso == caso_id)\
-            .order_by(models.Lectura.Fecha_y_Hora)\
-            .all()
-        
-        logger.info(f"Encontradas {len(lecturas_relevantes)} lecturas relevantes para el caso {caso_id}.")
-        return lecturas_relevantes
-
-    except Exception as e:
-        logger.error(f"Error al obtener lecturas relevantes para caso {caso_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al obtener lecturas relevantes.")
-
-# === BÚSQUEDAS GUARDADAS ===
-
-@app.post("/casos/{caso_id}/saved_searches", response_model=schemas.SavedSearch, status_code=status.HTTP_201_CREATED)
-def create_saved_search(caso_id: int, saved_search_data: schemas.SavedSearchCreate, db: Session = Depends(get_db)):
-    logger.info(f"POST /casos/{caso_id}/saved_searches con datos: {saved_search_data.name}")
-    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
-    if not db_caso:
-        logger.warning(f"[Create SavedSearch] Caso con ID {caso_id} no encontrado.")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
-
-    # Crear la instancia del modelo
-    db_saved_search = models.SavedSearch(
-        caso_id=caso_id,
-        name=saved_search_data.name,
-        filters=saved_search_data.filters,
-        results=saved_search_data.results
-    )
-
-    try:
-        db.add(db_saved_search)
-        db.commit()
-        db.refresh(db_saved_search)
-        logger.info(f"Búsqueda guardada exitosamente con ID: {db_saved_search.id}")
-        return db_saved_search
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error al guardar SavedSearch en BD: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al guardar la búsqueda.")
 
 @app.get("/casos/{caso_id}/saved_searches", response_model=List[schemas.SavedSearch])
 def read_saved_searches(caso_id: int, db: Session = Depends(get_db)):
@@ -2307,12 +2271,12 @@ def read_archivos_recientes(
 grupos_router = APIRouter(prefix="/api/grupos", tags=["Grupos"])
 
 @grupos_router.get("", response_model=List[schemas.Grupo])
-def get_grupos(db: Session = Depends(get_db)):
+def get_grupos(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)): # MODIFIED
     grupos = db.query(models.Grupo).options(joinedload(models.Grupo.casos)).all()
     return grupos
 
 @grupos_router.post("", response_model=schemas.Grupo, status_code=201)
-def create_grupo(grupo: schemas.GrupoCreate, db: Session = Depends(get_db)):
+def create_grupo(grupo: schemas.GrupoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
     db_grupo = models.Grupo(Nombre=grupo.Nombre, Descripcion=grupo.Descripcion)
     db.add(db_grupo)
     try:
@@ -2324,7 +2288,7 @@ def create_grupo(grupo: schemas.GrupoCreate, db: Session = Depends(get_db)):
     return db_grupo
 
 @grupos_router.put("/{grupo_id}", response_model=schemas.Grupo)
-def update_grupo(grupo_id: int, grupo_update: schemas.GrupoCreate, db: Session = Depends(get_db)):
+def update_grupo(grupo_id: int, grupo_update: schemas.GrupoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
     db_grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == grupo_id).first()
     if not db_grupo:
         raise HTTPException(status_code=404, detail="Grupo no encontrado")
@@ -2339,7 +2303,7 @@ def update_grupo(grupo_id: int, grupo_update: schemas.GrupoCreate, db: Session =
     return db_grupo
 
 @grupos_router.delete("/{grupo_id}", status_code=204)
-def delete_grupo(grupo_id: int, db: Session = Depends(get_db)):
+def delete_grupo(grupo_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
     db_grupo = db.query(models.Grupo).options(joinedload(models.Grupo.casos)).filter(models.Grupo.ID_Grupo == grupo_id).first()
     if not db_grupo:
         raise HTTPException(status_code=404, detail="Grupo no encontrado")
@@ -2353,23 +2317,12 @@ app.include_router(grupos_router)
 
 usuarios_router = APIRouter(prefix="/api/usuarios", tags=["Usuarios"])
 
-security = HTTPBasic()
-
-def get_current_superadmin(credentials: HTTPBasicCredentials = Depends(security), db: Session = Depends(get_db)):
-    try:
-        user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
-        if not user or user.Contraseña != credentials.password or (hasattr(user.Rol, 'value') and user.Rol.value != 'superadmin') or (not hasattr(user.Rol, 'value') and user.Rol != 'superadmin'):
-            return None
-        return user
-    except Exception:
-        return None
-
 @usuarios_router.get("", response_model=List[schemas.Usuario])
-def get_usuarios(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_superadmin)):
+def get_usuarios(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
     usuarios = db.query(models.Usuario).all()
     return [
         schemas.Usuario(
-            User=str(u.User),
+            User=u.User,  # Ensure this is not str(u.User)
             Rol=u.Rol.value if hasattr(u.Rol, 'value') else u.Rol,
             ID_Grupo=u.ID_Grupo,
             grupo=u.grupo
@@ -2379,85 +2332,92 @@ def get_usuarios(db: Session = Depends(get_db), current_user: models.Usuario = D
 
 @usuarios_router.post("", response_model=schemas.Usuario, status_code=201)
 def create_usuario(
-    request: Request,
+    # request: Request, <--- REMOVE request, no longer needed for Basic Auth
     usuario: schemas.UsuarioCreate, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    # Usar la nueva dependencia opcional para la comprobación de superadmin
+    current_superadmin_check: Optional[models.Usuario] = Depends(get_current_active_superadmin_optional)
 ):
-    # Verificar si es el primer usuario
+    logger.info(f"Solicitud POST /api/usuarios para crear usuario: {usuario.User}")
     is_first_user = db.query(models.Usuario).count() == 0
-    
-    # Si no es el primer usuario, verificar autenticación
+
     if not is_first_user:
-        try:
-            auth = request.headers.get('Authorization')
-            import logging
-            logger = logging.getLogger("main")
-            logger.info(f"[create_usuario] Authorization header: {auth}")
-            if not auth or not auth.startswith('Basic '):
-                logger.warning("[create_usuario] No Authorization header o formato incorrecto")
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autorizado")
-            
-            # Decodificar credenciales
-            import base64
-            try:
-                auth_decoded = base64.b64decode(auth.split(' ')[1]).decode('utf-8')
-                username, password = auth_decoded.split(':')
-                logger.info(f"[create_usuario] Credenciales decodificadas - Usuario: {username}")
-            except Exception as e:
-                logger.error(f"[create_usuario] Error decodificando credenciales: {str(e)}")
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
-            
-            # Verificar usuario y contraseña
-            db_user = db.query(models.Usuario).filter(models.Usuario.User == username).first()
-            if not db_user or db_user.Contraseña != password:
-                logger.warning(f"[create_usuario] Usuario no encontrado o contraseña incorrecta: {username}")
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
-            
-            # Verificar que sea superadmin
-            rol_str = db_user.Rol.value if hasattr(db_user.Rol, 'value') else db_user.Rol
-            if rol_str != 'superadmin':
-                logger.warning(f"[create_usuario] Usuario no es superadmin: {username}, Rol: {rol_str}")
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Se requiere rol de superadmin")
-            
-            logger.info(f"[create_usuario] Usuario autenticado correctamente: {username}")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"[create_usuario] Error en autenticación: {str(e)}")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Error en autenticación")
+        # No es el primer usuario, se requiere que un superadmin autenticado realice esta acción.
+        if current_superadmin_check is None:
+            logger.warning(f"Intento de crear usuario '{usuario.User}' sin ser superadmin o sin autenticación válida (JWT).")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Se requiere autenticación de Superadmin para crear usuarios adicionales."
+            )
+        logger.info(f"Usuario '{usuario.User}' será creado por Superadmin (JWT): {current_superadmin_check.User}")
+    else: # Es el primer usuario
+        logger.info(f"Creando primer usuario del sistema: {usuario.User}")
+        # Validar que el rol del primer usuario sea 'superadmin'
+        # models.RolUsuarioEnum.superadmin.value sería la forma ideal si Rol es un Enum en el modelo
+        # Por ahora, asumimos que 'superadmin' es el string directo
+        rol_primer_usuario = usuario.Rol.value if hasattr(usuario.Rol, 'value') else usuario.Rol
+        if rol_primer_usuario != 'superadmin':
+            logger.error(f"Intento de crear primer usuario '{usuario.User}' con rol '{rol_primer_usuario}' en lugar de 'superadmin'.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El primer usuario debe tener el rol de superadmin.")
+        # Forzar ID_Grupo a None para el primer superadmin, independientemente de lo que venga en el payload
+        usuario.ID_Grupo = None
+        logger.info(f"Primer usuario '{usuario.User}' establecido como superadmin y sin grupo.")
+
+    # Verificar si el usuario ya existe (después de la lógica de primer usuario/superadmin)
+    db_user_exists = db.query(models.Usuario).filter(models.Usuario.User == usuario.User).first()
+    if db_user_exists:
+        logger.warning(f"Intento de crear usuario existente: {usuario.User}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre de usuario ya existe.")
+
+    # Hashear la contraseña ANTES de crear el objeto models.Usuario
+    hashed_password = get_password_hash(usuario.Contraseña)
     
-    # Crear el nuevo usuario
-    if usuario.Rol == 'superadmin' or (hasattr(usuario.Rol, 'value') and usuario.Rol.value == 'superadmin'):
-        db_usuario = models.Usuario(
-            User=str(usuario.User),
-            Rol=usuario.Rol,
-            ID_Grupo=None,
-            Contraseña=usuario.Contraseña
-        )
-    else:
-        db_usuario = models.Usuario(
-            User=str(usuario.User),
-            Rol=usuario.Rol,
-            ID_Grupo=usuario.ID_Grupo,
-            Contraseña=usuario.Contraseña
-        )
-    db.add(db_usuario)
-    db.commit()
-    db.refresh(db_usuario)
+    # Determinar el valor final para Rol (manejando Enum o string)
+    # Esto es importante si el schema UsuarioCreate.Rol puede ser un Enum de Pydantic
+    # y models.Usuario.Rol espera el .value si es un Enum de SQLAlchemy, o el string directo.
+    rol_value_to_save = usuario.Rol
+    if hasattr(usuario.Rol, 'value'): # Si usuario.Rol es un Enum (como schemas.RolUsuarioEnum)
+        rol_value_to_save = usuario.Rol.value
     
-    # Obtener el grupo asociado
-    grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == db_usuario.ID_Grupo).first() if db_usuario.ID_Grupo else None
+    # Ajustar ID_Grupo para superadmines creados por otros superadmines (si no son el primero)
+    if not is_first_user and rol_value_to_save == 'superadmin':
+        usuario.ID_Grupo = None # Los superadmines no tienen grupo
+
+    db_usuario_obj = models.Usuario(
+        User=str(usuario.User),
+        Rol=rol_value_to_save, 
+        ID_Grupo=usuario.ID_Grupo,
+        Contraseña=hashed_password # Guardar la contraseña hasheada
+    )
     
-    # Devolver el usuario creado con el grupo
+    try:
+        db.add(db_usuario_obj)
+        db.commit()
+        db.refresh(db_usuario_obj)
+        logger.info(f"Usuario '{db_usuario_obj.User}' creado exitosamente con rol '{db_usuario_obj.Rol}' y ID_Grupo '{db_usuario_obj.ID_Grupo}'.")
+    except IntegrityError as e:
+        db.rollback()
+        logger.error(f"Error de integridad al crear usuario {usuario.User}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error de base de datos al crear usuario: {e}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error inesperado al crear usuario {usuario.User}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al crear usuario: {e}")
+
+    # Para la respuesta, obtener el grupo asociado si existe
+    grupo_asociado = None
+    if db_usuario_obj.ID_Grupo:
+        grupo_asociado = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == db_usuario_obj.ID_Grupo).first()
+    
     return schemas.Usuario(
-        User=str(db_usuario.User),  # Aseguramos que User sea string
-        Rol=db_usuario.Rol,
-        ID_Grupo=db_usuario.ID_Grupo,
-        grupo=grupo
+        User=str(db_usuario_obj.User),
+        Rol=db_usuario_obj.Rol, 
+        ID_Grupo=db_usuario_obj.ID_Grupo,
+        grupo=grupo_asociado
     )
 
 @usuarios_router.put("/{user_id}", response_model=schemas.Usuario)
-def update_usuario(user_id: int, usuario_update: schemas.UsuarioUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_superadmin)):
+def update_usuario(user_id: int, usuario_update: schemas.UsuarioUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
     db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
     if not db_usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -2472,7 +2432,7 @@ def update_usuario(user_id: int, usuario_update: schemas.UsuarioUpdate, db: Sess
     return db_usuario
 
 @usuarios_router.delete("/{user_id}", status_code=204)
-def delete_usuario(user_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_superadmin)):
+def delete_usuario(user_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
     db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
     if not db_usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -2481,28 +2441,6 @@ def delete_usuario(user_id: int, db: Session = Depends(get_db), current_user: mo
     return
 
 app.include_router(usuarios_router)
-
-@app.get("/api/auth/me", response_model=schemas.Usuario)
-def auth_me(credentials: HTTPBasicCredentials = Depends(security), db: Session = Depends(get_db)):
-    user = db.query(models.Usuario).filter(models.Usuario.User == credentials.username).first()
-    if not user or user.Contraseña != credentials.password:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales incorrectas")
-    grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == user.ID_Grupo).first()
-    return schemas.Usuario(
-        User=str(user.User),
-        Rol=user.Rol.value if hasattr(user.Rol, 'value') else user.Rol,
-        ID_Grupo=user.ID_Grupo,
-        grupo=grupo
-    )
-
-@app.get("/api/auth/check-superadmin")
-def check_superadmin(db: Session = Depends(get_db)):
-    try:
-        count = db.query(models.Usuario).filter(models.Usuario.Rol == "superadmin").count()
-        return {"exists": count > 0}
-    except Exception as e:
-        print(f"Error checking superadmin: {e}")
-        return {"exists": False}
 
 # --- Configuración del Footer (persistencia en JSON) ---
 import json
@@ -2534,3 +2472,96 @@ def get_footer_config():
 def set_footer_config(config: FooterConfig):
     save_footer_config(config)
     return {"ok": True}
+
+@app.put("/lecturas_relevantes/{id_relevante}/nota", response_model=schemas.LecturaRelevante)
+def actualizar_nota_relevante(
+    id_relevante: int, 
+    nota_update: schemas.LecturaRelevanteUpdate, 
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    """Actualiza la nota de una lectura marcada como relevante."""
+    logger.info(f"Usuario {current_user.User} solicitando actualizar nota para LecturaRelevante ID {id_relevante}.")
+
+    db_relevante = db.query(models.LecturaRelevante)\
+        .options(joinedload(models.LecturaRelevante.lectura)
+                 .joinedload(models.Lectura.archivo)
+                 .joinedload(models.ArchivoExcel.caso))\
+        .filter(models.LecturaRelevante.ID_Relevante == id_relevante)\
+        .first()
+        
+    if not db_relevante:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de lectura relevante no encontrado.")
+
+    # BLOQUE DE AUTORIZACIÓN
+    if not db_relevante.lectura:
+        logger.error(f"Error de datos: LecturaRelevante ID {id_relevante} (solicitada por {current_user.User}) no tiene una lectura asociada.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de consistencia de datos: Falta lectura asociada.")
+
+    db_lectura = db_relevante.lectura
+    if not db_lectura.archivo or not db_lectura.archivo.caso:
+        logger.error(f"Error de datos: Lectura ID {db_lectura.ID_Lectura} (asociada a LecturaRelevante ID {id_relevante}, solicitada por {current_user.User}) no está correctamente asociada a un archivo y caso para actualizar nota.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de datos: Lectura no asociada a un caso.")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol == models.RolUsuarioEnum.superadmin.value
+    caso_de_lectura = db_lectura.archivo.caso
+
+    if not is_superadmin and (current_user.ID_Grupo is None or caso_de_lectura.ID_Grupo != current_user.ID_Grupo):
+        logger.warning(f"Usuario {current_user.User} no autorizado para actualizar nota de LecturaRelevante ID {id_relevante} (caso ID {caso_de_lectura.ID_Caso}, grupo caso {caso_de_lectura.ID_Grupo}, grupo user {current_user.ID_Grupo}).")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para modificar lecturas de este caso.")
+    # FIN BLOQUE DE AUTORIZACIÓN
+
+    db_relevante.Nota = nota_update.Nota
+    db_relevante.Fecha_Modificacion = datetime.now(timezone.utc) # Actualizar fecha de modificación
+    try:
+        db.commit()
+        db.refresh(db_relevante)
+        logger.info(f"Nota actualizada para LecturaRelevante ID {id_relevante} por usuario {current_user.User}.")
+        return db_relevante
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al actualizar nota de LecturaRelevante ID {id_relevante} por usuario {current_user.User}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al actualizar la nota.")
+
+# Router para el estado de configuración inicial
+setup_router = APIRouter()
+
+class SetupStatusResponse(BaseModel):
+    needs_superadmin_setup: bool
+    superadmin_exists: bool
+    users_exist: bool
+
+@setup_router.get("/status", response_model=SetupStatusResponse, tags=["Setup"])
+async def get_setup_status(db: Session = Depends(get_db)):
+    total_users_count = db.query(func.count(models.Usuario.User)).scalar()
+    
+    # Contar superadmins. Asegurarse de que Rol es un Enum y comparar con el valor del Enum.
+    # models.RolUsuarioEnum.superadmin o directamente la cadena "superadmin" si Rol es str.
+    # Asumiendo que models.Usuario.Rol es un Enum como en schemas.RolUsuarioEnum
+    # Si es una simple cadena en el modelo, se usaría: models.Usuario.Rol == "superadmin"
+    try:
+        # Intenta acceder a .value si es un Enum, de lo contrario usa el valor directamente
+        superadmin_rol_value = models.RolUsuarioEnum.superadmin.value \
+            if hasattr(models.RolUsuarioEnum.superadmin, 'value') \
+            else models.RolUsuarioEnum.superadmin
+    except AttributeError:
+        # Fallback si RolUsuarioEnum no está definido en models o no es un enum como se espera
+        # Asumimos que el rol se almacena como una cadena simple si el Enum no está disponible aquí.
+        # Esto puede necesitar ajuste basado en la definición real en models.py
+        logger.warning("models.RolUsuarioEnum no se encontró o no es un Enum como se esperaba, usando 'superadmin' como string para la query.")
+        superadmin_rol_value = "superadmin"
+
+    superadmin_users_count = db.query(models.Usuario).filter(func.lower(models.Usuario.Rol) == superadmin_rol_value.lower()).count()
+
+    users_exist = total_users_count > 0
+    superadmin_exists = superadmin_users_count > 0
+    needs_superadmin_setup = not superadmin_exists # Necesita setup si no hay superadmin
+
+    return SetupStatusResponse(
+        needs_superadmin_setup=needs_superadmin_setup,
+        superadmin_exists=superadmin_exists,
+        users_exist=users_exist
+    )
+
+app.include_router(setup_router, prefix="/api/setup", tags=["Setup"])

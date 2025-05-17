@@ -5,6 +5,7 @@ import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import apiClient from '../services/api';
 import { getCasos, getArchivosPorCaso, deleteCaso, updateCaso } from '../services/casosApi';
 import type { Caso, ArchivoExcel } from '../types/data';
 import { updateFooterConfig } from '../services/configApi';
@@ -103,14 +104,12 @@ function AdminPage() {
   const fetchDbStatus = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/database/status');
-      if (!response.ok) throw new Error('Error al obtener el estado');
-      const data = await response.json();
-      setDbStatus(data);
-    } catch (error) {
+      const response = await apiClient.get('/api/admin/database/status');
+      setDbStatus(response.data);
+    } catch (error: any) {
       notifications.show({
         title: 'Error',
-        message: 'No se pudo obtener el estado de la base de datos',
+        message: error.response?.data?.detail || 'No se pudo obtener el estado de la base de datos',
         color: 'red',
       });
     } finally {
@@ -120,15 +119,13 @@ function AdminPage() {
 
   const fetchBackups = async () => {
     try {
-      const response = await fetch('/api/admin/database/backups');
-      if (!response.ok) throw new Error('Error al obtener los backups');
-      const data = await response.json();
-      console.log('Raw backup data from API:', data.backups);
-      setBackups(data.backups);
-    } catch (error) {
+      const response = await apiClient.get('/api/admin/database/backups');
+      console.log('Raw backup data from API:', response.data.backups);
+      setBackups(response.data.backups);
+    } catch (error: any) {
       notifications.show({
         title: 'Error',
-        message: 'No se pudieron obtener los backups',
+        message: error.response?.data?.detail || 'No se pudieron obtener los backups',
         color: 'red',
       });
     }
@@ -137,21 +134,17 @@ function AdminPage() {
   const handleBackup = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/database/backup', {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Error al crear el backup');
-      const data = await response.json();
+      const response = await apiClient.post('/api/admin/database/backup');
       notifications.show({
         title: 'Éxito',
-        message: 'Backup creado correctamente',
+        message: response.data.message || 'Backup creado correctamente',
         color: 'green',
       });
       await Promise.all([fetchDbStatus(), fetchBackups()]);
-    } catch (error) {
+    } catch (error: any) {
       notifications.show({
         title: 'Error',
-        message: 'No se pudo crear el backup',
+        message: error.response?.data?.detail || 'No se pudo crear el backup',
         color: 'red',
       });
     } finally {
@@ -166,25 +159,17 @@ function AdminPage() {
     }
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/database/restore', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ backup: selectedBackup }),
-      });
-      if (!response.ok) throw new Error('Error al restaurar la base de datos');
-      const data = await response.json();
+      const response = await apiClient.post('/api/admin/database/restore', { backup: selectedBackup });
       notifications.show({
         title: 'Éxito',
-        message: 'Base de datos restaurada correctamente',
+        message: response.data.message || 'Base de datos restaurada correctamente',
         color: 'green',
       });
       await Promise.all([fetchDbStatus(), fetchBackups()]);
-    } catch (error) {
+    } catch (error: any) {
       notifications.show({
         title: 'Error',
-        message: 'No se pudo restaurar la base de datos',
+        message: error.response?.data?.detail || 'No se pudo restaurar la base de datos',
         color: 'red',
       });
     } finally {
@@ -202,11 +187,7 @@ function AdminPage() {
     setResetConfirmText('');
     try {
       setLoading(true);
-      const response = await fetch('/api/admin/database/reset', {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Error al resetear la base de datos');
-      const data = await response.json();
+      const response = await apiClient.post('/api/admin/database/reset');
       notifications.show({
         title: 'Éxito',
         message: 'Base de datos reseteada correctamente',
@@ -246,11 +227,7 @@ function AdminPage() {
     try {
       const formData = new FormData();
       formData.append('backup_file', restoreFile);
-      const response = await fetch('/api/admin/database/restore', {
-        method: 'POST',
-        body: formData,
-      });
-      if (!response.ok) throw new Error('Error al restaurar la base de datos');
+      const response = await apiClient.post('/api/admin/database/restore', formData);
       notifications.show({
         title: 'Éxito',
         message: 'Base de datos restaurada correctamente',
@@ -280,10 +257,7 @@ function AdminPage() {
     if (clearConfirmText !== 'ELIMINAR') return;
     setClearing(true);
     try {
-      const response = await fetch('/api/admin/database/clear_except_lectores', {
-        method: 'POST',
-      });
-      if (!response.ok) throw new Error('Error al eliminar los datos');
+      const response = await apiClient.post('/api/admin/database/clear_except_lectores');
       notifications.show({
         title: 'Éxito',
         message: 'Todos los datos (excepto lectores) fueron eliminados correctamente',
@@ -312,28 +286,11 @@ function AdminPage() {
     if (!backupToRestore) return;
     setRestoringBackup(true);
     try {
-      const restoreResponse = await fetch('/api/admin/database/restore_from_filename', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ filename: backupToRestore.filename }),
-      });
-
-      if (!restoreResponse.ok) {
-        let errorDetail = 'Error al restaurar la base de datos';
-        try {
-          const errorData = await restoreResponse.json();
-          errorDetail = errorData.detail || errorDetail;
-        } catch (e) {
-          // No hacer nada si el cuerpo del error no es JSON
-        }
-        throw new Error(errorDetail);
-      }
-
+      const restoreResponse = await apiClient.post('/api/admin/database/restore_from_filename', { filename: backupToRestore.filename });
+      
       notifications.show({
         title: 'Éxito',
-        message: 'Base de datos restaurada correctamente desde el backup seleccionado.',
+        message: restoreResponse.data.message || 'Base de datos restaurada correctamente desde el backup seleccionado.',
         color: 'green',
       });
       await Promise.all([fetchDbStatus(), fetchBackups()]);
@@ -341,8 +298,8 @@ function AdminPage() {
       setBackupToRestore(null);
     } catch (error: any) {
       notifications.show({
-        title: 'Error',
-        message: error.message || 'No se pudo restaurar la base de datos',
+        title: 'Error al Restaurar Backup',
+        message: error.response?.data?.detail || error.message || 'No se pudo restaurar la base de datos',
         color: 'red',
       });
     } finally {
@@ -359,10 +316,8 @@ function AdminPage() {
     if (!backupToDelete) return;
     setDeletingBackup(true);
     try {
-      const response = await fetch(`/api/admin/database/backups/${backupToDelete.filename}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('No se pudo eliminar el backup');
+      await apiClient.delete(`/api/admin/database/backups/${backupToDelete.filename}`);
+      
       notifications.show({
         title: 'Éxito',
         message: 'Backup eliminado correctamente',
@@ -371,10 +326,10 @@ function AdminPage() {
       await fetchBackups();
       setDeleteBackupModalOpen(false);
       setBackupToDelete(null);
-    } catch (error) {
+    } catch (error: any) {
       notifications.show({
-        title: 'Error',
-        message: 'No se pudo eliminar el backup',
+        title: 'Error al Eliminar Backup',
+        message: error.response?.data?.detail || error.message || 'No se pudo eliminar el backup',
         color: 'red',
       });
     } finally {
@@ -383,16 +338,14 @@ function AdminPage() {
   };
 
   const fetchGrupos = async () => {
+    setLoadingGrupos(true);
     try {
-      setLoadingGrupos(true);
-      const response = await fetch('/api/grupos');
-      if (!response.ok) throw new Error('Error al obtener los grupos');
-      const data = await response.json();
-      setGrupos(data);
-    } catch (error) {
+      const response = await apiClient.get('/api/grupos');
+      setGrupos(response.data);
+    } catch (error: any) {
       notifications.show({
         title: 'Error',
-        message: 'No se pudieron obtener los grupos',
+        message: error.response?.data?.detail || 'No se pudieron obtener los grupos',
         color: 'red',
       });
     } finally {
@@ -403,7 +356,7 @@ function AdminPage() {
   const handleCreateGrupo = async () => {
     if (!newGrupoNombre.trim()) {
       notifications.show({
-        title: 'Error',
+        title: 'Error de Validación',
         message: 'El nombre del grupo es obligatorio',
         color: 'red',
       });
@@ -412,22 +365,14 @@ function AdminPage() {
 
     try {
       setLoadingGrupos(true);
-      const response = await fetch('/api/grupos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          Nombre: newGrupoNombre.trim(),
-          Descripcion: newGrupoDescripcion.trim() || null,
-        }),
+      const response = await apiClient.post('/api/grupos', {
+        Nombre: newGrupoNombre.trim(),
+        Descripcion: newGrupoDescripcion.trim() || null,
       });
-
-      if (!response.ok) throw new Error('Error al crear el grupo');
       
       notifications.show({
         title: 'Éxito',
-        message: 'Grupo creado correctamente',
+        message: response.data.message || 'Grupo creado correctamente',
         color: 'green',
       });
 
@@ -435,10 +380,10 @@ function AdminPage() {
       setNewGrupoNombre('');
       setNewGrupoDescripcion('');
       await fetchGrupos();
-    } catch (error) {
+    } catch (error: any) {
       notifications.show({
-        title: 'Error',
-        message: 'No se pudo crear el grupo',
+        title: 'Error al Crear Grupo',
+        message: error.response?.data?.detail || error.message || 'No se pudo crear el grupo',
         color: 'red',
       });
     } finally {
@@ -449,7 +394,7 @@ function AdminPage() {
   const handleEditGrupo = async () => {
     if (!selectedGrupo || !editGrupoNombre.trim()) {
       notifications.show({
-        title: 'Error',
+        title: 'Error de Validación',
         message: 'El nombre del grupo es obligatorio',
         color: 'red',
       });
@@ -458,22 +403,14 @@ function AdminPage() {
 
     try {
       setLoadingGrupos(true);
-      const response = await fetch(`/api/grupos/${selectedGrupo.ID_Grupo}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          Nombre: editGrupoNombre.trim(),
-          Descripcion: editGrupoDescripcion.trim() || null,
-        }),
+      const response = await apiClient.put(`/api/grupos/${selectedGrupo.ID_Grupo}`, {
+        Nombre: editGrupoNombre.trim(),
+        Descripcion: editGrupoDescripcion.trim() || null,
       });
-
-      if (!response.ok) throw new Error('Error al actualizar el grupo');
       
       notifications.show({
         title: 'Éxito',
-        message: 'Grupo actualizado correctamente',
+        message: response.data.message || 'Grupo actualizado correctamente',
         color: 'green',
       });
 
@@ -482,10 +419,10 @@ function AdminPage() {
       setEditGrupoNombre('');
       setEditGrupoDescripcion('');
       await fetchGrupos();
-    } catch (error) {
+    } catch (error: any) {
       notifications.show({
-        title: 'Error',
-        message: 'No se pudo actualizar el grupo',
+        title: 'Error al Actualizar Grupo',
+        message: error.response?.data?.detail || error.message || 'No se pudo actualizar el grupo',
         color: 'red',
       });
     } finally {
@@ -498,11 +435,7 @@ function AdminPage() {
 
     try {
       setLoadingGrupos(true);
-      const response = await fetch(`/api/grupos/${grupoToDelete.ID_Grupo}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) throw new Error('Error al eliminar el grupo');
+      await apiClient.delete(`/api/grupos/${grupoToDelete.ID_Grupo}`);
       
       notifications.show({
         title: 'Éxito',
@@ -513,10 +446,10 @@ function AdminPage() {
       setDeleteGrupoModalOpen(false);
       setGrupoToDelete(null);
       await fetchGrupos();
-    } catch (error) {
+    } catch (error: any) {
       notifications.show({
-        title: 'Error',
-        message: 'No se pudo eliminar el grupo',
+        title: 'Error al Eliminar Grupo',
+        message: error.response?.data?.detail || error.message || 'No se pudo eliminar el grupo',
         color: 'red',
       });
     } finally {
@@ -536,37 +469,19 @@ function AdminPage() {
     setDeleteGrupoModalOpen(true);
   };
 
-  const getAuthHeader = () => {
-    if (!user?.token) return { 'Authorization': '' };
-    return { 'Authorization': `Basic ${user.token}` };
-  };
-
   const fetchUsuarios = async () => {
+    console.log('Fetching usuarios...');
     setLoadingUsuarios(true);
     try {
-      console.log('Fetching usuarios...');
-      const res = await fetch('/api/usuarios', { 
-        headers: { 
-          ...getAuthHeader(),
-          'Accept': 'application/json'
-        } 
-      });
-      
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('Error response:', errorData);
-        throw new Error(errorData.detail || `Error ${res.status}: ${res.statusText}`);
-      }
-      
-      const data = await res.json();
-      console.log('Usuarios recibidos:', data);
-      setUsuarios(data);
-    } catch (e: any) {
-      console.error('Error fetching usuarios:', e);
-      notifications.show({ 
-        title: 'Error', 
-        message: e.message || 'No se pudieron obtener los usuarios', 
-        color: 'red' 
+      const response = await apiClient.get('/api/usuarios');
+      setUsuarios(response.data);
+    } catch (error: any) {
+      console.error('Error fetching usuarios:', error);
+      const errorMessage = error.response?.data?.detail || error.message || 'No se pudieron obtener los usuarios';
+      notifications.show({
+        title: 'Error al cargar Usuarios',
+        message: errorMessage,
+        color: 'red',
       });
     } finally {
       setLoadingUsuarios(false);
@@ -574,35 +489,35 @@ function AdminPage() {
   };
 
   const handleCreateUsuario = async () => {
-    if (!newUser || (newRol !== 'superadmin' && !newGrupo)) {
-      notifications.show({ title: 'Error', message: 'Usuario y grupo son obligatorios', color: 'red' });
+    if (!newUser.trim() || (newRol !== 'superadmin' && !newGrupo)) {
+      notifications.show({ title: 'Error de Validación', message: 'Usuario es obligatorio. Grupo es obligatorio si el rol no es superadmin.', color: 'red' });
       return;
+    }
+    if (newPass && newPass.length < 6) {
+       notifications.show({ title: 'Error de Validación', message: 'La contraseña debe tener al menos 6 caracteres.', color: 'red' });
+       return;
     }
     try {
       setLoadingUsuarios(true);
       const payload: any = {
-        User: String(newUser),
+        User: String(newUser).trim(),
         Rol: newRol,
-        Contraseña: newPass || newUser,
+        Contraseña: newPass.trim() || undefined, 
       };
       if (newRol !== 'superadmin') {
         payload.ID_Grupo = newGrupo;
+      } else {
+        payload.ID_Grupo = null;
       }
-      const res = await fetch('/api/usuarios', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'No autorizado o error al crear usuario');
-      }
-      notifications.show({ title: 'Éxito', message: 'Usuario creado', color: 'green' });
+      
+      const response = await apiClient.post('/api/usuarios', payload);
+      
+      notifications.show({ title: 'Éxito', message: response.data.message || 'Usuario creado correctamente', color: 'green' });
       setUsuarioModalOpen(false);
       setNewUser(''); setNewRol('admin_casos'); setNewGrupo(null); setNewPass('');
       fetchUsuarios();
     } catch (e: any) {
-      notifications.show({ title: 'Error', message: e.message || 'No se pudo crear el usuario', color: 'red' });
+      notifications.show({ title: 'Error al Crear Usuario', message: e.response?.data?.detail || e.message || 'No se pudo crear el usuario', color: 'red' });
     } finally {
       setLoadingUsuarios(false);
     }
@@ -610,27 +525,29 @@ function AdminPage() {
 
   const handleEditUsuario = async () => {
     if (!usuarioToEdit) return;
+    if (editPass && editPass.length < 6) {
+       notifications.show({ title: 'Error de Validación', message: 'La nueva contraseña debe tener al menos 6 caracteres.', color: 'red' });
+       return;
+    }
     try {
       setLoadingUsuarios(true);
-      const res = await fetch(`/api/usuarios/${usuarioToEdit.User}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
-          Rol: editRol,
-          ID_Grupo: editGrupo,
-          Contraseña: editPass || undefined,
-        })
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'No autorizado o error al editar usuario');
+      const payload: any = {
+        Rol: editRol,
+        ID_Grupo: editRol === 'superadmin' ? null : editGrupo,
+      };
+      if (editPass.trim()) {
+        payload.Contraseña = editPass.trim();
       }
-      notifications.show({ title: 'Éxito', message: 'Usuario actualizado', color: 'green' });
+
+      const response = await apiClient.put(`/api/usuarios/${usuarioToEdit.User}`, payload);
+      
+      notifications.show({ title: 'Éxito', message: response.data.message || 'Usuario actualizado correctamente', color: 'green' });
       setEditUsuarioModalOpen(false);
       setUsuarioToEdit(null);
+      setEditPass('');
       fetchUsuarios();
     } catch (e: any) {
-      notifications.show({ title: 'Error', message: e.message || 'No se pudo editar el usuario', color: 'red' });
+      notifications.show({ title: 'Error al Editar Usuario', message: e.response?.data?.detail || e.message || 'No se pudo editar el usuario', color: 'red' });
     } finally {
       setLoadingUsuarios(false);
     }
@@ -640,20 +557,14 @@ function AdminPage() {
     if (!usuarioToDelete) return;
     try {
       setLoadingUsuarios(true);
-      const res = await fetch(`/api/usuarios/${usuarioToDelete.User}`, {
-        method: 'DELETE',
-        headers: { ...getAuthHeader() },
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'No autorizado o error al eliminar usuario');
-      }
-      notifications.show({ title: 'Éxito', message: 'Usuario eliminado', color: 'green' });
+      await apiClient.delete(`/api/usuarios/${usuarioToDelete.User}`);
+      
+      notifications.show({ title: 'Éxito', message: 'Usuario eliminado correctamente', color: 'green' });
       setDeleteUsuarioModalOpen(false);
       setUsuarioToDelete(null);
       fetchUsuarios();
     } catch (e: any) {
-      notifications.show({ title: 'Error', message: e.message || 'No se pudo eliminar el usuario', color: 'red' });
+      notifications.show({ title: 'Error al Eliminar Usuario', message: e.response?.data?.detail || e.message || 'No se pudo eliminar el usuario', color: 'red' });
     } finally {
       setLoadingUsuarios(false);
     }
