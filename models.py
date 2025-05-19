@@ -172,13 +172,14 @@ class LocalizacionInteres(Base):
 
 class RolUsuarioEnum(enum.Enum):
     superadmin = "superadmin"
-    admin_casos = "admin_casos"
+    admingrupo = "admingrupo"
+    user_consulta = "user_consulta"
 
 class Usuario(Base):
     __tablename__ = "usuarios"
     User = Column(Integer, primary_key=True, index=True, unique=True, autoincrement=False)
     Contraseña = Column(String(128), nullable=False)
-    Rol = Column(SQLAlchemyEnum(RolUsuarioEnum), nullable=False, default=RolUsuarioEnum.admin_casos.value)
+    Rol = Column(SQLAlchemyEnum(RolUsuarioEnum), nullable=False, default=RolUsuarioEnum.admingrupo.value)
     ID_Grupo = Column(Integer, ForeignKey("Grupos.ID_Grupo"), nullable=True)
 
     grupo = relationship("Grupo")

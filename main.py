@@ -44,6 +44,26 @@ from admin.database_manager import router as admin_database_router
 from auth_utils import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token, verify_password, get_password_hash # ADDED
 from jose import JWTError, jwt # ADDED
 from schemas import Token, TokenData # ADDED
+from models import RolUsuarioEnum # Asegúrate que RolUsuarioEnum está disponible (o usa la cadena directa)
+import enum # AÑADIDO: Importar enum
+
+# --- Helper functions for data parsing --- START
+def get_optional_float(value: Any) -> Optional[float]:
+    if pd.isna(value) or value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+def get_optional_str(value: Any) -> Optional[str]:
+    if pd.isna(value) or value is None:
+        return None
+    try:
+        return str(value).strip()
+    except (ValueError, TypeError):
+        return None
+# --- Helper functions for data parsing --- END
 
 # Configurar logging básico para ver más detalles
 logging.basicConfig(level=logging.INFO)
@@ -117,6 +137,22 @@ async def get_current_active_superadmin_optional(current_user: Optional[models.U
     if user_rol_value.lower() == "superadmin":
         return current_user # Es superadmin, devuélvelo
     return None # No es superadmin (o no está autenticado), devuelve None
+
+# Nueva dependencia para superadmin o admin_casos
+async def get_current_active_admin_or_superadmin(current_user: models.Usuario = Depends(get_current_active_user)) -> models.Usuario:
+    if current_user is None: # Si get_current_active_user devolvió None (sin token válido)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    allowed_roles = ["superadmin", "admingrupo"] # MODIFICADO
+    if user_rol_value.lower() not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail=f"Not enough permissions. Allowed roles: {', '.join(allowed_roles)}."
+        )
+    return current_user
 
 # Dependency to get the current active user (can be used by other routers too)
 # Esta se mantiene, pero get_current_active_user ahora es más flexible
@@ -216,13 +252,19 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth_router, prefix="/api/auth", tags=["Autenticación"]) # MODIFIED: Added /api prefix
 # --- END INCLUDE auth_router EARLY ---
 
-# Configurar CORS
+# Configurar CORS - ÚNICA CONFIGURACIÓN
+origins = [
+    "http://localhost:5173",  # Origen del frontend de desarrollo
+    # Puedes añadir aquí otros orígenes permitidos en producción, por ejemplo:
+    # "https://tu-dominio-de-produccion.com",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, especificar los orígenes permitidos
+    allow_origins=origins, # Usar la lista de orígenes explícita
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], # Permitir todos los métodos (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"], # Permitir todos los headers
 )
 
 # Incluir routers
@@ -280,19 +322,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": error_details},
-    )
-
-# --- Configuración CORS --- 
-origins = [
-    "*" # Permitir cualquier origen temporalmente
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins, # Usar la lista comodín
-    allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"], 
 )
 
 # --- Directorio para guardar archivos subidos (RUTA ABSOLUTA) ---
@@ -371,6 +400,15 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), current
     
     user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
     is_superadmin = user_rol_value == 'superadmin'
+    is_admingrupo = user_rol_value == 'admingrupo'
+
+    # Solo superadmin o admingrupo pueden crear casos
+    if not is_superadmin and not is_admingrupo:
+        logger.warning(f"Usuario {current_user.User} (Rol: {user_rol_value}) intentó crear caso. Acción no permitida.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tiene permiso para crear casos."
+        )
     
     # Check for duplicate case name and year
     existing_caso = db.query(models.Caso).filter(
@@ -382,7 +420,7 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), current
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ya existe un caso con el mismo nombre y año.")
     
     try:
-        caso_data = caso.model_dump(exclude_unset=True)
+        caso_data = caso.model_dump(exclude_unset=True) 
         
         # Handle Estado: Use provided, else default to NUEVO. Validate enum value.
         estado_str = caso_data.get('Estado', models.EstadoCasoEnum.NUEVO.value)
@@ -392,11 +430,10 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), current
         
         assigned_id_grupo = caso_data.get('ID_Grupo')
 
-        if not is_superadmin:
-            # Non-superadmin: Must create case in their own group.
-            if current_user.ID_Grupo is None:
-                logger.warning(f"Usuario {current_user.User} (sin grupo) intentó crear caso. Prohibido.")
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene un grupo asignado. No puede crear casos.")
+        if not is_superadmin: # Esta lógica ahora es solo para admingrupo
+            if current_user.ID_Grupo is None: # admingrupo debe tener un grupo
+                logger.warning(f"Usuario admingrupo {current_user.User} (sin grupo) intentó crear caso. Prohibido.")
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Como admingrupo, debe tener un grupo asignado para crear casos.")
             
             if assigned_id_grupo is not None and assigned_id_grupo != current_user.ID_Grupo:
                 logger.warning(f"Usuario {current_user.User} (Grupo: {current_user.ID_Grupo}) intentó crear caso para grupo ajeno ({assigned_id_grupo}). Prohibido.")
@@ -410,7 +447,7 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), current
                     logger.warning(f"Superadmin {current_user.User} intentó crear caso para grupo inexistente ID: {assigned_id_grupo}.")
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"El grupo especificado (ID: {assigned_id_grupo}) no existe.")
             # If superadmin and assigned_id_grupo is None from payload, it remains None (case without group).
-
+        
         db_caso = models.Caso(
             Nombre_del_Caso=caso_data['Nombre_del_Caso'],
             Año=caso_data['Año'],
@@ -420,7 +457,7 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), current
             ID_Grupo=assigned_id_grupo
         )
         db.add(db_caso)
-        db.commit()
+        db.commit() 
         db.refresh(db_caso)
         logger.info(f"Caso ID: {db_caso.ID_Caso} (Nombre: {db_caso.Nombre_del_Caso}, Grupo: {db_caso.ID_Grupo}) creado exitosamente por usuario {current_user.User}")
         return db_caso
@@ -434,25 +471,47 @@ def create_caso(caso: schemas.CasoCreate, db: Session = Depends(get_db), current
 
 @app.get("/casos", response_model=List[schemas.Caso])
 def read_casos(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
-    logger.info(f"Usuario {current_user.User} (Rol: {getattr(current_user.Rol, 'value', current_user.Rol)}) solicitando lista de casos (GET /casos) con skip: {skip}, limit: {limit}")
-    
-    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
-    is_superadmin = user_rol_value == 'superadmin'
+    if current_user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    if is_superadmin:
-        # Superadmin puede ver todos los casos
-        casos_db = db.query(models.Caso).order_by(models.Caso.ID_Caso.desc()).offset(skip).limit(limit).all()
-        logger.info(f"Superadmin {current_user.User} obtuvo {len(casos_db)} casos.")
+    query = db.query(models.Caso).options(
+        joinedload(models.Caso.grupo),
+        joinedload(models.Caso.archivos) # CORREGIDO: de archivos_excel a archivos
+    )
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+
+    if user_rol == RolUsuarioEnum.superadmin.value:
+        pass 
+    elif user_rol == RolUsuarioEnum.admingrupo.value or user_rol == RolUsuarioEnum.user_consulta.value: # MODIFICADO
+        if current_user.ID_Grupo is not None:
+            query = query.filter(models.Caso.ID_Grupo == current_user.ID_Grupo)
+        else:
+            # Admingrupo o user_consulta sin grupo asignado no ve ningún caso.
+            return [] 
     else:
-        # Usuario normal solo ve casos de su grupo
-        if current_user.ID_Grupo is None:
-            logger.warning(f"Usuario {current_user.User} no es superadmin y no tiene ID_Grupo asignado. No puede ver casos.")
-            return [] # Devuelve lista vacía si no tiene grupo y no es superadmin
-        
-        casos_db = db.query(models.Caso).filter(models.Caso.ID_Grupo == current_user.ID_Grupo).order_by(models.Caso.ID_Caso.desc()).offset(skip).limit(limit).all()
-        logger.info(f"Usuario {current_user.User} (Grupo: {current_user.ID_Grupo}) obtuvo {len(casos_db)} casos.")
-        
-    return casos_db
+        # Otros roles desconocidos o no autorizados.
+        return [] 
+
+    casos_db = query.order_by(models.Caso.ID_Caso.desc()).offset(skip).limit(limit).all()
+    
+    casos_response = []
+    for caso_db_item in casos_db: # Renombrada variable para evitar confusión con el schema `caso`
+        casos_response.append(
+            schemas.Caso(
+                ID_Caso=caso_db_item.ID_Caso,
+                Nombre_del_Caso=caso_db_item.Nombre_del_Caso, 
+                ID_Grupo=caso_db_item.ID_Grupo,
+                Descripcion=caso_db_item.Descripcion,
+                Año=caso_db_item.Año,
+                NIV=caso_db_item.NIV,
+                Estado=caso_db_item.Estado.value if isinstance(caso_db_item.Estado, enum.Enum) else caso_db_item.Estado, # Asegurar que se envía el valor del enum
+                Fecha_de_Creacion=caso_db_item.Fecha_de_Creacion, 
+                grupo=schemas.Grupo.model_validate(caso_db_item.grupo) if caso_db_item.grupo else None,
+                archivos=[schemas.ArchivoExcel.model_validate(archivo) for archivo in caso_db_item.archivos] if caso_db_item.archivos else [] # CORREGIDO: de archivos_excel a archivos
+            )
+        )
+    return casos_response
 
 @app.get("/casos/{caso_id}", response_model=schemas.Caso)
 def read_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
@@ -462,7 +521,7 @@ def read_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.
     if db_caso is None:
         logger.warning(f"Caso ID {caso_id} no encontrado (solicitado por {current_user.User}).")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
-
+    
     user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
     is_superadmin = user_rol_value == 'superadmin'
 
@@ -506,12 +565,37 @@ def update_caso_estado(caso_id: int, estado_update: schemas.CasoEstadoUpdate, db
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al actualizar el estado del caso.")
 
 @app.delete("/casos/{caso_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
-    logger.info(f"Usuario {current_user.User} (Rol: {getattr(current_user.Rol, 'value', current_user.Rol)}) solicitando DELETE para caso ID: {caso_id} (con eliminación en cascada)")
+async def delete_caso(
+    caso_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: models.Usuario = Depends(get_current_active_user) # MODIFICADO
+):
+    logger.info(f"Intento de eliminación del caso ID {caso_id} por usuario {current_user.User} (Rol: {current_user.Rol.value})")
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
-    if db_caso is None:
-        logger.warning(f"[Delete Caso Casc] Caso con ID {caso_id} no encontrado (solicitado por {current_user.User}).")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado.")
+
+    if not db_caso:
+        logger.warning(f"Caso ID {caso_id} no encontrado para eliminar (solicitado por {current_user.User}).")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Caso con ID {caso_id} no encontrado")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+
+    if user_rol == RolUsuarioEnum.superadmin.value:
+        # Superadmin puede eliminar cualquier caso
+        pass
+    elif user_rol == RolUsuarioEnum.admingrupo.value:
+        if current_user.ID_Grupo is None:
+            logger.warning(f"Admingrupo {current_user.User} intentó eliminar caso {caso_id} pero no tiene grupo asignado.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
+        if db_caso.ID_Grupo != current_user.ID_Grupo:
+            logger.warning(f"Admingrupo {current_user.User} (Grupo: {current_user.ID_Grupo}) intentó eliminar caso {caso_id} (Grupo: {db_caso.ID_Grupo}) sin permisos.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permisos para eliminar este caso.")
+    else:
+        # Otros roles no pueden eliminar casos
+        logger.warning(f"Usuario {current_user.User} (Rol: {user_rol}) intentó eliminar caso {caso_id} sin permisos.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permisos para eliminar casos.")
+
+    # Proceder con la eliminación
+    # Eliminar lecturas asociadas primero (LPR y GPS)
     try:
         archivos_a_eliminar = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
         logger.info(f"[Delete Caso Casc] Se encontraron {len(archivos_a_eliminar)} archivos asociados al caso {caso_id} (solicitud por {current_user.User}).")
@@ -553,12 +637,22 @@ async def upload_excel(
     tipo_archivo: str = Form(..., pattern="^(GPS|LPR)$"),
     excel_file: UploadFile = File(...),
     column_mapping: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user) # AÑADIDO
 ):
-    # 1. Verificar caso
+    # 1. Verificar caso y permisos
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol == RolUsuarioEnum.admingrupo.value:
+        if current_user.ID_Grupo is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
+        if db_caso.ID_Grupo != current_user.ID_Grupo:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para subir archivos a este caso.")
+    elif user_rol != RolUsuarioEnum.superadmin.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para subir archivos.")
 
     # 2. Verificar si ya existe un archivo con el mismo nombre en el mismo caso
     archivo_existente = db.query(models.ArchivoExcel).filter(
@@ -777,12 +871,21 @@ async def upload_excel(
     return response_data
 
 @app.get("/casos/{caso_id}/archivos", response_model=List[schemas.ArchivoExcel]) # Schema ya incluye Total_Registros
-def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db)):
-    logger.info(f"GET /casos/{caso_id}/archivos - Obteniendo archivos con conteo de registros.")
+def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    logger.info(f"GET /casos/{caso_id}/archivos - Solicitado por {current_user.User} (Rol: {current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol})")
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
-        logger.warning(f"Caso ID {caso_id} no encontrado al buscar archivos.")
+        logger.warning(f"Caso ID {caso_id} no encontrado al buscar archivos (solicitado por {current_user.User}).")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol != RolUsuarioEnum.superadmin.value: # No es superadmin, verificar grupo
+        if current_user.ID_Grupo is None:
+            logger.warning(f"Usuario {current_user.User} sin grupo intentó listar archivos del caso {caso_id}.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene un grupo asignado.")
+        if db_caso.ID_Grupo != current_user.ID_Grupo:
+            logger.warning(f"Usuario {current_user.User} (Grupo {current_user.ID_Grupo}) intentó listar archivos del caso {caso_id} (Grupo {db_caso.ID_Grupo}). Acceso denegado.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para acceder a los archivos de este caso.")
 
     try:
         # Subconsulta para contar lecturas por ID_Archivo
@@ -824,12 +927,29 @@ def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al obtener archivos: {e}")
 
 @app.get("/archivos/{id_archivo}/download")
-async def download_archivo(id_archivo: int, db: Session = Depends(get_db)):
-    logger.info(f"Solicitud de descarga para archivo ID: {id_archivo}")
-    archivo_db = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
+async def download_archivo(id_archivo: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    logger.info(f"Solicitud de descarga para archivo ID: {id_archivo} por usuario {current_user.User}")
+    archivo_db = db.query(models.ArchivoExcel).options(joinedload(models.ArchivoExcel.caso)).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
     if archivo_db is None:
         logger.error(f"Registro archivo ID {id_archivo} no encontrado DB.")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de archivo no encontrado.")
+
+    if not archivo_db.caso:
+        logger.error(f"Archivo ID {id_archivo} no está asociado a ningún caso. No se puede verificar permisos.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de consistencia de datos del archivo.")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol == RolUsuarioEnum.admingrupo.value:
+        if current_user.ID_Grupo is None:
+            logger.warning(f"Admingrupo {current_user.User} sin grupo asignado intentó descargar archivo {id_archivo}.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
+        if archivo_db.caso.ID_Grupo != current_user.ID_Grupo:
+            logger.warning(f"Admingrupo {current_user.User} (Grupo {current_user.ID_Grupo}) intentó descargar archivo {id_archivo} del caso {archivo_db.ID_Caso} (Grupo {archivo_db.caso.ID_Grupo}). Acceso denegado.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para descargar este archivo.")
+    elif user_rol != RolUsuarioEnum.superadmin.value:
+        logger.warning(f"Usuario {current_user.User} (Rol {user_rol}) intentó descargar archivo {id_archivo}. Acceso denegado.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para descargar archivos.")
+
     if not archivo_db.Nombre_del_Archivo:
          logger.error(f"Registro archivo ID {id_archivo} sin nombre.")
          raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falta nombre del archivo BD.")
@@ -855,12 +975,29 @@ async def download_archivo(id_archivo: int, db: Session = Depends(get_db)):
     return FileResponse(path=file_path, filename=archivo_db.Nombre_del_Archivo, media_type=media_type)
 
 @app.delete("/archivos/{id_archivo}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_archivo(id_archivo: int, db: Session = Depends(get_db)):
-    logger.info(f"Solicitud DELETE para archivo ID: {id_archivo}")
-    archivo_db = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
+async def delete_archivo(id_archivo: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    logger.info(f"Solicitud DELETE para archivo ID: {id_archivo} por usuario {current_user.User}")
+    archivo_db = db.query(models.ArchivoExcel).options(joinedload(models.ArchivoExcel.caso)).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
     if archivo_db is None:
-        logger.warning(f"[Delete] Archivo ID {id_archivo} no encontrado.")
+        logger.warning(f"[Delete] Archivo ID {id_archivo} no encontrado (solicitado por {current_user.User}).")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro archivo no encontrado.")
+
+    if not archivo_db.caso:
+        logger.error(f"[Delete] Archivo ID {id_archivo} (solicitado por {current_user.User}) no está asociado a ningún caso. No se puede verificar permisos.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de consistencia de datos del archivo.")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol == RolUsuarioEnum.admingrupo.value:
+        if current_user.ID_Grupo is None:
+            logger.warning(f"[Delete] Admingrupo {current_user.User} sin grupo asignado intentó eliminar archivo {id_archivo}.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
+        if archivo_db.caso.ID_Grupo != current_user.ID_Grupo:
+            logger.warning(f"[Delete] Admingrupo {current_user.User} (Grupo {current_user.ID_Grupo}) intentó eliminar archivo {id_archivo} del caso {archivo_db.ID_Caso} (Grupo {archivo_db.caso.ID_Grupo}). Acceso denegado.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para eliminar este archivo.")
+    elif user_rol != RolUsuarioEnum.superadmin.value:
+        logger.warning(f"[Delete] Usuario {current_user.User} (Rol {user_rol}) intentó eliminar archivo {id_archivo}. Acceso denegado.")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para eliminar archivos.")
+
     file_path_to_delete = None
     if archivo_db.Nombre_del_Archivo:
         file_path_to_delete = UPLOADS_DIR / archivo_db.Nombre_del_Archivo
@@ -890,7 +1027,7 @@ async def delete_archivo(id_archivo: int, db: Session = Depends(get_db)):
 
 # === LECTORES ===
 @app.post("/lectores", response_model=schemas.Lector, status_code=status.HTTP_201_CREATED)
-def create_lector(lector: schemas.LectorCreate, db: Session = Depends(get_db)):
+def create_lector(lector: schemas.LectorCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_admin_or_superadmin)):
     db_lector_existente = db.query(models.Lector).filter(models.Lector.ID_Lector == lector.ID_Lector).first()
     if db_lector_existente:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Ya existe un lector con el ID '{lector.ID_Lector}'")
@@ -914,9 +1051,10 @@ def read_lectores(
     texto_libre: Optional[str] = None,
     sort: Optional[str] = None,
     order: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user) # MODIFICADO
 ):
-    logger.info(f"Solicitud GET /lectores con filtros: id={id_lector}, nombre={nombre}, carretera={carretera}, provincia={provincia}, organismo={organismo}, sentido={sentido}, sort={sort}, order={order}")
+    logger.info(f"Solicitud GET /lectores por usuario {current_user.User} (Rol: {current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol}) con filtros: id={id_lector}, nombre={nombre}, carretera={carretera}, provincia={provincia}, organismo={organismo}, sentido={sentido}, sort={sort}, order={order}")
     
     # Construir query base
     query = db.query(models.Lector)
@@ -974,9 +1112,9 @@ def read_lectores(
 # --- Rutas específicas ANTES de la ruta con parámetro {lector_id} ---
 
 @app.get("/lectores/coordenadas", response_model=List[schemas.LectorCoordenadas])
-def read_lectores_coordenadas(db: Session = Depends(get_db)):
+def read_lectores_coordenadas(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
     """Devuelve una lista de lectores con coordenadas válidas para el mapa."""
-    logger.info("Solicitud GET /lectores/coordenadas")
+    logger.info(f"Solicitud GET /lectores/coordenadas por usuario {current_user.User}")
 
     # Consultar todos los lectores que tengan Coordenada_X Y Coordenada_Y no nulas
     lectores_con_coords = db.query(models.Lector).filter(
@@ -990,9 +1128,9 @@ def read_lectores_coordenadas(db: Session = Depends(get_db)):
     return lectores_con_coords
 
 @app.get("/lectores/sugerencias", response_model=schemas.LectorSugerenciasResponse)
-def get_lector_sugerencias(db: Session = Depends(get_db)):
+def get_lector_sugerencias(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
     """Obtiene listas de valores únicos existentes para campos de Lector."""
-    logger.info("Solicitud GET /lectores/sugerencias")
+    logger.info(f"Solicitud GET /lectores/sugerencias por usuario {current_user.User}")
     sugerencias = {
         "provincias": [], "localidades": [], "carreteras": [], "organismos": [], "contactos": []
     }
@@ -1021,14 +1159,15 @@ def get_lector_sugerencias(db: Session = Depends(get_db)):
 
 # --- Ruta con parámetro DESPUÉS de las específicas ---
 @app.get("/lectores/{lector_id}", response_model=schemas.Lector)
-def read_lector(lector_id: str, db: Session = Depends(get_db)):
+def read_lector(lector_id: str, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    logger.info(f"Solicitud GET /lectores/{lector_id} por usuario {current_user.User}")
     db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id).first()
     if db_lector is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lector no encontrado")
     return db_lector
 
 @app.put("/lectores/{lector_id}", response_model=schemas.Lector)
-def update_lector(lector_id: str, lector_update: schemas.LectorUpdate, db: Session = Depends(get_db)):
+def update_lector(lector_id: str, lector_update: schemas.LectorUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_admin_or_superadmin)):
     db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id).first()
     if db_lector is None:
         logger.warning(f"[Update Lector] Lector con ID '{lector_id}' no encontrado.")
@@ -1076,7 +1215,7 @@ def update_lector(lector_id: str, lector_update: schemas.LectorUpdate, db: Sessi
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al guardar: {e}")
 
 @app.delete("/lectores/{lector_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_lector(lector_id: str, db: Session = Depends(get_db)):
+def delete_lector(lector_id: str, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_admin_or_superadmin)):
     db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == lector_id).first()
     if db_lector is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lector no encontrado")
@@ -1089,8 +1228,8 @@ def delete_lector(lector_id: str, db: Session = Depends(get_db)):
 
 # === VEHICULOS ===
 @app.post("/vehiculos", response_model=schemas.Vehiculo, status_code=status.HTTP_201_CREATED, tags=["Vehículos"])
-def create_vehiculo(vehiculo: schemas.VehiculoCreate, db: Session = Depends(get_db)):
-    """Crea un nuevo vehículo o devuelve el existente si la matrícula ya existe."""
+def create_vehiculo(vehiculo: schemas.VehiculoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFICADO
+    """Crea un nuevo vehículo o devuelve el existente si la matrícula ya existe. Solo Superadmin."""
     db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.Matricula == vehiculo.Matricula).first()
     if db_vehiculo:
         # Si ya existe, podrías devolver 409 Conflict o devolver el existente (como hacemos aquí)
@@ -1121,11 +1260,27 @@ def create_vehiculo(vehiculo: schemas.VehiculoCreate, db: Session = Depends(get_
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error inesperado al crear vehículo: {e}")
 
 @app.put("/vehiculos/{vehiculo_id}", response_model=schemas.Vehiculo, tags=["Vehículos"])
-def update_vehiculo(vehiculo_id: int, vehiculo_update: schemas.VehiculoUpdate, db: Session = Depends(get_db)):
+def update_vehiculo(vehiculo_id: int, vehiculo_update: schemas.VehiculoUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
     """Actualiza los detalles de un vehículo existente por su ID numérico."""
     db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.ID_Vehiculo == vehiculo_id).first()
     if not db_vehiculo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con ID {vehiculo_id} no encontrado")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol == RolUsuarioEnum.admingrupo.value: # Es admingrupo
+        if current_user.ID_Grupo is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
+        # Verificar si el vehículo está en algún caso del grupo del admingrupo
+        vehiculo_en_grupo = db.query(models.Lectura)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .join(models.Caso, models.ArchivoExcel.ID_Caso == models.Caso.ID_Caso)\
+            .filter(models.Lectura.Matricula == db_vehiculo.Matricula)\
+            .filter(models.Caso.ID_Grupo == current_user.ID_Grupo)\
+            .first()
+        if not vehiculo_en_grupo:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para actualizar este vehículo. No está en los casos de su grupo.")
+    elif user_rol != RolUsuarioEnum.superadmin.value: # No es admingrupo ni superadmin
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado.")
 
     update_data = vehiculo_update.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -1257,20 +1412,42 @@ def get_vehiculos_by_caso(caso_id: int, db: Session = Depends(get_db), current_u
 def get_lecturas_por_vehiculo(
     vehiculo_id: int, 
     caso_id: Optional[int] = Query(None, description="ID del caso opcional para filtrar lecturas"), 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user) # Usamos get_current_active_user para permitir acceso a rol consulta luego
 ):
     """
     Obtiene todas las lecturas (LPR y GPS) asociadas a un vehículo por su ID_Vehiculo.
     Opcionalmente filtra por caso_id si se proporciona.
+    Restringido por grupo para roles no superadmin.
     """
     db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.ID_Vehiculo == vehiculo_id).first()
     if not db_vehiculo:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con ID {vehiculo_id} no encontrado")
 
     query = db.query(models.Lectura).filter(models.Lectura.Matricula == db_vehiculo.Matricula)
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
 
-    if caso_id is not None:
-        # Si se proporciona caso_id, necesitamos unir con ArchivoExcel para filtrar
+    if user_rol != RolUsuarioEnum.superadmin.value: # Si no es superadmin, aplicar filtro de grupo
+        if current_user.ID_Grupo is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuario no tiene un grupo asignado.")
+        
+        if caso_id is not None:
+            # Verificar que el caso_id pertenezca al grupo del usuario
+            caso_pertenece_al_grupo = db.query(models.Caso)\
+                .filter(models.Caso.ID_Caso == caso_id)\
+                .filter(models.Caso.ID_Grupo == current_user.ID_Grupo)\
+                .first()
+            if not caso_pertenece_al_grupo:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para acceder a las lecturas de este caso.")
+            # Filtrar por el caso_id ya verificado
+            query = query.join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                         .filter(models.ArchivoExcel.ID_Caso == caso_id)
+        else:
+            # No se dio caso_id, filtrar todas las lecturas del vehículo que estén en casos del grupo del usuario
+            query = query.join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                         .join(models.Caso, models.ArchivoExcel.ID_Caso == models.Caso.ID_Caso)\
+                         .filter(models.Caso.ID_Grupo == current_user.ID_Grupo)
+    elif caso_id is not None: # Superadmin, pero se proveyó caso_id, así que filtramos por él
         query = query.join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
                      .filter(models.ArchivoExcel.ID_Caso == caso_id)
 
@@ -1281,8 +1458,8 @@ def get_lecturas_por_vehiculo(
     return [schemas.Lectura.model_validate(lect, from_attributes=True) for lect in lecturas]
 
 @app.delete("/vehiculos/{vehiculo_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["Vehículos"])
-def delete_vehiculo(vehiculo_id: int, db: Session = Depends(get_db)):
-    """Elimina un vehículo por su ID numérico."""
+def delete_vehiculo(vehiculo_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFICADO
+    """Elimina un vehículo por su ID numérico. Solo Superadmin."""
     db_vehiculo = db.query(models.Vehiculo).filter(models.Vehiculo.ID_Vehiculo == vehiculo_id).first()
     if not db_vehiculo:
         logger.warning(f"[DELETE /vehiculos] Vehículo con ID {vehiculo_id} no encontrado.")
@@ -1458,7 +1635,7 @@ def marcar_lectura_relevante(
 
     if not db_lectura:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lectura no encontrada.")
-    
+
     # NUEVO BLOQUE DE AUTORIZACIÓN
     if not db_lectura.archivo or not db_lectura.archivo.caso:
         logger.error(f"Error de datos: Lectura ID {id_lectura} (solicitada por {current_user.User}) no está correctamente asociada a un archivo y caso.")
@@ -2271,7 +2448,7 @@ def read_archivos_recientes(
 grupos_router = APIRouter(prefix="/api/grupos", tags=["Grupos"])
 
 @grupos_router.get("", response_model=List[schemas.Grupo])
-def get_grupos(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)): # MODIFIED
+def get_grupos(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFICADO
     grupos = db.query(models.Grupo).options(joinedload(models.Grupo.casos)).all()
     return grupos
 
@@ -2338,9 +2515,10 @@ def create_usuario(
     # Usar la nueva dependencia opcional para la comprobación de superadmin
     current_superadmin_check: Optional[models.Usuario] = Depends(get_current_active_superadmin_optional)
 ):
+    logger.info(f"Intento de crear usuario. Payload recibido: {usuario.model_dump()}") # AÑADIDO LOG DEL PAYLOAD
     logger.info(f"Solicitud POST /api/usuarios para crear usuario: {usuario.User}")
     is_first_user = db.query(models.Usuario).count() == 0
-
+    
     if not is_first_user:
         # No es el primer usuario, se requiere que un superadmin autenticado realice esta acción.
         if current_superadmin_check is None:
@@ -2384,15 +2562,15 @@ def create_usuario(
         usuario.ID_Grupo = None # Los superadmines no tienen grupo
 
     db_usuario_obj = models.Usuario(
-        User=str(usuario.User),
+        User=usuario.User, # CORREGIDO: Quitar str()
         Rol=rol_value_to_save, 
-        ID_Grupo=usuario.ID_Grupo,
-        Contraseña=hashed_password # Guardar la contraseña hasheada
+            ID_Grupo=usuario.ID_Grupo,
+        Contraseña=hashed_password 
     )
     
     try:
         db.add(db_usuario_obj)
-        db.commit()
+        db.commit() # MOVIDO db.commit() aquí para asegurar que el objeto está en la BD antes de refresh
         db.refresh(db_usuario_obj)
         logger.info(f"Usuario '{db_usuario_obj.User}' creado exitosamente con rol '{db_usuario_obj.Rol}' y ID_Grupo '{db_usuario_obj.ID_Grupo}'.")
     except IntegrityError as e:
@@ -2410,34 +2588,90 @@ def create_usuario(
         grupo_asociado = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == db_usuario_obj.ID_Grupo).first()
     
     return schemas.Usuario(
-        User=str(db_usuario_obj.User),
-        Rol=db_usuario_obj.Rol, 
+        User=db_usuario_obj.User, # CORREGIDO: Quitar str()
+        Rol=db_usuario_obj.Rol.value if hasattr(db_usuario_obj.Rol, 'value') else db_usuario_obj.Rol, # Asegurar que se pasa el valor del Enum
         ID_Grupo=db_usuario_obj.ID_Grupo,
         grupo=grupo_asociado
     )
 
 @usuarios_router.put("/{user_id}", response_model=schemas.Usuario)
 def update_usuario(user_id: int, usuario_update: schemas.UsuarioUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
+    logger.info(f"Superadmin {current_user.User} intentando actualizar usuario {user_id}")
+    
     db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
     if not db_usuario:
+        logger.warning(f"Intento de actualizar usuario inexistente {user_id}")
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if usuario_update.Rol is not None:
+    
+    # Si se está cambiando el rol de un superadmin, verificar que no sea el último
+    if (db_usuario.Rol == models.RolUsuarioEnum.superadmin.value and 
+        usuario_update.Rol is not None and 
+        usuario_update.Rol != models.RolUsuarioEnum.superadmin.value):
+        superadmin_count = db.query(models.Usuario).filter(
+            models.Usuario.Rol == models.RolUsuarioEnum.superadmin.value
+        ).count()
+        if superadmin_count <= 1:
+            logger.warning(f"Intento de cambiar rol del último superadmin {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede cambiar el rol del último superadmin del sistema"
+            )
+    
+    # Registrar cambios para auditoría
+    cambios = []
+    if usuario_update.Rol is not None and usuario_update.Rol != db_usuario.Rol:
+        cambios.append(f"Rol: {db_usuario.Rol} -> {usuario_update.Rol}")
         db_usuario.Rol = usuario_update.Rol
-    if usuario_update.ID_Grupo is not None:
+    if usuario_update.ID_Grupo is not None and usuario_update.ID_Grupo != db_usuario.ID_Grupo:
+        cambios.append(f"ID_Grupo: {db_usuario.ID_Grupo} -> {usuario_update.ID_Grupo}")
         db_usuario.ID_Grupo = usuario_update.ID_Grupo
     if usuario_update.Contraseña is not None:
-        db_usuario.Contraseña = usuario_update.Contraseña
-    db.commit()
-    db.refresh(db_usuario)
+        cambios.append("Contraseña actualizada")
+        db_usuario.Contraseña = get_password_hash(usuario_update.Contraseña)
+    
+    if cambios:
+        logger.info(f"Actualizando usuario {user_id}: {', '.join(cambios)}")
+        db.commit()
+        db.refresh(db_usuario)
+        logger.info(f"Usuario {user_id} actualizado exitosamente")
+    else:
+        logger.info(f"No se realizaron cambios en el usuario {user_id}")
+    
     return db_usuario
 
 @usuarios_router.delete("/{user_id}", status_code=204)
-def delete_usuario(user_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
+def delete_usuario(user_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    logger.info(f"Superadmin {current_user.User} intentando eliminar usuario {user_id}")
+    
+    # No permitir eliminar el propio usuario
+    if user_id == current_user.User:
+        logger.warning(f"Intento de auto-eliminación por superadmin {current_user.User}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puede eliminar su propio usuario"
+        )
+    
     db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
     if not db_usuario:
+        logger.warning(f"Intento de eliminar usuario inexistente {user_id}")
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Verificar si es el último superadmin
+    if db_usuario.Rol == models.RolUsuarioEnum.superadmin.value:
+        superadmin_count = db.query(models.Usuario).filter(
+            models.Usuario.Rol == models.RolUsuarioEnum.superadmin.value
+        ).count()
+        if superadmin_count <= 1:
+            logger.warning(f"Intento de eliminar el último superadmin {user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede eliminar el último superadmin del sistema"
+            )
+    
+    logger.info(f"Eliminando usuario {user_id} (Rol: {db_usuario.Rol})")
     db.delete(db_usuario)
     db.commit()
+    logger.info(f"Usuario {user_id} eliminado exitosamente")
     return
 
 app.include_router(usuarios_router)

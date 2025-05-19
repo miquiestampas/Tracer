@@ -170,10 +170,21 @@ class Grupo(GrupoBase):
     class Config:
         from_attributes = True
 
+# NUEVO: Schema simplificado para Caso, usado como referencia para evitar ciclos
+class CasoReferencia(CasoBase):
+    ID_Caso: int
+    Fecha_de_Creacion: datetime.date
+    grupo: Optional[Grupo] = None
+    # NO incluye 'archivos: List[ArchivoExcel]' para romper el ciclo
+
+    class Config:
+        from_attributes = True
+
 class Caso(CasoBase):
     ID_Caso: int
     Fecha_de_Creacion: datetime.date
     grupo: Optional[Grupo] = None
+    archivos: List['ArchivoExcel'] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -183,7 +194,7 @@ class ArchivoExcel(ArchivoExcelBase):
     ID_Caso: int
     Fecha_de_Importacion: datetime.date
     Total_Registros: int = Field(0, description="Número total de lecturas en este archivo")
-    caso: Optional[Caso] = None  # <-- Añadido para exponer el caso relacionado
+    caso: Optional[CasoReferencia] = None  # MODIFICADO: Usa CasoReferencia en lugar de Caso
     # lecturas: List['Lectura'] = []
 
     class Config:
@@ -427,11 +438,12 @@ class LocalizacionInteresOut(LocalizacionInteresBase):
 
 class RolUsuarioEnum(str, enum.Enum):
     superadmin = "superadmin"
-    admin_casos = "admin_casos"
+    admingrupo = "admingrupo"
+    user_consulta = "user_consulta"
 
 class UsuarioBase(BaseModel):
     User: int = Field(..., example=12345)
-    Rol: RolUsuarioEnum = Field(..., example="admin_casos")
+    Rol: RolUsuarioEnum = Field(..., example="admingrupo")
     ID_Grupo: Optional[int] = Field(None, example=1)
 
 class UsuarioCreate(UsuarioBase):
