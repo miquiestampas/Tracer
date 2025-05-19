@@ -21,6 +21,7 @@ interface GpsMapStandaloneProps {
   onGuardarLocalizacion: (lectura: GpsLectura) => void;
   playbackLayer?: GpsCapa | null;
   currentPlaybackIndex?: number;
+  puntoSeleccionado?: GpsLectura | null;
 }
 
 interface GpsMapStandalonePropsWithFullscreen extends GpsMapStandaloneProps {
@@ -436,7 +437,7 @@ const MapAutoResize = () => {
   return null;
 };
 
-const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFullscreen>(({
+const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithFullscreen>(({
   lecturas,
   capas,
   localizaciones,
@@ -445,10 +446,33 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
   onGuardarLocalizacion,
   playbackLayer,
   currentPlaybackIndex,
-  fullscreenMap
+  fullscreenMap,
+  puntoSeleccionado
 }, ref): React.ReactElement => {
-  const mapRef = useRef<L.Map | null>(null);
-  const [infoBanner, setInfoBanner] = useState<{ info: any; isLocalizacion: boolean } | null>(null);
+  const internalMapRef = useRef<L.Map | null>(null);
+  const [selectedInfo, setSelectedInfo] = useState<any | null>(null);
+
+  // Definir initialCenter e initialZoom antes de usarlos en useState
+  const initialCenter: L.LatLngTuple = useMemo(() => {
+    const primeraLecturaConCoordenadas = 
+      Array.isArray(lecturas) && lecturas.length > 0
+        ? lecturas.find(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
+        : null;
+    return primeraLecturaConCoordenadas
+      ? [primeraLecturaConCoordenadas.Coordenada_Y, primeraLecturaConCoordenadas.Coordenada_X]
+      : [40.416775, -3.703790]; // Centro por defecto (Madrid)
+  }, [lecturas]);
+
+  const initialZoom: number = useMemo(() => {
+    const primeraLecturaConCoordenadas = 
+      Array.isArray(lecturas) && lecturas.length > 0
+        ? lecturas.find(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
+        : null;
+    return primeraLecturaConCoordenadas ? 13 : 10; // Zoom por defecto
+  }, [lecturas]);
+
+  const [currentZoom, setCurrentZoom] = useState<number | undefined>(initialZoom);
+  const [currentCenter, setCurrentCenter] = useState<L.LatLngTuple | undefined>(initialCenter);
 
   // Disparar resize al montar
   useEffect(() => {
@@ -458,17 +482,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
   }, []);
 
   // Exponer funciones del mapa
-  useImperativeHandle(ref, () => ({
-    refrescarMapa: () => {
-      window.dispatchEvent(new Event('resize'));
-    },
-    getMap: () => mapRef.current,
-    setView: (lat: number, lng: number, zoom?: number) => {
-      if (mapRef.current) {
-        mapRef.current.setView([lat, lng], zoom || mapRef.current.getZoom());
-      }
-    }
-  }));
+  useImperativeHandle(ref, () => internalMapRef.current!, [internalMapRef.current]);
 
   // Optimizar puntos si está activado
   const optimizedLecturas = useMemo(() => {
@@ -503,15 +517,6 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
   const allLecturas = useMemo(() => {
     return [...optimizedLecturas, ...activeLayerLecturas] as GpsLecturaWithCluster[];
   }, [optimizedLecturas, activeLayerLecturas]);
-
-  // Solo calcula el centro y zoom inicial una vez
-  const primeraLectura = Array.isArray(allLecturas) && allLecturas.length > 0
-    ? allLecturas.find(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
-    : null;
-  const initialCenter = primeraLectura
-    ? [primeraLectura.Coordenada_Y, primeraLectura.Coordenada_X]
-    : [40.416775, -3.703790];
-  const initialZoom = primeraLectura ? 13 : 10;
 
   // Selección dinámica de capa
   let tileLayerUrl = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -559,10 +564,10 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
 
   // Función para navegar entre puntos
   const handleNavigate = (direction: 'prev' | 'next') => {
-    if (!infoBanner || infoBanner.isLocalizacion) return;
+    if (!selectedInfo || selectedInfo.isLocalizacion) return;
 
     const currentIndex = allLecturas.findIndex(
-      l => l.ID_Lectura === infoBanner.info.ID_Lectura
+      l => l.ID_Lectura === selectedInfo.info.ID_Lectura
     );
 
     if (currentIndex === -1) return;
@@ -575,7 +580,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
     }
 
     const newPoint = allLecturas[newIndex];
-    setInfoBanner({ 
+    setSelectedInfo({ 
       info: { 
         ...newPoint, 
         onGuardarLocalizacion: () => onGuardarLocalizacion(newPoint) 
@@ -584,10 +589,10 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
     });
 
     // Centrar el mapa en el nuevo punto
-    if (mapRef.current) {
-      mapRef.current.setView(
+    if (internalMapRef.current) {
+      internalMapRef.current.setView(
         [newPoint.Coordenada_Y, newPoint.Coordenada_X],
-        mapRef.current.getZoom()
+        internalMapRef.current.getZoom()
       );
     }
   };
@@ -628,6 +633,27 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
     return playbackLayer.lecturas[currentPlaybackIndex];
   }, [playbackLayer, currentPlaybackIndex]);
 
+  // Efecto para centrar el mapa cuando puntoSeleccionado cambia
+  useEffect(() => {
+    const map = internalMapRef.current;
+    if (puntoSeleccionado && map) {
+      const lat = puntoSeleccionado.Coordenada_Y;
+      const lng = puntoSeleccionado.Coordenada_X;
+      if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+        console.log(`GpsMapStandalone: Centrando mapa en Lat ${lat}, Lng ${lng} por prop puntoSeleccionado.`);
+        map.flyTo([lat, lng], Math.max(map.getZoom() ?? 15, 16));
+        // Ahora también seleccionamos el punto para que se resalte y muestre el InfoBanner
+        setSelectedInfo({
+          info: {
+            ...puntoSeleccionado,
+            onGuardarLocalizacion: () => onGuardarLocalizacion(puntoSeleccionado), // Asegúrate que onGuardarLocalizacion esté disponible aquí
+          },
+          isLocalizacion: false // Asumimos que un punto GPS directo no es una LocalizacionDeInteres guardada
+        });
+      }
+    }
+  }, [puntoSeleccionado, internalMapRef.current, onGuardarLocalizacion]); // Añadir onGuardarLocalizacion a las dependencias
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
@@ -635,7 +661,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
         zoom={initialZoom}
         scrollWheelZoom={true}
         style={{ height: '100%', width: '100%' }}
-        ref={mapRef as any}
+        ref={internalMapRef as any}
       >
         <MapAutoResize />
         <TileLayer
@@ -667,7 +693,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
         {mapControls.showPoints && allLecturas.map((lectura, idx) => {
           const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
           const color = capa ? capa.color : '#228be6';
-          const isSelected = infoBanner && !infoBanner.isLocalizacion && infoBanner.info?.ID_Lectura === lectura.ID_Lectura;
+          const isSelected = selectedInfo && !selectedInfo.isLocalizacion && selectedInfo.info?.ID_Lectura === lectura.ID_Lectura;
           const clusterSize = lectura.clusterSize || 1;
           
           const customIcon = L.divIcon({
@@ -688,7 +714,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
               position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
               icon={customIcon}
               eventHandlers={{
-                click: () => setInfoBanner({ 
+                click: () => setSelectedInfo({ 
                   info: { 
                     ...lectura, 
                     onGuardarLocalizacion: () => onGuardarLocalizacion(lectura),
@@ -703,7 +729,7 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
         {/* Renderizar localizaciones de interés */}
         {mostrarLocalizaciones && localizaciones.map((loc, idx) => {
           const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
-          const isSelected = infoBanner && infoBanner.isLocalizacion && infoBanner.info?.id_lectura === loc.id_lectura;
+          const isSelected = selectedInfo && selectedInfo.isLocalizacion && selectedInfo.info?.id_lectura === loc.id_lectura;
           const svgIcon = ReactDOMServer.renderToStaticMarkup(
             <div style={{
               background: isSelected ? '#fff' : 'transparent',
@@ -755,17 +781,68 @@ const GpsMapStandalone = React.memo(forwardRef<any, GpsMapStandalonePropsWithFul
                 </div>`
               })}
               eventHandlers={{
-                click: () => setInfoBanner({ info: loc, isLocalizacion: true })
+                click: () => setSelectedInfo({ info: loc, isLocalizacion: true })
               }}
             />
           );
         })}
+
+        {/* Renderizar el punto seleccionado explícitamente si no está en allLecturas y es un punto GPS */}
+        {mapControls.showPoints &&
+          selectedInfo &&
+          !selectedInfo.isLocalizacion &&
+          selectedInfo.info &&
+          typeof selectedInfo.info.Coordenada_Y === 'number' && // Asegurar que tiene coordenadas válidas
+          typeof selectedInfo.info.Coordenada_X === 'number' &&
+          !isNaN(selectedInfo.info.Coordenada_Y) &&
+          !isNaN(selectedInfo.info.Coordenada_X) &&
+          !allLecturas.some(l => l.ID_Lectura === selectedInfo.info.ID_Lectura) && (
+            (() => {
+              const lecturaSeleccionada = selectedInfo.info as GpsLectura;
+              const color = '#007bff'; // Un color azul distintivo para el punto seleccionado directamente
+              const isSelectedStyle = true; 
+              // Verificar si clusterSize existe en el objeto antes de usarlo
+              const clusterSizeDisplay = (lecturaSeleccionada as any).clusterSize && (lecturaSeleccionada as any).clusterSize > 1 ? (lecturaSeleccionada as any).clusterSize : null;
+
+              const customIcon = L.divIcon({
+                className: 'custom-div-icon-selected-explicitly', // Clase CSS diferente por si se necesita
+                html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
+                  ${isSelectedStyle ? `<div style='position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>` : ''}
+                  <div style="background: ${color}; width: ${isSelectedStyle ? 24 : 12}px; height: ${isSelectedStyle ? 24 : 12}px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${color}; outline: ${isSelectedStyle ? '3px solid ' + color : 'none'};">
+                    ${clusterSizeDisplay ? `<span style="position: absolute; top: -8px; right: -8px; background: white; color: ${color}; font-size: 10px; padding: 2px 4px; border-radius: 8px; border: 1px solid ${color};">${clusterSizeDisplay}</span>` : ''}
+                  </div>
+                </div>`,
+                iconSize: [isSelectedStyle ? 44 : 12, isSelectedStyle ? 44 : 12],
+                iconAnchor: [isSelectedStyle ? 22 : 6, isSelectedStyle ? 22 : 6]
+              });
+
+              return (
+                <Marker
+                  key={`selected-explicit-${lecturaSeleccionada.ID_Lectura}`}
+                  position={[lecturaSeleccionada.Coordenada_Y, lecturaSeleccionada.Coordenada_X]}
+                  icon={customIcon}
+                  zIndexOffset={1000} // Para asegurar que esté por encima de otros marcadores
+                  eventHandlers={{
+                    click: () => { // Reafirmar selección para mantener consistencia del InfoBanner
+                      setSelectedInfo({
+                        info: {
+                          ...lecturaSeleccionada,
+                          onGuardarLocalizacion: () => onGuardarLocalizacion(lecturaSeleccionada),
+                        },
+                        isLocalizacion: false
+                      });
+                    }
+                  }}
+                />
+              );
+            })()
+        )}
       </MapContainer>
       <InfoBanner
-        info={infoBanner?.info}
-        isLocalizacion={infoBanner?.isLocalizacion}
-        onClose={() => setInfoBanner(null)}
-        onEditLocalizacion={infoBanner?.isLocalizacion ? () => onGuardarLocalizacion(infoBanner.info) : undefined}
+        info={selectedInfo?.info}
+        isLocalizacion={selectedInfo?.isLocalizacion}
+        onClose={() => setSelectedInfo(null)}
+        onEditLocalizacion={selectedInfo?.isLocalizacion ? () => onGuardarLocalizacion(selectedInfo.info) : undefined}
         onNavigate={handleNavigate}
       />
     </div>
