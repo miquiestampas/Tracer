@@ -30,9 +30,10 @@ const initialFilterState: FilterState = {
 
 interface DatosGpsPanelProps {
     casoId: number;
+    onVerEnMapa?: (lectura: GpsLectura) => void;
 }
 
-const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
+const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId, onVerEnMapa }) => {
     // Estados
     const [loading, setLoading] = useState(true);
     const [gpsData, setGpsData] = useState<GpsLectura[]>([]);
@@ -67,18 +68,13 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId }) => {
             render: (record) => (
                 <Group gap={4} justify="center">
                     <Tooltip label="Ver en mapa">
-                        <ActionIcon variant="subtle" color="blue" size="sm">
+                        <ActionIcon 
+                            variant="subtle" 
+                            color="blue" 
+                            size="sm"
+                            onClick={() => onVerEnMapa && onVerEnMapa(record)}
+                        >
                             <IconEye size={16} />
-                        </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Guardar vehículo">
-                        <ActionIcon variant="subtle" color="green" size="sm">
-                            <IconCar size={16} />
-                        </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Marcar relevante">
-                        <ActionIcon variant="subtle" color="yellow" size="sm">
-                            <IconBookmark size={16} />
                         </ActionIcon>
                     </Tooltip>
                 </Group>

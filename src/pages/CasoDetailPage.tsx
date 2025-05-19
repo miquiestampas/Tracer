@@ -7,7 +7,7 @@ import { getCasoById } from '../services/casosApi';
 import { getArchivosPorCaso, deleteArchivo } from '../services/archivosApi';
 import { notifications } from '@mantine/notifications';
 import { openConfirmModal } from '@mantine/modals';
-import type { Caso, ArchivoExcel, Lectura, Lector, LecturaRelevante } from '../types/data';
+import type { Caso, ArchivoExcel, Lectura, Lector, LecturaRelevante, GpsLectura } from '../types/data';
 import apiClient from '../services/api';
 import dayjs from 'dayjs';
 import _ from 'lodash';
@@ -241,6 +241,9 @@ function CasoDetailPage() {
   // El estado activeMainTab se mantiene, pero controla la sección activa
   const [activeMainTab, setActiveMainTab] = useState<string | null>('analisis-lpr');
 
+  // ---- NUEVO: Estado para el punto GPS a mostrar en el mapa ----
+  const [puntoGpsSeleccionado, setPuntoGpsSeleccionado] = useState<GpsLectura | null>(null);
+
   // ---- NUEVO: Estado compartido para filas interactuadas ----
   const [interactedMatriculas, setInteractedMatriculas] = useState<Set<string>>(new Set());
 
@@ -443,6 +446,13 @@ function CasoDetailPage() {
    };
   // --- FIN ESTADO Y LÓGICA PARA LECTURAS RELEVANTES ---
 
+  // --- NUEVA FUNCIÓN: Para manejar clic en "Ver en mapa" desde DatosGpsPanel ---
+  const handleVerGpsEnMapa = useCallback((lectura: GpsLectura) => {
+    console.log("Solicitud para ver en mapa GPS:", lectura);
+    setPuntoGpsSeleccionado(lectura);
+    setActiveMainTab('analisis-gps'); // ID de la pestaña del GpsAnalysisPanel
+  }, []);
+
   // Función para cargar archivos (necesaria para carga inicial y después de borrar)
 const fetchArchivos = useCallback(async () => {
       if (!idCasoNum || isNaN(idCasoNum)) return;
@@ -484,17 +494,30 @@ useEffect(() => {
 
   // Handler para borrar archivo (ahora usa fetchArchivos)
 const handleDeleteArchivo = async (archivoId: number) => {
-      if (!window.confirm(`¿Seguro de eliminar archivo ID ${archivoId} y sus lecturas?`)) return;
-  setDeletingArchivoId(archivoId);
-  try {
-    await deleteArchivo(archivoId);
-        notifications.show({ title: 'Archivo Eliminado', message: `Archivo ${archivoId} eliminado.`, color: 'teal' });
-    await fetchArchivos();
-  } catch (err: any) {
+  openConfirmModal({
+    title: 'Confirmar Eliminación',
+    centered: true,
+    children: (
+      <Text size="sm">
+        ¿Está seguro de que desea eliminar el archivo ID <strong>{archivoId}</strong> y todas sus lecturas asociadas? Esta acción no se puede deshacer.
+      </Text>
+    ),
+    labels: { confirm: 'Eliminar Archivo', cancel: 'Cancelar' },
+    confirmProps: { color: 'red' },
+    onConfirm: async () => {
+      setDeletingArchivoId(archivoId);
+      try {
+        await deleteArchivo(archivoId);
+        notifications.show({ title: 'Archivo Eliminado', message: `El archivo ID ${archivoId} ha sido eliminado.`, color: 'teal' });
+        await fetchArchivos(); // Actualizar la lista de archivos
+      } catch (err: any) {
         notifications.show({ title: 'Error al Eliminar', message: err.response?.data?.detail || 'No se pudo eliminar el archivo.', color: 'red' });
-  } finally {
-    setDeletingArchivoId(null);
-  }
+      } finally {
+        setDeletingArchivoId(null);
+      }
+    },
+    // onCancel se maneja por defecto (cierra el modal)
+  });
 };
 
   // --- Estados para Lecturas del Mapa --- 
@@ -713,12 +736,18 @@ const handleDeleteArchivo = async (archivoId: number) => {
 
               {/* Pestaña Análisis GPS */}
               <Box style={{ display: activeMainTab === 'analisis-gps' ? 'block' : 'none', position: 'relative' }}>
-                  <GpsAnalysisPanel casoId={idCasoNum!} />
+                  <GpsAnalysisPanel 
+                    casoId={idCasoNum!} 
+                    puntoSeleccionado={puntoGpsSeleccionado}
+                  />
               </Box>
 
               {/* Pestaña Datos GPS */}
               <Box style={{ display: activeMainTab === 'datos-gps' ? 'block' : 'none', position: 'relative' }}>
-                  <DatosGpsPanel casoId={idCasoNum!} />
+                  <DatosGpsPanel 
+                    casoId={idCasoNum!} 
+                    onVerEnMapa={handleVerGpsEnMapa}
+                  />
               </Box>
 
               <Box style={{ display: activeMainTab === 'mapa' ? 'block' : 'none', position: 'relative' }}>

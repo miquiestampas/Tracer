@@ -23,6 +23,7 @@ const mapContainerStyle = {
 
 interface GpsAnalysisPanelProps {
   casoId: number;
+  puntoSeleccionado?: GpsLectura | null;
 }
 
 // Tipo de capa para GPS
@@ -493,7 +494,9 @@ const downloadFile = (content: string, filename: string) => {
   window.URL.revokeObjectURL(url);
 };
 
-const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
+const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSeleccionado }) => {
+  const mapRef = useRef<L.Map | null>(null);
+  const [activeTab, setActiveTab] = useState('controles');
   // Estados principales
   const [lecturas, setLecturas] = useState<GpsLectura[]>([]);
   const [loading, setLoading] = useState(false);
@@ -548,13 +551,36 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
   const [localizacionesColapsadas, setLocalizacionesColapsadas] = useState(false);
   const [capasColapsadas, setCapasColapsadas] = useState(false);
 
-  const mapRef = useRef<any>(null);
-
   // Estados para el reproductor de recorrido
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSpeed, setCurrentSpeed] = useState(4);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedLayerForPlayback, setSelectedLayerForPlayback] = useState<number | null>(null);
+
+  // Centro inicial del mapa (Madrid)
+  const initialCenter: L.LatLngTuple = [40.416775, -3.703790];
+  const [mapCenter, setMapCenter] = useState<L.LatLngTuple>(initialCenter);
+  const [mapZoom, setMapZoom] = useState(10);
+
+  // ---- EFECTO PARA CENTRAR EL MAPA CUANDO puntoSeleccionado CAMBIA ----
+  // Necesitamos acceder al mapa dentro de un componente que sea hijo de MapContainer
+  // por lo que crearemos un pequeño componente auxiliar.
+  const MapEffect = () => {
+    const map = useMap(); // Hook de react-leaflet para obtener la instancia del mapa
+
+    useEffect(() => {
+      if (puntoSeleccionado && map) {
+        const lat = puntoSeleccionado.Coordenada_Y;
+        const lng = puntoSeleccionado.Coordenada_X;
+        if (typeof lat === 'number' && typeof lng === 'number') {
+          console.log(`Centrando mapa en: Lat ${lat}, Lng ${lng}`);
+          map.flyTo([lat, lng], 16); // Zoom a nivel 16, puedes ajustarlo
+        }
+      }
+    }, [puntoSeleccionado, map]);
+
+    return null; // Este componente no renderiza nada visible
+  };
 
   // Cargar localizaciones de interés al montar o cambiar casoId
   useEffect(() => {
@@ -971,11 +997,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
     if (!selectedLayer || !selectedLayer.lecturas[currentIndex]) return;
 
     const currentPoint = selectedLayer.lecturas[currentIndex];
-    if (mapRef.current) {
-      mapRef.current.setView(
-        currentPoint.Coordenada_Y,
-        currentPoint.Coordenada_X
-      );
+    if (mapRef.current && typeof currentPoint.Coordenada_Y === 'number' && typeof currentPoint.Coordenada_X === 'number') {
+      mapRef.current.setView([currentPoint.Coordenada_Y, currentPoint.Coordenada_X], mapRef.current.getZoom());
     }
   }, [selectedLayerForPlayback, capas, currentIndex]);
 
@@ -1054,6 +1077,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
             playbackLayer={selectedLayerForPlayback !== null ? capas.find(c => c.id === selectedLayerForPlayback) || null : null}
             currentPlaybackIndex={currentIndex}
             fullscreenMap={fullscreenMap}
+            puntoSeleccionado={puntoSeleccionado}
           />
         </Paper>
       </div>
@@ -1067,7 +1091,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
           variant="outline"
           size="xs"
           color="blue"
-          onClick={() => mapRef.current?.refrescarMapa()}
+          onClick={() => mapRef.current?.invalidateSize()}
           leftSection={<IconRefresh size={16} />}
           style={{
             backgroundColor: 'white',
@@ -1375,6 +1399,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId }) => {
               playbackLayer={selectedLayerForPlayback !== null ? capas.find(c => c.id === selectedLayerForPlayback) || null : null}
               currentPlaybackIndex={currentIndex}
               fullscreenMap={fullscreenMap}
+              puntoSeleccionado={puntoSeleccionado}
             />
           </Paper>
         </div>
