@@ -13,6 +13,7 @@ import dayjs from 'dayjs'; // Para formatear fecha
 import _ from 'lodash'; // Para ordenar
 import { useAuth } from '../context/AuthContext';
 import './CasosPage.css'; // Asegúrate de importar el CSS para los estilos de hover
+import apiClient from '../services/api';
 
 // Lista de estados válidos
 const CASE_STATUSES: EstadoCaso[] = [
@@ -47,6 +48,15 @@ interface Grupo {
   casos?: number;
 }
 
+// NUEVO: Tipo para los valores del formulario, ID_Grupo es string aquí
+interface CasoFormValues {
+  Nombre_del_Caso: string;
+  Año: number; // Mantine NumberInput devuelve number
+  Descripcion?: string | null;
+  NIV?: string | null;
+  ID_Grupo?: string; // ID_Grupo es string en el formulario debido al Select
+}
+
 function CasosPage() {
   const [casos, setCasos] = useState<Caso[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,24 +78,29 @@ function CasosPage() {
   const [sortField, setSortField] = useState<SortField>('Fecha_de_Creacion');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const form = useForm<CasoCreate>({
+  // Usar CasoFormValues para el formulario
+  const form = useForm<CasoFormValues>({
     initialValues: {
       Nombre_del_Caso: '',
       Año: new Date().getFullYear(),
       Descripcion: '',
       NIV: '',
-      // Estado no necesita valor inicial aquí, el backend lo pone
+      ID_Grupo: '', // ID_Grupo es string
     },
     validate: {
       Nombre_del_Caso: (value) => (value.trim().length > 0 ? null : 'El nombre del caso es obligatorio'),
       Año: (value) => (value > 1900 && value <= new Date().getFullYear() + 1 ? null : 'Introduce un año válido'),
+      // value de ID_Grupo será string aquí
+      ID_Grupo: (value, values) => (user?.Rol === 'superadmin' && (!value || value.trim() === '' || isNaN(Number(value))) ? 'Debe seleccionar un grupo para el caso' : null),
     },
   });
 
   useEffect(() => {
     fetchCasos();
-    if (user?.rol === 'superadmin') fetchGrupos();
-  }, []);
+    if (user?.Rol === 'superadmin') {
+        fetchGrupos();
+    }
+  }, [user?.Rol]);
 
   const fetchCasos = async () => {
     setLoading(true);
@@ -102,47 +117,64 @@ function CasosPage() {
   };
 
   const fetchGrupos = async () => {
+    if (user?.Rol !== 'superadmin') {
+      setGrupos([]); // No es superadmin, no necesita la lista completa
+      return;
+    }
     setLoadingGrupos(true);
     try {
-      const res = await fetch('/api/grupos');
-      const data = await res.json();
-      setGrupos(data);
-    } catch (e) {
-      setGrupos([]);
+      // Usar apiClient para incluir el token JWT automáticamente
+      const response = await apiClient.get<Grupo[]>('/api/grupos');
+      setGrupos(response.data);
+    } catch (e: any) {
+      console.error("Error fetching grupos:", e);
+      notifications.show({
+        title: 'Error al cargar grupos',
+        message: e.response?.data?.detail || e.message || 'No se pudieron obtener los grupos para el superadmin.',
+        color: 'red',
+      });
+      setGrupos([]); // En caso de error, asegurar que grupos sea un array vacío
     } finally {
       setLoadingGrupos(false);
     }
   };
 
-  // Cuando los grupos se cargan y el modal está abierto, asignar el primer grupo si no hay valor
+  // Cuando los grupos se cargan y el modal está abierto, asignar el primer grupo si no hay valor y es superadmin en modo CREACIÓN
   React.useEffect(() => {
     if (
-      user?.rol === 'superadmin' &&
+      user?.Rol === 'superadmin' &&
       createModalOpened &&
+      !editingCasoId &&
       grupos.length > 0 &&
-      (form.values.ID_Grupo === undefined || form.values.ID_Grupo === null || String(form.values.ID_Grupo) === '')
+      (!form.values.ID_Grupo || form.values.ID_Grupo.trim() === '')
     ) {
-      form.setFieldValue('ID_Grupo', grupos[0].ID_Grupo);
+      form.setFieldValue('ID_Grupo', String(grupos[0].ID_Grupo)); // setFieldValue con string
     }
-  }, [grupos, createModalOpened]);
+  }, [user?.Rol, createModalOpened, editingCasoId, grupos, form]);
 
-  const handleCreateCaso = async (values: CasoCreate) => {
+  // Esta función ahora espera CasoFormValues, pero enviará CasoCreate
+  const handleCreateCaso = async (formValues: CasoFormValues) => {
     try {
-      const idGrupoNum = user?.rol === 'superadmin' ? Number(values.ID_Grupo) : user?.grupo?.ID_Grupo;
-      if (!idGrupoNum || isNaN(idGrupoNum)) {
-        notifications.show({ title: 'Error', message: 'Debes seleccionar un grupo válido.', color: 'red' });
+      const idGrupoParaApi = user?.Rol === 'superadmin' 
+        ? (formValues.ID_Grupo ? Number(formValues.ID_Grupo) : undefined) // Convertir string a number
+        : user?.grupo?.ID_Grupo;
+
+      if (idGrupoParaApi === undefined || idGrupoParaApi === null || isNaN(idGrupoParaApi)) {
+        notifications.show({ title: 'Error', message: 'El grupo asignado no es válido.', color: 'red' });
         return;
       }
-      const dataToSend = {
-        ...values,
-        Año: Number(values.Año) || 0,
-        ID_Grupo: idGrupoNum,
+      const dataToSend: CasoCreate = { 
+        Nombre_del_Caso: formValues.Nombre_del_Caso,
+        Año: Number(formValues.Año) || 0,
+        NIV: formValues.NIV,
+        Descripcion: formValues.Descripcion,
+        ID_Grupo: idGrupoParaApi, // number
       };
-      console.log('Enviando caso:', dataToSend);
+      console.log('Enviando caso para crear:', dataToSend);
       await createCaso(dataToSend);
       notifications.show({
         title: 'Caso Creado',
-        message: `El caso "${values.Nombre_del_Caso}" ha sido creado exitosamente.`,
+        message: `El caso "${formValues.Nombre_del_Caso}" ha sido creado exitosamente.`,
         color: 'green',
       });
       form.reset();
@@ -271,44 +303,55 @@ function CasosPage() {
 
   // --- NUEVO: Handlers unificados para Modal --- 
   const openCreateModal = () => {
-    form.reset(); // Limpiar form
-    setEditingCasoId(null); // Asegurar modo creación
-    if (user?.rol === 'superadmin' && grupos.length > 0) {
-      form.setFieldValue('ID_Grupo', grupos[0].ID_Grupo);
+    form.reset();
+    setEditingCasoId(null);
+    if (user?.Rol === 'superadmin' && grupos.length > 0) {
+      form.setFieldValue('ID_Grupo', String(grupos[0].ID_Grupo));
     }
-    _openModal(); // Abrir modal
+    _openModal();
   };
 
   const openEditModal = (caso: Caso) => {
-    setEditingCasoId(caso.ID_Caso); // Guardar ID del caso a editar
+    setEditingCasoId(caso.ID_Caso);
     form.setValues({
       Nombre_del_Caso: caso.Nombre_del_Caso,
       Año: caso.Año,
       Descripcion: caso.Descripcion || '',
       NIV: caso.NIV || '',
-      ID_Grupo: (user?.rol === 'superadmin' ? (caso as any).ID_Grupo : undefined),
+      ID_Grupo: (user?.Rol === 'superadmin' && (caso as any).ID_Grupo !== undefined && (caso as any).ID_Grupo !== null) ? String((caso as any).ID_Grupo) : '', // setValues con string
     });
-    _openModal(); // Abrir modal
+    _openModal();
   };
 
   const closeModal = () => {
-    form.reset(); // Limpiar form al cerrar
-    setEditingCasoId(null); // Resetear modo edición
-    _closeModal(); // Cerrar modal
+    form.reset();
+    setEditingCasoId(null);
+    _closeModal();
   };
 
-  // --- Handler para Actualizar Caso (CONECTADO A API) --- 
-  const handleUpdateCaso = async (id: number, values: CasoCreate) => {
-    const dataToSend = {
-      ...values,
-      Año: Number(values.Año) || 0,
-      ID_Grupo: user?.rol === 'superadmin' ? Number(values.ID_Grupo) : user?.grupo?.ID_Grupo,
+  // Esta función también espera CasoFormValues
+  const handleUpdateCaso = async (id: number, formValues: CasoFormValues) => {
+    const idGrupoParaApi = user?.Rol === 'superadmin' && formValues.ID_Grupo 
+        ? Number(formValues.ID_Grupo) // Convertir string a number
+        : undefined; 
+
+    const dataToSendUpdate: Partial<CasoCreate> = { 
+      Nombre_del_Caso: formValues.Nombre_del_Caso,
+      Año: Number(formValues.Año) || 0,
+      NIV: formValues.NIV,
+      Descripcion: formValues.Descripcion,
     };
+
+    if (user?.Rol === 'superadmin' && idGrupoParaApi !== undefined && !isNaN(idGrupoParaApi)) {
+        (dataToSendUpdate as CasoCreate).ID_Grupo = idGrupoParaApi; // number
+    }
+
+    console.log('Enviando caso para actualizar:', dataToSendUpdate);
     try {
-      await updateCaso(id, dataToSend);
+      await updateCaso(id, dataToSendUpdate as CasoCreate); 
       notifications.show({
         title: 'Caso Actualizado',
-        message: `El caso "${values.Nombre_del_Caso}" ha sido actualizado.`,
+        message: `El caso "${formValues.Nombre_del_Caso}" ha sido actualizado.`,
         color: 'blue',
       });
       closeModal();
@@ -326,14 +369,8 @@ function CasosPage() {
     }
   };
 
-  const isGrupoValido = user?.rol === 'superadmin' ? (typeof form.values.ID_Grupo === 'number' && !isNaN(form.values.ID_Grupo)) : true;
-
-  // --- NUEVO: Handler unificado para Submit del Formulario --- 
-  const handleFormSubmit = async (values: CasoCreate) => {
-    if (user?.rol === 'superadmin' && (!values.ID_Grupo || isNaN(Number(values.ID_Grupo)))) {
-      notifications.show({ title: 'Error', message: 'Debes seleccionar un grupo válido.', color: 'red' });
-      return;
-    }
+  // Ahora el tipo de values es CasoFormValues
+  const handleFormSubmit = async (values: CasoFormValues) => {
     if (editingCasoId) {
       await handleUpdateCaso(editingCasoId, values);
     } else {
@@ -418,7 +455,6 @@ function CasosPage() {
                               justifyContent: 'space-between'
                           }}
                           onClick={e => {
-                              e.stopPropagation();
                               navigate(`/casos/${caso.ID_Caso}`);
                           }}
                       >
@@ -445,19 +481,22 @@ function CasosPage() {
                           </Stack>
 
                           <Group mt="md" justify="space-between">
-                              <Select
-                                  size="xs"
-                                  data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
-                                  value={caso.Estado}
-                                  onChange={(value) => handleEstadoChange(caso.ID_Caso, value)}
-                                  disabled={updatingEstadoCasoId === caso.ID_Caso}
-                                  placeholder="Cambiar estado"
-                                  comboboxProps={{ shadow: 'md', transitionProps: { transition: 'pop', duration: 200 } }}
-                              />
+                                <Select
+                                    size="xs"
+                                    data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
+                                    value={caso.Estado}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(value) => {
+                                        handleEstadoChange(caso.ID_Caso, value);
+                                    }}
+                                    disabled={updatingEstadoCasoId === caso.ID_Caso}
+                                    placeholder="Cambiar estado"
+                                    comboboxProps={{ shadow: 'md', transitionProps: { transition: 'pop', duration: 200 } }}
+                                />
 
                               <Group>
                                   <Tooltip label="Editar Caso">
-                                      <ActionIcon variant="light" color="gray" onClick={() => openEditModal(caso)}>
+                                      <ActionIcon variant="light" color="gray" onClick={(e) => { e.stopPropagation(); openEditModal(caso); }}>
                                           <IconPencil size={16} />
                                       </ActionIcon>
                                   </Tooltip>
@@ -556,7 +595,7 @@ function CasosPage() {
                                           </ActionIcon>
                                       </Tooltip>
                                       <Tooltip label="Editar Caso">
-                                          <ActionIcon variant="light" color="gray" size="xs" onClick={() => openEditModal(caso)}>
+                                          <ActionIcon variant="light" color="gray" size="xs" onClick={(e) => { e.stopPropagation(); openEditModal(caso); }}>
                                               <IconPencil size={14} />
                                           </ActionIcon>
                                       </Tooltip>
@@ -618,22 +657,28 @@ function CasosPage() {
                minRows={2}
                {...form.getInputProps('Descripcion')}
              />
-             {user?.rol === 'superadmin' && (
+             {user?.Rol === 'superadmin' && (
                <Select
                  label="Grupo"
                  placeholder="Selecciona un grupo"
-                 data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))}
-                 value={form.values.ID_Grupo !== undefined && form.values.ID_Grupo !== null ? String(form.values.ID_Grupo) : ''}
-                 onChange={v => form.setFieldValue('ID_Grupo', v ? Number(v) : undefined)}
+                 data={grupos.map(g => ({ value: String(g.ID_Grupo), label: g.Nombre }))} 
+                 {...form.getInputProps('ID_Grupo')}
                  required
                  searchable
                  disabled={loadingGrupos || grupos.length === 0}
-                 error={!isGrupoValido ? 'Selecciona un grupo válido' : undefined}
                />
              )}
              <Group justify="flex-end" mt="md">
                <Button variant="default" onClick={closeModal}>Cancelar</Button>
-               <Button type="submit" disabled={user?.rol === 'superadmin' && (!isGrupoValido || loadingGrupos || grupos.length === 0)}>{editingCasoId ? "Guardar Cambios" : "Crear Caso"}</Button>
+               <Button 
+                 type="submit" 
+                 disabled={ 
+                   (user?.Rol === 'superadmin' && (loadingGrupos || grupos.length === 0 || !form.values.ID_Grupo || form.values.ID_Grupo.trim() === '' )) || 
+                   !form.isValid() // form.isValid() se basará en CasoFormValues y su validación
+                 }
+               >
+                 {editingCasoId ? "Guardar Cambios" : "Crear Caso"}
+               </Button>
              </Group>
            </Stack>
          </form>

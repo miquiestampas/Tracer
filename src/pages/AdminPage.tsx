@@ -6,9 +6,10 @@ import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../services/api';
-import { getCasos, getArchivosPorCaso, deleteCaso, updateCaso } from '../services/casosApi';
+import { getCasos, getArchivosPorCaso, deleteCaso as deleteCasoApi, updateCaso } from '../services/casosApi';
 import type { Caso, ArchivoExcel } from '../types/data';
 import { updateFooterConfig } from '../services/configApi';
+import { openConfirmModal } from '@mantine/modals';
 
 interface DbStatus {
   status: string;
@@ -39,9 +40,16 @@ interface Grupo {
 
 interface Usuario {
   User: string;
-  Rol: 'superadmin' | 'admin_casos';
-  ID_Grupo: number;
+  Rol: 'superadmin' | 'admingrupo' | 'user_consulta';
+  ID_Grupo: number | null;
   grupo?: Grupo;
+}
+
+interface UsuarioCreatePayload {
+  User: string;
+  Rol: 'superadmin' | 'admingrupo' | 'user_consulta';
+  Contraseña: string;
+  ID_Grupo?: number | null;
 }
 
 function AdminPage() {
@@ -86,10 +94,10 @@ function AdminPage() {
   const [usuarioToDelete, setUsuarioToDelete] = useState<Usuario | null>(null);
   const [deleteUsuarioModalOpen, setDeleteUsuarioModalOpen] = useState(false);
   const [newUser, setNewUser] = useState('');
-  const [newRol, setNewRol] = useState<'superadmin' | 'admin_casos'>('admin_casos');
+  const [newRol, setNewRol] = useState<'superadmin' | 'admingrupo' | 'user_consulta'>('user_consulta');
   const [newGrupo, setNewGrupo] = useState<number | null>(null);
   const [newPass, setNewPass] = useState('');
-  const [editRol, setEditRol] = useState<'superadmin' | 'admin_casos'>('admin_casos');
+  const [editRol, setEditRol] = useState<'superadmin' | 'admingrupo' | 'user_consulta'>('user_consulta');
   const [editGrupo, setEditGrupo] = useState<number | null>(null);
   const [editPass, setEditPass] = useState('');
   const [casos, setCasos] = useState<Caso[]>([]);
@@ -100,6 +108,28 @@ function AdminPage() {
   const [nuevoGrupoId, setNuevoGrupoId] = useState<number | null>(null);
   const [footerText, setFooterText] = useState('JSP Madrid - Brigada Provincial de Policía Judicial');
   const [footerModalOpen, setFooterModalOpen] = useState(false);
+
+  const fetchCasosYArchivos = async () => {
+    setCasosLoading(true);
+    try {
+      const data = await getCasos();
+      const casosData = data || []; // Asegurar que casosData es un array
+      setCasos(casosData);
+      const archivosPromises = casosData.map(caso => 
+        getArchivosPorCaso(caso.ID_Caso).then(archivos => ({ [caso.ID_Caso]: archivos || [] }))
+      );
+      const archivosResults = await Promise.all(archivosPromises);
+      setArchivosPorCaso(Object.assign({}, ...archivosResults));
+    } catch (error) {
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudieron cargar los casos o archivos.',
+        color: 'red',
+      });
+    } finally {
+      setCasosLoading(false);
+    }
+  };
 
   const fetchDbStatus = async () => {
     try {
@@ -489,32 +519,30 @@ function AdminPage() {
   };
 
   const handleCreateUsuario = async () => {
-    if (!newUser.trim() || (newRol !== 'superadmin' && !newGrupo)) {
-      notifications.show({ title: 'Error de Validación', message: 'Usuario es obligatorio. Grupo es obligatorio si el rol no es superadmin.', color: 'red' });
+    if (!newUser.trim() || !newPass.trim() || (newRol !== 'superadmin' && !newGrupo)) {
+      notifications.show({ title: 'Error de Validación', message: 'Usuario y Contraseña son obligatorios. Grupo es obligatorio si el rol no es superadmin.', color: 'red' });
       return;
     }
-    if (newPass && newPass.length < 6) {
+    if (newPass.trim().length < 6) {
        notifications.show({ title: 'Error de Validación', message: 'La contraseña debe tener al menos 6 caracteres.', color: 'red' });
        return;
     }
     try {
       setLoadingUsuarios(true);
-      const payload: any = {
+      const payload: UsuarioCreatePayload = {
         User: String(newUser).trim(),
         Rol: newRol,
-        Contraseña: newPass.trim() || undefined, 
+        Contraseña: newPass.trim(),
       };
       if (newRol !== 'superadmin') {
         payload.ID_Grupo = newGrupo;
-      } else {
-        payload.ID_Grupo = null;
       }
       
       const response = await apiClient.post('/api/usuarios', payload);
       
       notifications.show({ title: 'Éxito', message: response.data.message || 'Usuario creado correctamente', color: 'green' });
       setUsuarioModalOpen(false);
-      setNewUser(''); setNewRol('admin_casos'); setNewGrupo(null); setNewPass('');
+      setNewUser(''); setNewRol('user_consulta'); setNewGrupo(null); setNewPass('');
       fetchUsuarios();
     } catch (e: any) {
       notifications.show({ title: 'Error al Crear Usuario', message: e.response?.data?.detail || e.message || 'No se pudo crear el usuario', color: 'red' });
@@ -571,14 +599,37 @@ function AdminPage() {
   };
 
   const handleDeleteCaso = async (casoId: number) => {
-    if (!window.confirm('¿Seguro que quieres eliminar este caso y todos sus archivos/lecturas?')) return;
-    try {
-      await deleteCaso(casoId);
-      setCasos((prev) => prev.filter((c) => c.ID_Caso !== casoId));
-      notifications.show({ title: 'Éxito', message: 'Caso eliminado', color: 'green' });
-    } catch (e) {
-      notifications.show({ title: 'Error', message: 'No se pudo eliminar el caso', color: 'red' });
-    }
+    openConfirmModal({
+      title: 'Confirmar Eliminación',
+      centered: true,
+      children: (
+        <Text size="sm">
+          ¿Estás seguro de que quieres eliminar este caso y todos sus archivos/lecturas? Esta acción no se puede deshacer.
+        </Text>
+      ),
+      labels: { confirm: 'Eliminar Caso', cancel: "Cancelar" },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          setCasosLoading(true); // Mantener para feedback inmediato
+          await deleteCasoApi(casoId); // Usar la función renombrada de casosApi
+          notifications.show({
+            title: 'Caso Eliminado',
+            message: 'El caso ha sido eliminado correctamente.',
+            color: 'green',
+          });
+          fetchCasosYArchivos(); // Ahora esto es válido
+        } catch (error) {
+          notifications.show({
+            title: 'Error al eliminar',
+            message: 'No se pudo eliminar el caso.',
+            color: 'red',
+          });
+        } finally {
+          // setCasosLoading(false); // fetchCasosYArchivos ya lo hace
+        }
+      },
+    });
   };
 
   const handleOpenReassign = (caso: Caso) => {
@@ -624,26 +675,6 @@ function AdminPage() {
   }, [user, navigate]);
 
   useEffect(() => {
-    const fetchCasosYArchivos = async () => {
-      setCasosLoading(true);
-      try {
-        const casosData = await getCasos();
-        setCasos(casosData);
-        // Para cada caso, obtener archivos
-        const archivosMap: Record<number, ArchivoExcel[]> = {};
-        await Promise.all(
-          casosData.map(async (caso) => {
-            const archivos = await getArchivosPorCaso(caso.ID_Caso);
-            archivosMap[caso.ID_Caso] = archivos;
-          })
-        );
-        setArchivosPorCaso(archivosMap);
-      } catch (e) {
-        notifications.show({ title: 'Error', message: 'No se pudieron obtener los casos o archivos', color: 'red' });
-      } finally {
-        setCasosLoading(false);
-      }
-    };
     fetchCasosYArchivos();
   }, []);
 
@@ -1154,11 +1185,23 @@ function AdminPage() {
         <Modal opened={usuarioModalOpen} onClose={() => setUsuarioModalOpen(false)} title="Crear Usuario" centered>
           <Stack>
             <TextInput label="Carné Profesional (User)" value={newUser} onChange={e => setNewUser(e.currentTarget.value.replace(/\D/g, ''))} maxLength={6} required />
-            <Select label="Rol" value={newRol} onChange={v => setNewRol(v as any)} data={[{ value: 'admin_casos', label: 'Admin Casos' }, { value: 'superadmin', label: 'SuperAdmin' }]} required />
+            <Select
+              label="Rol"
+              placeholder="Seleccione un rol"
+              required
+              value={newRol}
+              onChange={(value) => setNewRol(value as 'superadmin' | 'admingrupo' | 'user_consulta')}
+              data={[
+                { value: 'superadmin', label: 'Superadmin' },
+                { value: 'admingrupo', label: 'Admin Grupo' },
+                { value: 'user_consulta', label: 'Usuario Consulta' },
+              ]}
+              error={!newRol && 'El rol es obligatorio'}
+            />
             {newRol !== 'superadmin' && (
               <Select label="Grupo" value={newGrupo?.toString() || ''} onChange={v => setNewGrupo(Number(v))} data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))} required searchable />
             )}
-            <TextInput label="Contraseña (opcional)" value={newPass} onChange={e => setNewPass(e.currentTarget.value)} type="password" />
+            <TextInput label="Contraseña" value={newPass} onChange={e => setNewPass(e.currentTarget.value)} type="password" required />
             <Group justify="flex-end" mt="md">
               <Button variant="default" onClick={() => setUsuarioModalOpen(false)}>Cancelar</Button>
               <Button onClick={handleCreateUsuario} loading={loadingUsuarios}>Crear Usuario</Button>
@@ -1169,9 +1212,20 @@ function AdminPage() {
         {/* Modal Editar Usuario */}
         <Modal opened={editUsuarioModalOpen} onClose={() => setEditUsuarioModalOpen(false)} title="Editar Usuario" centered>
           <Stack>
-            <Select label="Rol" value={editRol} onChange={v => setEditRol(v as any)} data={[{ value: 'admin_casos', label: 'Admin Casos' }, { value: 'superadmin', label: 'SuperAdmin' }]} required />
+            <Select
+              label="Rol"
+              placeholder="Seleccione un rol"
+              required
+              value={editRol}
+              onChange={(value) => setEditRol(value as 'superadmin' | 'admingrupo' | 'user_consulta')}
+              data={[
+                { value: 'superadmin', label: 'Superadmin' },
+                { value: 'admingrupo', label: 'Admin Grupo' },
+                { value: 'user_consulta', label: 'Usuario Consulta' },
+              ]}
+            />
             <Select label="Grupo" value={editGrupo?.toString() || ''} onChange={v => setEditGrupo(Number(v))} data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))} required searchable />
-            <TextInput label="Contraseña (opcional)" value={editPass} onChange={e => setEditPass(e.currentTarget.value)} type="password" />
+            <TextInput label="Contraseña" value={editPass} onChange={e => setEditPass(e.currentTarget.value)} type="password" />
             <Group justify="flex-end" mt="md">
               <Button variant="default" onClick={() => setEditUsuarioModalOpen(false)}>Cancelar</Button>
               <Button onClick={handleEditUsuario} loading={loadingUsuarios}>Guardar Cambios</Button>
