@@ -227,6 +227,7 @@ export interface GpsLectura {
   Precisión: number;
   ID_Archivo: number;
   duracion_parada_min?: number; // Duración de la parada en minutos, opcional
+  clusterSize?: number;
 }
 
 export interface GpsCapa {

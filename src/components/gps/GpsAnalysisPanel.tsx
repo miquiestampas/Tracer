@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge } from '@mantine/core';
+import { Box, Text, Paper, Stack, Group, Button, TextInput, NumberInput, Select, Switch, ActionIcon, ColorInput, Collapse, Alert, Title, Divider, Tooltip, Modal, Textarea, ColorSwatch, SimpleGrid, Card, Badge, Slider } from '@mantine/core';
 import { IconPlus, IconTrash, IconEdit, IconInfoCircle, IconMaximize, IconMinimize, IconCar, IconCheck, IconX, IconListDetails, IconSearch, IconHome, IconStar, IconFlag, IconUser, IconMapPin, IconBuilding, IconBriefcase, IconAlertCircle, IconClock, IconGauge, IconCompass, IconMountain, IconRuler, IconChevronDown, IconChevronUp, IconZoomIn, IconRefresh, IconPlayerPlay, IconPlayerPause, IconPlayerStop, IconPlayerTrackNext, IconPlayerTrackPrev, IconPlayerSkipForward, IconPlayerSkipBack, IconCamera, IconDownload } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import apiClient from '../../services/api';
@@ -529,8 +529,9 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
   const [mapControls, setMapControls] = useState({
     visualizationType: 'toner' as 'standard' | 'satellite' | 'toner',
     showHeatmap: true,
-    showPoints: true,
-    optimizePoints: false
+    showPoints: false,
+    optimizePoints: false,
+    enableClustering: false
   });
 
   const [vehiculosDisponibles, setVehiculosDisponibles] = useState<{ value: string; label: string }[]>([]);
@@ -1028,6 +1029,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     })();
   }, [vehiculoObjetivo, casoId]);
 
+  const [heatmapMultiplier, setHeatmapMultiplier] = useState(1.65);
+
   // --- Renderizado principal ---
   if (fullscreenMap) {
     return (
@@ -1078,6 +1081,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
             currentPlaybackIndex={currentIndex}
             fullscreenMap={fullscreenMap}
             puntoSeleccionado={puntoSeleccionado}
+            heatmapMultiplier={heatmapMultiplier}
           />
         </Paper>
       </div>
@@ -1290,6 +1294,27 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
                   onChange={(e) => setMapControls(prev => ({ ...prev, optimizePoints: e.currentTarget.checked }))}
                   description="Elimina puntos redundantes manteniendo los importantes"
                 />
+                <Switch
+                  label="Agrupar puntos cercanos"
+                  checked={mapControls.enableClustering}
+                  onChange={(e) => setMapControls(prev => ({ ...prev, enableClustering: e.currentTarget.checked }))}
+                  description="Agrupa puntos cercanos en clusters para mejor visualización"
+                />
+                <Text size="xs" mt={8} mb={-8} fw={500}>Intensidad Heatmap</Text>
+                <Slider
+                  min={1.25}
+                  max={5}
+                  step={0.01}
+                  value={heatmapMultiplier}
+                  onChange={setHeatmapMultiplier}
+                  marks={[
+                    { value: 1.25, label: '1.25' },
+                    { value: 1.65, label: '1.65' },
+                    { value: 3, label: '3' },
+                    { value: 5, label: '5' }
+                  ]}
+                  style={{ marginTop: 12 }}
+                />
                 <Divider my="xs" />
                 <Button 
                   variant="light" 
@@ -1400,6 +1425,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
               currentPlaybackIndex={currentIndex}
               fullscreenMap={fullscreenMap}
               puntoSeleccionado={puntoSeleccionado}
+              heatmapMultiplier={heatmapMultiplier}
             />
           </Paper>
         </div>

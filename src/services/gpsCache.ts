@@ -13,92 +13,115 @@ interface CacheItem<T> {
   timestamp: number;
 }
 
-export const gpsCache = {
-  // Guardar lecturas en caché
-  setLecturas: (casoId: number, matricula: string, lecturas: GpsLectura[]) => {
+class GpsCache {
+  private cache = new Map<string, { data: any; timestamp: number }>();
+  private readonly TTL = 5 * 60 * 1000; // 5 minutos
+
+  set(key: string, data: any) {
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  get(key: string) {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    if (Date.now() - item.timestamp > this.TTL) {
+      this.cache.delete(key);
+      return null;
+    }
+    return item.data;
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+
+  // Métodos específicos para GPS
+  setLecturas(casoId: number, matricula: string, lecturas: GpsLectura[]) {
     const cacheItem: CacheItem<GpsLectura[]> = {
       data: lecturas,
       timestamp: Date.now(),
     };
     localStorage.setItem(CACHE_KEYS.LECTURAS(casoId, matricula), JSON.stringify(cacheItem));
-  },
+    this.set(`lecturas_${casoId}_${matricula}`, lecturas);
+  }
 
-  // Obtener lecturas de caché
-  getLecturas: (casoId: number, matricula: string): GpsLectura[] | null => {
+  getLecturas(casoId: number, matricula: string): GpsLectura[] | null {
     const cached = localStorage.getItem(CACHE_KEYS.LECTURAS(casoId, matricula));
-    if (!cached) return null;
-
-    const cacheItem: CacheItem<GpsLectura[]> = JSON.parse(cached);
-    if (Date.now() - cacheItem.timestamp > CACHE_EXPIRY) {
-      localStorage.removeItem(CACHE_KEYS.LECTURAS(casoId, matricula));
-      return null;
+    if (cached) {
+      const cacheItem: CacheItem<GpsLectura[]> = JSON.parse(cached);
+      if (Date.now() - cacheItem.timestamp > CACHE_EXPIRY) {
+        localStorage.removeItem(CACHE_KEYS.LECTURAS(casoId, matricula));
+        return null;
+      }
+      return cacheItem.data;
     }
+    return this.get(`lecturas_${casoId}_${matricula}`);
+  }
 
-    return cacheItem.data;
-  },
-
-  // Guardar capas en caché
-  setCapas: (casoId: number, capas: GpsCapa[]) => {
+  setCapas(casoId: number, capas: GpsCapa[]) {
     const cacheItem: CacheItem<GpsCapa[]> = {
       data: capas,
       timestamp: Date.now(),
     };
     localStorage.setItem(CACHE_KEYS.CAPAS(casoId), JSON.stringify(cacheItem));
-  },
+    this.set(`capas_${casoId}`, capas);
+  }
 
-  // Obtener capas de caché
-  getCapas: (casoId: number): GpsCapa[] | null => {
+  getCapas(casoId: number): GpsCapa[] | null {
     const cached = localStorage.getItem(CACHE_KEYS.CAPAS(casoId));
-    if (!cached) return null;
-
-    const cacheItem: CacheItem<GpsCapa[]> = JSON.parse(cached);
-    if (Date.now() - cacheItem.timestamp > CACHE_EXPIRY) {
-      localStorage.removeItem(CACHE_KEYS.CAPAS(casoId));
-      return null;
+    if (cached) {
+      const cacheItem: CacheItem<GpsCapa[]> = JSON.parse(cached);
+      if (Date.now() - cacheItem.timestamp > CACHE_EXPIRY) {
+        localStorage.removeItem(CACHE_KEYS.CAPAS(casoId));
+        return null;
+      }
+      return cacheItem.data;
     }
+    return this.get(`capas_${casoId}`);
+  }
 
-    return cacheItem.data;
-  },
-
-  // Guardar localizaciones en caché
-  setLocalizaciones: (casoId: number, localizaciones: LocalizacionInteres[]) => {
+  setLocalizaciones(casoId: number, localizaciones: LocalizacionInteres[]) {
     const cacheItem: CacheItem<LocalizacionInteres[]> = {
       data: localizaciones,
       timestamp: Date.now(),
     };
     localStorage.setItem(CACHE_KEYS.LOCALIZACIONES(casoId), JSON.stringify(cacheItem));
-  },
+    this.set(`localizaciones_${casoId}`, localizaciones);
+  }
 
-  // Obtener localizaciones de caché
-  getLocalizaciones: (casoId: number): LocalizacionInteres[] | null => {
+  getLocalizaciones(casoId: number): LocalizacionInteres[] | null {
     const cached = localStorage.getItem(CACHE_KEYS.LOCALIZACIONES(casoId));
-    if (!cached) return null;
-
-    const cacheItem: CacheItem<LocalizacionInteres[]> = JSON.parse(cached);
-    if (Date.now() - cacheItem.timestamp > CACHE_EXPIRY) {
-      localStorage.removeItem(CACHE_KEYS.LOCALIZACIONES(casoId));
-      return null;
+    if (cached) {
+      const cacheItem: CacheItem<LocalizacionInteres[]> = JSON.parse(cached);
+      if (Date.now() - cacheItem.timestamp > CACHE_EXPIRY) {
+        localStorage.removeItem(CACHE_KEYS.LOCALIZACIONES(casoId));
+        return null;
+      }
+      return cacheItem.data;
     }
-
-    return cacheItem.data;
-  },
+    return this.get(`localizaciones_${casoId}`);
+  }
 
   // Limpiar caché para un caso específico
-  clearCache: (casoId: number) => {
+  clearCache(casoId: number) {
     // Eliminar todas las entradas de caché relacionadas con el caso
     Object.keys(localStorage).forEach(key => {
       if (key.startsWith(`gps_`) && key.includes(`_${casoId}_`)) {
         localStorage.removeItem(key);
       }
     });
-  },
+    this.clear();
+  }
 
   // Limpiar toda la caché de GPS
-  clearAllCache: () => {
+  clearAllCache() {
     Object.keys(localStorage).forEach(key => {
       if (key.startsWith(`gps_`)) {
         localStorage.removeItem(key);
       }
     });
-  },
-}; 
+    this.clear();
+  }
+}
+
+export const gpsCache = new GpsCache(); 

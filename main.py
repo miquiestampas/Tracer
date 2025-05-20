@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Query, Body
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form, Query, Body, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,6 +46,18 @@ from jose import JWTError, jwt # ADDED
 from schemas import Token, TokenData # ADDED
 from models import RolUsuarioEnum # Asegúrate que RolUsuarioEnum está disponible (o usa la cadena directa)
 import enum # AÑADIDO: Importar enum
+import uuid
+
+# Global store for background task statuses
+task_statuses = {}
+
+class UploadTaskStatus(BaseModel):
+    task_id: str
+    status: str # e.g., "pending", "processing", "completed", "failed"
+    message: Optional[str] = None
+    progress: Optional[float] = None # e.g., percentage or records processed
+    total: Optional[int] = None # total records to process
+    result: Optional[schemas.UploadResponse] = None # To hold the final response on completion
 
 # --- Helper functions for data parsing --- START
 def get_optional_float(value: Any) -> Optional[float]:
@@ -247,6 +259,27 @@ async def lifespan(app: FastAPI):
     logger.info("Cerrando aplicación Tracer...")
 
 app = FastAPI(lifespan=lifespan)
+
+# --- Endpoint to check background task status ---
+@app.get("/casos/archivos/upload_status/{task_id}", response_model=UploadTaskStatus)
+async def get_upload_status(task_id: str):
+    status_info = task_statuses.get(task_id)
+    if not status_info:
+        # It's important to return a well-formed UploadTaskStatus even for errors if possible,
+        # or ensure the frontend can handle a 404 gracefully.
+        # For now, raising HTTPException is standard.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task ID not found or task not initiated.")
+    
+    # Construct the Pydantic model from the dictionary stored in task_statuses
+    return UploadTaskStatus(
+        task_id=task_id,
+        status=status_info.get("status", "unknown"),
+        message=status_info.get("message"),
+        progress=status_info.get("progress"),
+        total=status_info.get("total"),
+        result=status_info.get("result") # This will be None until completion, then dict from UploadResponse
+    )
+# --- END Endpoint to check background task status ---
 
 # --- INCLUDE auth_router EARLY ---
 app.include_router(auth_router, prefix="/api/auth", tags=["Autenticación"]) # MODIFIED: Added /api prefix
@@ -631,30 +664,41 @@ async def delete_caso(
 
 
 # === ARCHIVOS EXCEL (Importación, Descarga, Eliminación) ===
-@app.post("/casos/{caso_id}/archivos/upload", response_model=schemas.UploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_excel(
+
+class UploadInitiationResponse(BaseModel):
+    task_id: str
+    message: str
+
+@app.post("/casos/{caso_id}/archivos/upload", response_model=UploadInitiationResponse, status_code=status.HTTP_202_ACCEPTED) # MODIFIED status_code and response_model
+async def upload_excel_submission(
     caso_id: int,
+    background_tasks: BackgroundTasks, # MOVED UP further
     tipo_archivo: str = Form(..., pattern="^(GPS|LPR)$"),
     excel_file: UploadFile = File(...),
     column_mapping: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(get_current_active_user) # AÑADIDO
+    current_user: models.Usuario = Depends(get_current_active_user)
 ):
-    # 1. Verificar caso y permisos
+    logger.info(f"User {current_user.User} requesting to upload file '{excel_file.filename}' for caso {caso_id}")
+    # 1. Verificar caso y permisos (Synchronous part)
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
 
     user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
-    if user_rol == RolUsuarioEnum.admingrupo.value:
+    is_superadmin = user_rol == RolUsuarioEnum.superadmin.value
+    is_admingrupo = user_rol == RolUsuarioEnum.admingrupo.value
+
+    if not is_superadmin and not is_admingrupo:
+         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para subir archivos.")
+
+    if is_admingrupo: # admingrupo specific checks
         if current_user.ID_Grupo is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
         if db_caso.ID_Grupo != current_user.ID_Grupo:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para subir archivos a este caso.")
-    elif user_rol != RolUsuarioEnum.superadmin.value:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para subir archivos.")
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para subir archivos a este caso (grupo no coincide).")
 
-    # 2. Verificar si ya existe un archivo con el mismo nombre en el mismo caso
+    # 2. Verificar si ya existe un archivo con el mismo nombre en el mismo caso (Synchronous part)
     archivo_existente = db.query(models.ArchivoExcel).filter(
         models.ArchivoExcel.ID_Caso == caso_id,
         models.ArchivoExcel.Nombre_del_Archivo == excel_file.filename
@@ -666,209 +710,53 @@ async def upload_excel(
             detail=f"Ya existe un archivo con el nombre '{excel_file.filename}' en este caso."
         )
 
-    # --- GUARDAR ARCHIVO ORIGINAL ---
-    filename = excel_file.filename
-    file_location = UPLOADS_DIR / filename
-    logger.info(f"Intentando guardar archivo en: {file_location}")
+    task_id = uuid.uuid4().hex
+    original_filename = excel_file.filename
+    # Save to a temporary file path that includes the task_id to avoid collisions
+    temp_filename = f"processing_{task_id}_{original_filename}"
+    temp_file_path = str(UPLOADS_DIR / temp_filename) # Ensure it's a string for pd.read_excel
+
+    logger.info(f"[Task {task_id}] Saving temporary file to: {temp_file_path}")
     try:
-        with open(file_location, "wb") as buffer:
+        with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(excel_file.file, buffer)
-        logger.info(f"Archivo guardado exitosamente en: {file_location}")
+        logger.info(f"[Task {task_id}] Temporary file saved successfully: {temp_file_path}")
     except Exception as e:
-        logger.error(f"Error CRÍTICO al guardar el archivo subido {filename} en {file_location}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"No se pudo guardar el archivo subido '{filename}'.")
+        logger.error(f"[Task {task_id}] CRÍTICO al guardar el archivo subido {original_filename} en {temp_file_path}: {e}", exc_info=True)
+        # Clean up partial file if save failed, though it might be open/locked
+        if os.path.exists(temp_file_path):
+            try: os.remove(temp_file_path) 
+            except: pass
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"No se pudo guardar el archivo temporalmente '{original_filename}'.")
     finally:
-        excel_file.file.close()
+        excel_file.file.close() 
     
-    # --- Leer Excel y Mapeo ---
-    try:
-        df = pd.read_excel(file_location)
-    except Exception as e:
-        logger.error(f"Error al leer el archivo Excel desde {file_location}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al leer el archivo Excel guardado ({filename}).")
-    try:
-        map_cliente_a_interno = json.loads(column_mapping)
-        map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El mapeo de columnas no es un JSON válido.")
-    try:
-        columnas_a_renombrar = {k: v for k, v in map_interno_a_cliente.items() if k in df.columns}
-        df.rename(columns=columnas_a_renombrar, inplace=True)
-    except Exception as e:
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aplicar mapeo de columnas: {e}.")
+    # Initial task status
+    task_statuses[task_id] = {
+        "status": "pending",
+        "message": "Upload accepted, pending processing.",
+        "progress": 0,
+        "total": None
+    }
 
-    # --- Validar Columnas Obligatorias ---
-    if tipo_archivo == 'LPR':
-        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora', 'ID_Lector']
-    elif tipo_archivo == 'GPS':
-        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
-    else:
-        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
-    columnas_obligatorias_faltantes = []
-    for campo_interno in columnas_obligatorias:
-        if campo_interno not in df.columns:
-            col_excel_mapeada = map_cliente_a_interno.get(campo_interno)
-            columnas_obligatorias_faltantes.append(f"{campo_interno} (mapeada desde '{col_excel_mapeada}')" if col_excel_mapeada else f"{campo_interno} (no mapeada)")
-    if columnas_obligatorias_faltantes:
-        mensaje_error = f"Faltan columnas obligatorias o mapeos incorrectos: {', '.join(columnas_obligatorias_faltantes)}"
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=mensaje_error)
-
-    # --- Crear Registro ArchivoExcel ---
-    db_archivo = models.ArchivoExcel(
-        ID_Caso=caso_id,
-        Nombre_del_Archivo=filename,
-        Tipo_de_Archivo=tipo_archivo
-    )
-    db.add(db_archivo)
-    db.flush()
-    db.refresh(db_archivo)
-
-    # --- Procesar e Insertar Lecturas ---
-    lecturas_a_insertar = []
-    errores_lectura = []
-    lectores_no_encontrados = set()
-    nuevos_lectores_en_sesion = set()
-    lecturas_duplicadas = set()  # Para trackear lecturas duplicadas
-
-    for index, row in df.iterrows():
-        try:
-            matricula = str(row['Matricula']).strip() if pd.notna(row['Matricula']) else None
-            if not matricula: raise ValueError("Matrícula vacía")
-            valor_fecha_excel = row['Fecha']
-            valor_hora_excel = row['Hora']
-            fecha_hora_final = None
-            def parse_hora(hora_val):
-                if isinstance(hora_val, time):
-                    return hora_val
-                if isinstance(hora_val, datetime):
-                    return hora_val.time()
-                if isinstance(hora_val, float) and not pd.isna(hora_val):
-                    # Excel puede guardar horas como fracción de día
-                    total_seconds = int(hora_val * 24 * 60 * 60)
-                    h = total_seconds // 3600
-                    m = (total_seconds % 3600) // 60
-                    s = total_seconds % 60
-                    return time(hour=h, minute=m, second=s)
-                if isinstance(hora_val, str):
-                    # Aceptar formatos "HH:MM", "HH:MM:SS", "HH:MM:SS.sss" o "HH:MM:SS,sss"
-                    match = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2})([.,](\d{1,6}))?)?$", hora_val.strip())
-                    if match:
-                        h = int(match.group(1))
-                        m = int(match.group(2))
-                        s = int(match.group(3) or 0)
-                        ms = match.group(5)
-                        micro = int(float(f'0.{ms}') * 1_000_000) if ms else 0
-                        return time(hour=h, minute=m, second=s, microsecond=micro)
-                raise ValueError(f"Formato de hora no reconocido: {hora_val}")
-            try:
-                # Normalizar hora
-                hora_obj = parse_hora(valor_hora_excel)
-                # Normalizar fecha
-                if isinstance(valor_fecha_excel, datetime):
-                    fecha_obj = valor_fecha_excel.date()
-                elif isinstance(valor_fecha_excel, date):
-                    fecha_obj = valor_fecha_excel
-                elif isinstance(valor_fecha_excel, float) and not pd.isna(valor_fecha_excel):
-                    # Excel puede guardar fechas como número de días desde 1899-12-30
-                    fecha_obj = pd.to_datetime(valor_fecha_excel, unit='d', origin='1899-12-30').date()
-                else:
-                    fecha_obj = pd.to_datetime(str(valor_fecha_excel)).date()
-                fecha_hora_final = datetime.combine(fecha_obj, hora_obj)
-            except Exception as e_comb:
-                raise ValueError(f"Error combinando/parseando Fecha/Hora: {e_comb}")
-
-            id_lector = None
-            coord_x_final = get_optional_float(row.get('Coordenada_X'))
-            coord_y_final = get_optional_float(row.get('Coordenada_Y'))
-
-            if tipo_archivo == 'LPR':
-                id_lector_str = str(row['ID_Lector']).strip() if pd.notna(row['ID_Lector']) else None
-                if not id_lector_str: raise ValueError("Falta ID_Lector para LPR")
-                id_lector = id_lector_str # Guardamos el ID original
-                
-                # Buscar lector existente
-                db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == id_lector).first()
-                
-                if not db_lector:
-                    # Si no existe Y NO lo hemos añadido ya en esta sesión:
-                    if id_lector not in nuevos_lectores_en_sesion:
-                        lectores_no_encontrados.add(id_lector)
-                        logger.info(f"Lector '{id_lector}' no encontrado, añadiendo a sesión para crear.")
-                        db_lector_nuevo = models.Lector(ID_Lector=id_lector) # Crear con el ID
-                        db.add(db_lector_nuevo)
-                        nuevos_lectores_en_sesion.add(id_lector) # Registrar que lo hemos añadido
-                        # Intentar obtener coordenadas del excel si existen para el nuevo lector
-                        coord_x_nuevo = get_optional_float(row.get('Coordenada_X'))
-                        coord_y_nuevo = get_optional_float(row.get('Coordenada_Y'))
-                        if coord_x_nuevo is not None: db_lector_nuevo.Coordenada_X = coord_x_nuevo
-                        if coord_y_nuevo is not None: db_lector_nuevo.Coordenada_Y = coord_y_nuevo
-                        # Asignar las coordenadas finales para la lectura actual (pueden venir del Excel)
-                        coord_x_final = coord_x_nuevo
-                        coord_y_final = coord_y_nuevo
-                    else:
-                        # Ya añadido a la sesión, solo obtener coords si las hay en esta fila para la lectura
-                        coord_x_final = get_optional_float(row.get('Coordenada_X'))
-                        coord_y_final = get_optional_float(row.get('Coordenada_Y'))
-                        
-                else: # Si el lector SÍ existe
-                    if coord_x_final is None: coord_x_final = db_lector.Coordenada_X
-                    if coord_y_final is None: coord_y_final = db_lector.Coordenada_Y
-
-            carril = get_optional_str(row.get('Carril'))
-            velocidad = get_optional_float(row.get('Velocidad'))
-            lectura_data = {
-                "ID_Archivo": db_archivo.ID_Archivo, "Matricula": matricula,
-                "Fecha_y_Hora": fecha_hora_final, "Carril": carril, "Velocidad": velocidad,
-                "ID_Lector": id_lector,
-                "Coordenada_X": coord_x_final, "Coordenada_Y": coord_y_final,
-                "Tipo_Fuente": tipo_archivo
-            }
-
-            # Verificar si ya existe una lectura duplicada
-            lectura_duplicada = db.query(models.Lectura)\
-                .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
-                .filter(
-                    models.ArchivoExcel.ID_Caso == caso_id,
-                    models.Lectura.Matricula == matricula,
-                    models.Lectura.Fecha_y_Hora == fecha_hora_final,
-                    models.Lectura.ID_Lector == id_lector
-                ).first()
-
-            if lectura_duplicada:
-                lecturas_duplicadas.add(f"Fila {index+1}: Matrícula {matricula} - {fecha_hora_final}")
-                continue  # Saltar esta lectura duplicada
-
-            # Crear nueva lectura
-            nueva_lectura = models.Lectura(**lectura_data)
-            lecturas_a_insertar.append(nueva_lectura)
-
-        except Exception as e:
-            errores_lectura.append(f"Fila {index+1}: {str(e)}")
-            continue
-
-    # Insertar todas las lecturas válidas
-    if lecturas_a_insertar:
-        db.add_all(lecturas_a_insertar)
-        db.commit()
-
-    # Preparar respuesta con información sobre duplicados
-    response_data = schemas.UploadResponse(
-        archivo=db_archivo,
-        total_registros=len(lecturas_a_insertar),
-        errores=errores_lectura if errores_lectura else None,
-        lectores_no_encontrados=list(lectores_no_encontrados) if lectores_no_encontrados else None,
-        lecturas_duplicadas=list(lecturas_duplicadas) if lecturas_duplicadas else None,
-        nuevos_lectores_creados=list(nuevos_lectores_en_sesion) if nuevos_lectores_en_sesion else None
+    # Enqueue the background task
+    background_tasks.add_task(
+        process_file_in_background,
+        task_id,
+        temp_file_path, # Pass the full path to the temp file
+        original_filename, # Pass the original filename for final DB record
+        caso_id,
+        tipo_archivo,
+        column_mapping, # Pass the raw JSON string
+        current_user.User # Pass user ID for logging/context in task
     )
     
-    # Loguear lo que se va a devolver
-    logger.info(f"Importación completada. Devolviendo datos: {response_data}")
-    if errores_lectura:
-        logger.warning(f"Importación {filename} completada con {len(errores_lectura)} errores: {errores_lectura}")
-    if lecturas_duplicadas:
-        logger.warning(f"Importación {filename} completada con {len(lecturas_duplicadas)} lecturas duplicadas: {lecturas_duplicadas}")
-
-    return response_data
+    logger.info(f"[Task {task_id}] File '{original_filename}' for caso {caso_id} enqueued for background processing.")
+    
+    return UploadInitiationResponse(
+        task_id=task_id,
+        message="File upload accepted and is being processed in the background. Check status endpoint for progress."
+    )
 
 @app.get("/casos/{caso_id}/archivos", response_model=List[schemas.ArchivoExcel]) # Schema ya incluye Total_Registros
 def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
@@ -2799,3 +2687,432 @@ async def get_setup_status(db: Session = Depends(get_db)):
     )
 
 app.include_router(setup_router, prefix="/api/setup", tags=["Setup"])
+
+@app.post("/casos/{caso_id}/archivos/upload", response_model=schemas.UploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_excel_submission(
+    caso_id: int,
+    background_tasks: BackgroundTasks, # MOVED UP further
+    tipo_archivo: str = Form(..., pattern="^(GPS|LPR)$"),
+    excel_file: UploadFile = File(...),
+    column_mapping: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    logger.info(f"User {current_user.User} requesting to upload file '{excel_file.filename}' for caso {caso_id}")
+    # 1. Verificar caso y permisos (Synchronous part)
+    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if db_caso is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    if user_rol == RolUsuarioEnum.admingrupo.value:
+        if current_user.ID_Grupo is None:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
+        if db_caso.ID_Grupo != current_user.ID_Grupo:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para subir archivos a este caso.")
+    elif user_rol != RolUsuarioEnum.superadmin.value:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para subir archivos.")
+
+    # 2. Verificar si ya existe un archivo con el mismo nombre en el mismo caso
+    archivo_existente = db.query(models.ArchivoExcel).filter(
+        models.ArchivoExcel.ID_Caso == caso_id,
+        models.ArchivoExcel.Nombre_del_Archivo == excel_file.filename
+    ).first()
+    
+    if archivo_existente:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ya existe un archivo con el nombre '{excel_file.filename}' en este caso."
+        )
+
+    # --- GUARDAR ARCHIVO ORIGINAL ---
+    filename = excel_file.filename
+    file_location = UPLOADS_DIR / filename
+    logger.info(f"Intentando guardar archivo en: {file_location}")
+    try:
+        with open(file_location, "wb") as buffer:
+            shutil.copyfileobj(excel_file.file, buffer)
+        logger.info(f"Archivo guardado exitosamente en: {file_location}")
+    except Exception as e:
+        logger.error(f"Error CRÍTICO al guardar el archivo subido {filename} en {file_location}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"No se pudo guardar el archivo subido '{filename}'.")
+    finally:
+        excel_file.file.close()
+    
+    # --- Leer Excel y Mapeo ---
+    try:
+        df = pd.read_excel(file_location)
+    except Exception as e:
+        logger.error(f"Error al leer el archivo Excel desde {file_location}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al leer el archivo Excel guardado ({filename}).")
+    try:
+        map_cliente_a_interno = json.loads(column_mapping)
+        map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El mapeo de columnas no es un JSON válido.")
+    try:
+        columnas_a_renombrar = {k: v for k, v in map_interno_a_cliente.items() if k in df.columns}
+        df.rename(columns=columnas_a_renombrar, inplace=True)
+    except Exception as e:
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error al aplicar mapeo de columnas: {e}.")
+
+    # --- Validar Columnas Obligatorias ---
+    if tipo_archivo == 'LPR':
+        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora', 'ID_Lector']
+    elif tipo_archivo == 'GPS':
+        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
+    else:
+        columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
+    columnas_obligatorias_faltantes = []
+    for campo_interno in columnas_obligatorias:
+        if campo_interno not in df.columns:
+            col_excel_mapeada = map_cliente_a_interno.get(campo_interno)
+            columnas_obligatorias_faltantes.append(f"{campo_interno} (mapeada desde '{col_excel_mapeada}')" if col_excel_mapeada else f"{campo_interno} (no mapeada)")
+    if columnas_obligatorias_faltantes:
+        mensaje_error = f"Faltan columnas obligatorias o mapeos incorrectos: {', '.join(columnas_obligatorias_faltantes)}"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=mensaje_error)
+
+    # --- Crear Registro ArchivoExcel ---
+    db_archivo = models.ArchivoExcel(
+        ID_Caso=caso_id,
+        Nombre_del_Archivo=filename,
+        Tipo_de_Archivo=tipo_archivo
+    )
+    db.add(db_archivo)
+    db.flush()
+    db.refresh(db_archivo)
+
+    # --- Procesar e Insertar Lecturas ---
+    lecturas_a_insertar = []
+    errores_lectura = []
+    lectores_no_encontrados = set()
+    nuevos_lectores_en_sesion = set()
+    lecturas_duplicadas = set()  # Para trackear lecturas duplicadas
+
+    for index, row in df.iterrows():
+        try:
+            matricula = str(row['Matricula']).strip() if pd.notna(row['Matricula']) else None
+            if not matricula: raise ValueError("Matrícula vacía")
+            valor_fecha_excel = row['Fecha']
+            valor_hora_excel = row['Hora']
+            fecha_hora_final = None
+            def parse_hora(hora_val):
+                if isinstance(hora_val, time):
+                    return hora_val
+                if isinstance(hora_val, datetime):
+                    return hora_val.time()
+                if isinstance(hora_val, float) and not pd.isna(hora_val):
+                    # Excel puede guardar horas como fracción de día
+                    total_seconds = int(hora_val * 24 * 60 * 60)
+                    h = total_seconds // 3600
+                    m = (total_seconds % 3600) // 60
+                    s = total_seconds % 60
+                    return time(hour=h, minute=m, second=s)
+                if isinstance(hora_val, str):
+                    # Aceptar formatos "HH:MM", "HH:MM:SS", "HH:MM:SS.sss" o "HH:MM:SS,sss"
+                    match = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2})([.,](\d{1,6}))?)?$", hora_val.strip())
+                    if match:
+                        h = int(match.group(1))
+                        m = int(match.group(2))
+                        s = int(match.group(3) or 0)
+                        ms = match.group(5)
+                        micro = int(float(f'0.{ms}') * 1_000_000) if ms else 0
+                        return time(hour=h, minute=m, second=s, microsecond=micro)
+                raise ValueError(f"Formato de hora no reconocido: {hora_val}")
+            try:
+                # Normalizar hora
+                hora_obj = parse_hora(valor_hora_excel)
+                # Normalizar fecha
+                if isinstance(valor_fecha_excel, datetime):
+                    fecha_obj = valor_fecha_excel.date()
+                elif isinstance(valor_fecha_excel, date):
+                    fecha_obj = valor_fecha_excel
+                elif isinstance(valor_fecha_excel, float) and not pd.isna(valor_fecha_excel):
+                    # Excel puede guardar fechas como número de días desde 1899-12-30
+                    fecha_obj = pd.to_datetime(valor_fecha_excel, unit='d', origin='1899-12-30').date()
+                else:
+                    fecha_obj = pd.to_datetime(str(valor_fecha_excel)).date()
+                fecha_hora_final = datetime.combine(fecha_obj, hora_obj)
+            except Exception as e_comb:
+                raise ValueError(f"Error combinando/parseando Fecha/Hora: {e_comb}")
+
+            id_lector = None
+            coord_x_final = get_optional_float(row.get('Coordenada_X'))
+            coord_y_final = get_optional_float(row.get('Coordenada_Y'))
+
+            if tipo_archivo == 'LPR':
+                id_lector_str = str(row['ID_Lector']).strip() if pd.notna(row['ID_Lector']) else None
+                if not id_lector_str: raise ValueError("Falta ID_Lector para LPR")
+                id_lector = id_lector_str # Guardamos el ID original
+                
+                # Buscar lector existente
+                db_lector = db.query(models.Lector).filter(models.Lector.ID_Lector == id_lector).first()
+                
+                if not db_lector:
+                    # Si no existe Y NO lo hemos añadido ya en esta sesión:
+                    if id_lector not in nuevos_lectores_en_sesion:
+                        lectores_no_encontrados.add(id_lector)
+                        logger.info(f"Lector '{id_lector}' no encontrado, añadiendo a sesión para crear.")
+                        db_lector_nuevo = models.Lector(ID_Lector=id_lector) # Crear con el ID
+                        db.add(db_lector_nuevo)
+                        nuevos_lectores_en_sesion.add(id_lector) # Registrar que lo hemos añadido
+                        # Intentar obtener coordenadas del excel si existen para el nuevo lector
+                        coord_x_nuevo = get_optional_float(row.get('Coordenada_X'))
+                        coord_y_nuevo = get_optional_float(row.get('Coordenada_Y'))
+                        if coord_x_nuevo is not None: db_lector_nuevo.Coordenada_X = coord_x_nuevo
+                        if coord_y_nuevo is not None: db_lector_nuevo.Coordenada_Y = coord_y_nuevo
+                        # Asignar las coordenadas finales para la lectura actual (pueden venir del Excel)
+                        coord_x_final = coord_x_nuevo
+                        coord_y_final = coord_y_nuevo
+                    else:
+                        # Ya añadido a la sesión, solo obtener coords si las hay en esta fila para la lectura
+                        coord_x_final = get_optional_float(row.get('Coordenada_X'))
+                        coord_y_final = get_optional_float(row.get('Coordenada_Y'))
+                        
+                else: # Si el lector SÍ existe
+                    if coord_x_final is None: coord_x_final = db_lector.Coordenada_X
+                    if coord_y_final is None: coord_y_final = db_lector.Coordenada_Y
+
+            carril = get_optional_str(row.get('Carril'))
+            velocidad = get_optional_float(row.get('Velocidad'))
+            lectura_data = {
+                "ID_Archivo": db_archivo.ID_Archivo, "Matricula": matricula,
+                "Fecha_y_Hora": fecha_hora_final, "Carril": carril, "Velocidad": velocidad,
+                "ID_Lector": id_lector,
+                "Coordenada_X": coord_x_final, "Coordenada_Y": coord_y_final,
+                "Tipo_Fuente": tipo_archivo
+            }
+
+            # Verificar si ya existe una lectura duplicada
+            lectura_duplicada = db.query(models.Lectura)\
+                .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+                .filter(
+                    models.ArchivoExcel.ID_Caso == caso_id,
+                    models.Lectura.Matricula == matricula,
+                    models.Lectura.Fecha_y_Hora == fecha_hora_final,
+                    models.Lectura.ID_Lector == id_lector
+                ).first()
+
+            if lectura_duplicada:
+                lecturas_duplicadas.add(f"Fila {index+1}: Matrícula {matricula} - {fecha_hora_final}")
+                continue  # Saltar esta lectura duplicada
+
+            # Crear nueva lectura
+            nueva_lectura = models.Lectura(**lectura_data)
+            lecturas_a_insertar.append(nueva_lectura)
+
+        except Exception as e:
+            errores_lectura.append(f"Fila {index+1}: {str(e)}")
+            continue
+
+    # Insertar todas las lecturas válidas
+    if lecturas_a_insertar:
+        db.add_all(lecturas_a_insertar)
+        db.commit()
+
+    # Preparar respuesta con información sobre duplicados
+    response_data = schemas.UploadResponse(
+        archivo=db_archivo,
+        total_registros=len(lecturas_a_insertar),
+        errores=errores_lectura if errores_lectura else None,
+        lectores_no_encontrados=list(lectores_no_encontrados) if lectores_no_encontrados else None,
+        lecturas_duplicadas=list(lecturas_duplicadas) if lecturas_duplicadas else None,
+        nuevos_lectores_creados=list(nuevos_lectores_en_sesion) if nuevos_lectores_en_sesion else None
+    )
+    
+    # Loguear lo que se va a devolver
+    logger.info(f"Importación completada. Devolviendo datos: {response_data}")
+    if errores_lectura:
+        logger.warning(f"Importación {filename} completada con {len(errores_lectura)} errores: {errores_lectura}")
+    if lecturas_duplicadas:
+        logger.warning(f"Importación {filename} completada con {len(lecturas_duplicadas)} lecturas duplicadas: {lecturas_duplicadas}")
+
+    return response_data
+
+# --- START Background File Processing Function ---
+def process_file_in_background(
+    task_id: str,
+    temp_file_path: str, # Full path to the temporarily saved file
+    original_filename: str,
+    caso_id: int,
+    tipo_archivo: str,
+    column_mapping_str: str,
+    user_id_for_log: int # User ID for logging purposes
+):
+    db: Session = SessionLocal() # Create a new session for the background task
+    logger.info(f"[Task {task_id}] Background processing started for {original_filename} (Caso: {caso_id}, Tipo: {tipo_archivo})")
+    task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "processing", "message": "Procesando archivo...", "progress": 0}
+
+    try:
+        logger.info(f"[Task {task_id}] Leyendo archivo Excel: {temp_file_path}")
+        try:
+            df = pd.read_excel(temp_file_path)
+            logger.info(f"[Task {task_id}] Archivo Excel leído. Filas: {df.shape[0]}")
+        except Exception as e:
+            logger.error(f"[Task {task_id}] Fallo al leer Excel {temp_file_path}: {e}", exc_info=True)
+            raise ValueError(f"Error al leer el archivo Excel: {e}")
+
+        logger.info(f"[Task {task_id}] Parseando mapeo de columnas: {column_mapping_str}")
+        try:
+            map_cliente_a_interno = json.loads(column_mapping_str)
+            map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
+        except json.JSONDecodeError as e:
+            logger.error(f"[Task {task_id}] JSON inválido en mapeo: {e}", exc_info=True)
+            raise ValueError(f"El mapeo de columnas no es un JSON válido: {e}")
+
+        try:
+            columnas_a_renombrar = {k: v for k, v in map_interno_a_cliente.items() if k in df.columns}
+            df.rename(columns=columnas_a_renombrar, inplace=True)
+        except Exception as e:
+            logger.error(f"[Task {task_id}] Error aplicando mapeo: {e}", exc_info=True)
+            raise ValueError(f"Error al aplicar mapeo de columnas: {e}")
+
+        logger.info(f"[Task {task_id}] Validando columnas obligatorias para tipo: {tipo_archivo}")
+        if tipo_archivo == 'LPR':
+            columnas_obligatorias = ['Matricula', 'Fecha', 'Hora', 'ID_Lector']
+        elif tipo_archivo == 'GPS':
+            columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
+        else:
+            columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
+        
+        columnas_faltantes_detalle = []
+        for campo in columnas_obligatorias:
+            if campo not in df.columns:
+                col_excel = map_cliente_a_interno.get(campo)
+                columnas_faltantes_detalle.append(f"{campo} (mapeada desde '{col_excel}')" if col_excel else f"{campo} (no mapeada)")
+        
+        if columnas_faltantes_detalle:
+            error_msg = f"Faltan columnas obligatorias o mapeos: {', '.join(columnas_faltantes_detalle)}"
+            logger.error(f"[Task {task_id}] {error_msg}")
+            raise ValueError(error_msg)
+        logger.info(f"[Task {task_id}] Columnas obligatorias validadas.")
+
+        logger.info(f"[Task {task_id}] Creando registro ArchivoExcel para {original_filename}")
+        db_archivo = models.ArchivoExcel(
+            ID_Caso=caso_id, Nombre_del_Archivo=original_filename,
+            Tipo_de_Archivo=tipo_archivo
+        )
+        db.add(db_archivo); db.flush(); db.refresh(db_archivo)
+        id_archivo_db = db_archivo.ID_Archivo
+        logger.info(f"[Task {task_id}] ArchivoExcel ID: {id_archivo_db} creado.")
+
+        logger.info(f"[Task {task_id}] Procesando {len(df)} filas para lecturas.")
+        lecturas_insertadas_count = 0
+        errores_filas = []
+        lectores_no_hallados = set()
+        lectores_creados_bg = set()
+        duplicados_omitidos_bg = set()
+        task_statuses[task_id]["total"] = len(df)
+        BATCH_SIZE = 500
+
+        for i in range(0, len(df), BATCH_SIZE):
+            batch_df = df[i:i+BATCH_SIZE]
+            batch_lecturas_obj = []
+            for index, row in batch_df.iterrows():
+                excel_row_num = index + 2 
+                try:
+                    matricula = str(row['Matricula']).strip() if pd.notna(row['Matricula']) else None
+                    if not matricula: raise ValueError("Matrícula vacía")
+                    def parse_excel_datetime_bg(date_val, time_val):
+                        parsed_time = None
+                        if isinstance(time_val, (datetime, time)): parsed_time = time_val.time() if isinstance(time_val, datetime) else time_val
+                        elif isinstance(time_val, (int, float)) and not pd.isna(time_val):
+                            total_seconds = int(time_val * 86400); hours = total_seconds // 3600
+                            minutes = (total_seconds % 3600) // 60; seconds = total_seconds % 60
+                            parsed_time = time(hours, minutes, seconds)
+                        elif isinstance(time_val, str):
+                            try: parsed_time = parser.parse(time_val.strip()).time()
+                            except: 
+                                for fmt_t in ("%H:%M:%S.%f", "%H:%M:%S", "%H:%M"):
+                                    try: parsed_time = datetime.strptime(time_val.strip(), fmt_t).time(); break
+                                    except: continue 
+                        if not parsed_time: raise ValueError(f"Hora no reconocida: '{time_val}'")
+                        parsed_date = None
+                        if isinstance(date_val, datetime): parsed_date = date_val.date()
+                        elif isinstance(date_val, date): parsed_date = date_val
+                        elif isinstance(date_val, (int, float)) and not pd.isna(date_val): 
+                            parsed_date = pd.to_datetime(date_val, unit='D', origin='1899-12-30').date()
+                        elif isinstance(date_val, str):
+                            try: parsed_date = parser.parse(date_val.strip()).date()
+                            except: raise ValueError(f"Fecha no reconocida: '{date_val}'")
+                        if not parsed_date: raise ValueError(f"Fecha no reconocida: '{date_val}'")
+                        return datetime.combine(parsed_date, parsed_time)
+                    
+                    fecha_hora_final = parse_excel_datetime_bg(row['Fecha'], row['Hora'])
+                    id_lector_val = None; coord_x = get_optional_float(row.get('Coordenada_X')); coord_y = get_optional_float(row.get('Coordenada_Y'))
+
+                    if tipo_archivo == 'LPR':
+                        id_lector_str = str(row['ID_Lector']).strip() if pd.notna(row['ID_Lector']) else None
+                        if not id_lector_str: raise ValueError("Falta ID_Lector para LPR")
+                        id_lector_val = id_lector_str
+                        db_lector_existente = db.query(models.Lector).filter(models.Lector.ID_Lector == id_lector_val).first()
+                        if not db_lector_existente:
+                            if id_lector_val not in lectores_creados_bg and id_lector_val not in lectores_no_hallados:
+                                db_lector_nuevo = models.Lector(ID_Lector=id_lector_val, Coordenada_X=coord_x, Coordenada_Y=coord_y)
+                                db.add(db_lector_nuevo); lectores_creados_bg.add(id_lector_val)
+                        else:
+                            if coord_x is None: coord_x = db_lector_existente.Coordenada_X
+                            if coord_y is None: coord_y = db_lector_existente.Coordenada_Y
+                    
+                    duplicado_existente = db.query(models.Lectura.ID_Lectura).join(models.ArchivoExcel)\
+                        .filter(models.ArchivoExcel.ID_Caso == caso_id, models.Lectura.Matricula == matricula,
+                                models.Lectura.Fecha_y_Hora == fecha_hora_final, models.Lectura.ID_Lector == id_lector_val).first()
+                    if duplicado_existente:
+                        duplicados_omitidos_bg.add(f"Fila Excel {excel_row_num}: {matricula}, {fecha_hora_final}, Lector: {id_lector_val}")
+                        continue
+                    
+                    batch_lecturas_obj.append(models.Lectura(ID_Archivo=id_archivo_db, Matricula=matricula, Fecha_y_Hora=fecha_hora_final,
+                        Carril=get_optional_str(row.get('Carril')), Velocidad=get_optional_float(row.get('Velocidad')),
+                        ID_Lector=id_lector_val, Coordenada_X=coord_x, Coordenada_Y=coord_y, Tipo_Fuente=tipo_archivo))
+                except ValueError as ve_row:
+                    errores_filas.append(f"Fila Excel {excel_row_num}: {ve_row}")
+                except Exception as e_row_inesperado:
+                    errores_filas.append(f"Fila Excel {excel_row_num}: Error inesperado - {e_row_inesperado}")
+            
+            if batch_lecturas_obj:
+                db.add_all(batch_lecturas_obj)
+                lecturas_insertadas_count += len(batch_lecturas_obj)
+            db.commit() # Commit por lote (lecturas y nuevos lectores del lote)
+            task_statuses[task_id]["progress"] = (min(i + BATCH_SIZE, len(df)) / len(df)) * 100
+            logger.info(f"[Task {task_id}] Lote procesado. Total insertado: {lecturas_insertadas_count}. Progreso: {task_statuses[task_id]['progress']:.2f}%")
+
+        final_msg = f"Procesado. {lecturas_insertadas_count} lecturas importadas."
+        if errores_filas: final_msg += f" {len(errores_filas)} filas con errores."
+        if duplicados_omitidos_bg: final_msg += f" {len(duplicados_omitidos_bg)} duplicados omitidos."
+        logger.info(f"[Task {task_id}] {final_msg}")
+        
+        result_data = schemas.UploadResponse(
+            archivo=schemas.ArchivoExcel.model_validate(db_archivo, from_attributes=True),
+            total_registros=lecturas_insertadas_count,
+            errores=errores_filas if errores_filas else None,
+            lectores_no_encontrados=list(lectores_no_hallados - lectores_creados_bg) if (lectores_no_hallados - lectores_creados_bg) else None,
+            lecturas_duplicadas=list(duplicados_omitidos_bg) if duplicados_omitidos_bg else None,
+            nuevos_lectores_creados=list(lectores_creados_bg) if lectores_creados_bg else None
+        )
+        task_statuses[task_id] = {
+            **task_statuses.get(task_id, {}), "status": "completed", "message": final_msg,
+            "progress": 100, "result": result_data.model_dump()
+        }
+    except ValueError as ve_proc:
+        logger.error(f"[Task {task_id}] Error de validación: {ve_proc}", exc_info=True)
+        task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "failed", "message": str(ve_proc)}
+        if 'id_archivo_db' in locals() and id_archivo_db:
+            try: db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo_db).delete(); db.commit()
+            except: db.rollback()
+    except Exception as e_critico:
+        logger.error(f"[Task {task_id}] Error CRÍTICO: {e_critico}", exc_info=True)
+        task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "failed", "message": f"Error interno: {e_critico}"}
+        if 'id_archivo_db' in locals() and id_archivo_db:
+            try: db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo_db).delete(); db.commit()
+            except: db.rollback()
+    finally:
+        if os.path.exists(temp_file_path):
+            try: os.remove(temp_file_path); logger.info(f"[Task {task_id}] Archivo temporal {temp_file_path} eliminado.")
+            except Exception as e_rm_temp: logger.error(f"[Task {task_id}] Fallo al eliminar {temp_file_path}: {e_rm_temp}")
+        db.close()
+        logger.info(f"[Task {task_id}] Procesamiento en segundo plano finalizado para {original_filename}.")
+
+# --- END Background File Processing Function ---
+
+# --- START JWT/OAuth2 Core Setup ---
+# ... existing code ...
