@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useState, useMemo, useEffect, useImperativeHandle, forwardRef, useCallback, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
@@ -6,6 +6,13 @@ import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/
 import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronUp, IconChevronDown, IconDownload } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import HeatmapLayer from './HeatmapLayer';
+import MarkerClusterGroup from 'react-leaflet-markercluster';
+import 'react-leaflet-markercluster/dist/styles.min.css';
+import { debounce } from 'lodash';
+import { gpsCache } from '../../services/gpsCache';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 
 interface GpsMapStandaloneProps {
   lecturas: GpsLectura[];
@@ -16,12 +23,14 @@ interface GpsMapStandaloneProps {
     showHeatmap: boolean;
     showPoints: boolean;
     optimizePoints: boolean;
+    enableClustering: boolean;
   };
   mostrarLocalizaciones: boolean;
   onGuardarLocalizacion: (lectura: GpsLectura) => void;
   playbackLayer?: GpsCapa | null;
   currentPlaybackIndex?: number;
   puntoSeleccionado?: GpsLectura | null;
+  heatmapMultiplier?: number;
 }
 
 interface GpsMapStandalonePropsWithFullscreen extends GpsMapStandaloneProps {
@@ -437,6 +446,9 @@ const MapAutoResize = () => {
   return null;
 };
 
+// Crear el worker
+const worker = new Worker(new URL('../../workers/gpsWorker.ts', import.meta.url));
+
 const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithFullscreen>(({
   lecturas,
   capas,
@@ -447,12 +459,15 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
   playbackLayer,
   currentPlaybackIndex,
   fullscreenMap,
-  puntoSeleccionado
+  puntoSeleccionado,
+  heatmapMultiplier = 1.65
 }, ref): React.ReactElement => {
   const internalMapRef = useRef<L.Map | null>(null);
   const [selectedInfo, setSelectedInfo] = useState<any | null>(null);
+  const [optimizedLecturas, setOptimizedLecturas] = useState<GpsLectura[]>([]);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
-  // Definir initialCenter e initialZoom antes de usarlos en useState
+  // Memoizar el centro inicial
   const initialCenter: L.LatLngTuple = useMemo(() => {
     const primeraLecturaConCoordenadas = 
       Array.isArray(lecturas) && lecturas.length > 0
@@ -460,43 +475,135 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
         : null;
     return primeraLecturaConCoordenadas
       ? [primeraLecturaConCoordenadas.Coordenada_Y, primeraLecturaConCoordenadas.Coordenada_X]
-      : [40.416775, -3.703790]; // Centro por defecto (Madrid)
+      : [40.416775, -3.703790];
   }, [lecturas]);
 
+  // Memoizar el zoom inicial
   const initialZoom: number = useMemo(() => {
     const primeraLecturaConCoordenadas = 
       Array.isArray(lecturas) && lecturas.length > 0
         ? lecturas.find(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
         : null;
-    return primeraLecturaConCoordenadas ? 13 : 10; // Zoom por defecto
+    return primeraLecturaConCoordenadas ? 13 : 10;
   }, [lecturas]);
 
-  const [currentZoom, setCurrentZoom] = useState<number | undefined>(initialZoom);
-  const [currentCenter, setCurrentCenter] = useState<L.LatLngTuple | undefined>(initialCenter);
-
-  // Disparar resize al montar
+  // Optimizar puntos usando el worker
   useEffect(() => {
-    setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 350);
+    if (!mapControls.optimizePoints || !Array.isArray(lecturas) || lecturas.length === 0) {
+      setOptimizedLecturas(lecturas);
+      return;
+    }
+
+    setIsOptimizing(true);
+    worker.postMessage({
+      type: 'decimate',
+      data: {
+        points: lecturas,
+        options: {
+          minDistance: 0.05,
+          maxAngle: 30,
+          keepStops: true,
+          keepSpeedChanges: true,
+          speedThreshold: 10
+        }
+      }
+    });
+
+    worker.onmessage = (e) => {
+      if (e.data.type === 'decimate') {
+        setOptimizedLecturas(e.data.data);
+        setIsOptimizing(false);
+      }
+    };
+  }, [lecturas, mapControls.optimizePoints]);
+
+  // Función para calcular el tiempo entre dos lecturas en minutos
+  const calcularTiempoEntreLecturas = (lectura1: GpsLectura, lectura2: GpsLectura): number => {
+    const tiempo1 = new Date(lectura1.Fecha_y_Hora).getTime();
+    const tiempo2 = new Date(lectura2.Fecha_y_Hora).getTime();
+    return Math.abs(tiempo2 - tiempo1) / (1000 * 60); // Convertir a minutos
+  };
+
+  // Función para determinar si dos puntos están muy cerca
+  const puntosCercanos = (lat1: number, lon1: number, lat2: number, lon2: number, maxDistancia: number = 0.0001): boolean => {
+    return haversineDistance(lat1, lon1, lat2, lon2) < maxDistancia;
+  };
+
+  // Memoizar los puntos del heatmap
+  const heatmapPoints = useMemo(() => {
+    if (!mapControls.showHeatmap || !optimizedLecturas.length) return [] as [number, number, number][];
+    
+    const points = new Map<string, number>();
+    const zonasParada = new Map<string, number>();
+
+    // Primera pasada: identificar zonas de parada
+    for (let i = 0; i < optimizedLecturas.length - 1; i++) {
+      const lectura = optimizedLecturas[i];
+      const siguienteLectura = optimizedLecturas[i + 1];
+      
+      const tiempoEntreLecturas = calcularTiempoEntreLecturas(lectura, siguienteLectura);
+      if (tiempoEntreLecturas > 1 && puntosCercanos(
+        lectura.Coordenada_Y,
+        lectura.Coordenada_X,
+        siguienteLectura.Coordenada_Y,
+        siguienteLectura.Coordenada_X
+      )) {
+        const key = `${lectura.Coordenada_Y.toFixed(5)},${lectura.Coordenada_X.toFixed(5)}`;
+        zonasParada.set(key, (zonasParada.get(key) || 0) + tiempoEntreLecturas);
+      }
+    }
+
+    // Segunda pasada: asignar pesos
+    optimizedLecturas.forEach((lectura, index) => {
+      const key = `${lectura.Coordenada_Y.toFixed(5)},${lectura.Coordenada_X.toFixed(5)}`;
+      
+      // Peso base para el punto (muy bajo)
+      let peso = 0.02;
+
+      // Si es una zona de parada, añadir el tiempo de parada
+      if (zonasParada.has(key)) {
+        const tiempoParada = zonasParada.get(key)!;
+        peso += Math.log(tiempoParada + 1) * 0.7;
+      }
+
+      // Si hay duración de parada explícita, usarla
+      if (lectura.duracion_parada_min && lectura.duracion_parada_min > 0) {
+        peso += Math.log(lectura.duracion_parada_min + 1) * 0.7;
+      }
+
+      points.set(key, (points.get(key) || 0) + peso);
+    });
+    
+    return Array.from(points.entries()).map(([key, weight]) => {
+      const [lat, lng] = key.split(',').map(Number);
+      return [lat, lng, weight * heatmapMultiplier] as [number, number, number];
+    });
+  }, [optimizedLecturas, mapControls.showHeatmap, heatmapMultiplier]);
+
+  // Debounce para eventos del mapa
+  const debouncedZoom = useCallback(
+    debounce((zoom: number) => {
+      // Actualizar estado o realizar cálculos basados en el zoom
+      console.log('Zoom level:', zoom);
+    }, 150),
+    []
+  );
+
+  // Limpiar recursos al desmontar
+  useEffect(() => {
+    return () => {
+      if (internalMapRef.current) {
+        internalMapRef.current.eachLayer(layer => {
+          if (layer instanceof L.Marker) {
+            layer.remove();
+          }
+        });
+      }
+    };
   }, []);
 
   // Exponer funciones del mapa
   useImperativeHandle(ref, () => internalMapRef.current!, [internalMapRef.current]);
-
-  // Optimizar puntos si está activado
-  const optimizedLecturas = useMemo(() => {
-    if (!mapControls.optimizePoints || !Array.isArray(lecturas)) return lecturas;
-    
-    // Primero decimar los puntos
-    const decimatedPoints = decimatePoints(lecturas);
-    
-    // Luego agrupar puntos cercanos
-    const clusters = clusterPoints(decimatedPoints);
-    
-    // Convertir clusters a puntos individuales
-    return clusters.map(getClusterCenter);
-  }, [lecturas, mapControls.optimizePoints]);
 
   // Obtener todas las lecturas de las capas activas
   const activeLayerLecturas = useMemo(() => {
@@ -528,39 +635,6 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
     tileLayerUrl = 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png';
     tileLayerAttribution = 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under ODbL.';
   }
-
-  // --- Cálculo de puntos para el heatmap ---
-  let heatmapPoints: Array<[number, number, number]> = [];
-  if (mapControls.showHeatmap && Array.isArray(allLecturas) && allLecturas.length > 0) {
-    // Agrupa por coordenada redondeada
-    const agrupadas: Record<string, { lat: number, lng: number, tiempo: number }> = {};
-    allLecturas.forEach(l => {
-      const lat = Number(l.Coordenada_Y?.toFixed(5));
-      const lng = Number(l.Coordenada_X?.toFixed(5));
-      if (isNaN(lat) || isNaN(lng)) return;
-      const key = `${lat},${lng}`;
-      // Usa duracion_parada_min si está disponible, si no, asigna 0.1 min como base
-      const tiempo = typeof l.duracion_parada_min === 'number' && !isNaN(l.duracion_parada_min) ? l.duracion_parada_min : 0.1;
-      if (!agrupadas[key]) {
-        agrupadas[key] = { lat, lng, tiempo: 0 };
-      }
-      agrupadas[key].tiempo += tiempo;
-    });
-    // Normaliza intensidades
-    const tiempos = Object.values(agrupadas).map(p => p.tiempo);
-    const maxTiempo = Math.max(...tiempos, 1); // evita división por cero
-    heatmapPoints = Object.values(agrupadas).map(p => [p.lat, p.lng, Math.max(0.1, p.tiempo / maxTiempo)]);
-  }
-
-  // Filtra puntos válidos para el heatmap (más estricto)
-  const validHeatmapPoints = heatmapPoints.filter(
-    p =>
-      Array.isArray(p) &&
-      p.length === 3 &&
-      typeof p[0] === 'number' && !isNaN(p[0]) && p[0] >= -90 && p[0] <= 90 &&
-      typeof p[1] === 'number' && !isNaN(p[1]) && p[1] >= -180 && p[1] <= 180 &&
-      typeof p[2] === 'number' && !isNaN(p[2]) && p[2] > 0
-  );
 
   // Función para navegar entre puntos
   const handleNavigate = (direction: 'prev' | 'next') => {
@@ -654,22 +728,109 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
     }
   }, [puntoSeleccionado, internalMapRef.current, onGuardarLocalizacion]); // Añadir onGuardarLocalizacion a las dependencias
 
+  // Componente interno para el clustering de marcadores
+  const ClusteredMarkersInternal = () => {
+    const map = useMap();
+    
+    useEffect(() => {
+      if (!map) return;
+
+      const markers = optimizedLecturas.map(lectura => {
+        const marker = L.marker([lectura.Coordenada_Y, lectura.Coordenada_X], {
+          icon: L.divIcon({
+            className: `custom-marker ${selectedInfo && !selectedInfo.isLocalizacion && selectedInfo.info?.ID_Lectura === lectura.ID_Lectura ? 'selected' : ''}`,
+            html: `
+              <div style="
+                background-color: #228be6;
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                border: 2px solid white;
+                box-shadow: 0 0 4px rgba(0,0,0,0.3);
+                transform: translate(-50%, -50%);
+              "></div>
+            `,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6],
+          })
+        });
+
+        marker.on('click', () => {
+          setSelectedInfo({ 
+            info: { 
+              ...lectura, 
+              onGuardarLocalizacion: () => onGuardarLocalizacion(lectura) 
+            }, 
+            isLocalizacion: false 
+          });
+        });
+
+        if (lectura.clusterSize && lectura.clusterSize > 1) {
+          marker.bindTooltip(lectura.clusterSize.toString());
+        }
+
+        return marker;
+      });
+
+      // Si el clustering está desactivado, añadir los marcadores directamente al mapa
+      if (!mapControls.enableClustering) {
+        markers.forEach(marker => map.addLayer(marker));
+        return () => {
+          markers.forEach(marker => map.removeLayer(marker));
+        };
+      }
+
+      // Si el clustering está activado, usar MarkerClusterGroup
+      const clusterGroup = (L as any).markerClusterGroup({
+        chunkedLoading: true,
+        maxClusterRadius: 50,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: true,
+        zoomToBoundsOnClick: true,
+        removeOutsideVisibleBounds: true,
+        animate: true
+      });
+
+      clusterGroup.addLayers(markers);
+      map.addLayer(clusterGroup);
+
+      return () => {
+        if (mapControls.enableClustering) {
+          map.removeLayer(clusterGroup);
+        } else {
+          markers.forEach(marker => map.removeLayer(marker));
+        }
+      };
+    }, [map, optimizedLecturas, selectedInfo, onGuardarLocalizacion, mapControls.enableClustering]);
+
+    return null;
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
-        center={initialCenter as [number, number]}
+        center={initialCenter}
         zoom={initialZoom}
         scrollWheelZoom={true}
         style={{ height: '100%', width: '100%' }}
         ref={internalMapRef as any}
+        whenReady={() => {
+          if (internalMapRef.current) {
+            internalMapRef.current.on('zoomend', () => {
+              debouncedZoom(internalMapRef.current?.getZoom() || initialZoom);
+            });
+          }
+        }}
       >
         <MapAutoResize />
         <TileLayer
           attribution={tileLayerAttribution}
           url={tileLayerUrl}
         />
+        
         {/* Renderizar puntos del recorrido */}
         {renderRoutePoints}
+        
         {/* Renderizar punto actual del reproductor */}
         {currentPlaybackPoint && playbackLayer && (
           <Marker
@@ -685,47 +846,17 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
             })}
           />
         )}
-        {/* Renderizar heatmap si está activado */}
-        {mapControls.showHeatmap && validHeatmapPoints.length > 0 && (
-          <HeatmapLayer points={validHeatmapPoints} options={{ radius: 18, blur: 16, maxZoom: 17 } as any} />
-        )}
-        {/* Renderizar puntos individuales con clustering */}
-        {mapControls.showPoints && allLecturas.map((lectura, idx) => {
-          const capa = capas.find(c => c.activa && c.lecturas.some(l => l.ID_Lectura === lectura.ID_Lectura));
-          const color = capa ? capa.color : '#228be6';
-          const isSelected = selectedInfo && !selectedInfo.isLocalizacion && selectedInfo.info?.ID_Lectura === lectura.ID_Lectura;
-          const clusterSize = lectura.clusterSize || 1;
-          
-          const customIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
-              ${isSelected ? `<div style='position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>` : ''}
-              <div style="background: ${isSelected ? color : color}; width: ${isSelected ? 24 : 12}px; height: ${isSelected ? 24 : 12}px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${isSelected ? color : 'rgba(0,0,0,0.4)'}; outline: ${isSelected ? '3px solid ' + color : 'none'};">
-                ${clusterSize > 1 ? `<span style="position: absolute; top: -8px; right: -8px; background: white; color: ${color}; font-size: 10px; padding: 2px 4px; border-radius: 8px; border: 1px solid ${color};">${clusterSize}</span>` : ''}
-              </div>
-            </div>`,
-            iconSize: [isSelected ? 44 : 12, isSelected ? 44 : 12],
-            iconAnchor: [isSelected ? 22 : 6, isSelected ? 22 : 6]
-          });
 
-          return (
-            <Marker
-              key={lectura.ID_Lectura + '-' + idx}
-              position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
-              icon={customIcon}
-              eventHandlers={{
-                click: () => setSelectedInfo({ 
-                  info: { 
-                    ...lectura, 
-                    onGuardarLocalizacion: () => onGuardarLocalizacion(lectura),
-                    clusterSize: clusterSize
-                  }, 
-                  isLocalizacion: false 
-                })
-              }}
-            />
-          );
-        })}
+        {/* Renderizar heatmap si está activado */}
+        {mapControls.showHeatmap && heatmapPoints.length > 0 && (
+          <HeatmapLayer 
+            points={heatmapPoints}
+          />
+        )}
+
+        {/* Renderizar puntos con clustering */}
+        {mapControls.showPoints && <ClusteredMarkersInternal />}
+
         {/* Renderizar localizaciones de interés */}
         {mostrarLocalizaciones && localizaciones.map((loc, idx) => {
           const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
