@@ -446,30 +446,9 @@ function ImportarPage() {
 
   // --- MODIFICADO: Manejar el envío del formulario de importación ---
   const handleImport = async () => {
-    if (!selectedCasoId || !selectedFile) {
-      notifications.show({ title: 'Faltan datos', message: 'Selecciona un caso y un archivo.', color: 'orange' });
-      setIsUploading(false);
-      setIsReadingHeaders(false);
-      return;
-    }
-    if (!isMappingComplete()) {
-      notifications.show({ title: 'Mapeo Incompleto', message: 'Configura el mapeo de columnas antes de importar.', color: 'orange' });
-      openMappingModal();
-      setIsUploading(false);
-      setIsReadingHeaders(false);
-      return;
-    }
-
-    if (fileType === 'GPX_KML' && !matricula) {
-      openMatriculaModal();
-      setIsUploading(false);
-      setIsReadingHeaders(false);
-      return;
-    }
-
+    setUploadError(null); // Limpiar error previo
+    setImportWarning(null); // Limpiar advertencia previa
     setIsUploading(true);
-    setUploadError(null);
-
     try {
       const finalMapping = Object.entries(columnMapping)
         .filter(([_, value]) => value !== null)
@@ -478,31 +457,24 @@ function ImportarPage() {
           return obj;
         }, {} as { [key: string]: string });
 
-      let resultado: UploadResponse;
+      let resultado: UploadResponse | undefined;
 
       if (fileType === 'GPX_KML') {
         // Procesar archivo GPX/KML con matrícula
         const dataWithMatricula = processDataWithMatricula(processedGpxKmlData, matricula);
-        
-        // Convertir los datos a formato Excel
         const ws = XLSX.utils.json_to_sheet(dataWithMatricula);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Datos");
-        
-        // Convertir a blob
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const processedFile = new File([blob], selectedFile.name.replace(/\.(gpx|kml)$/i, '.xlsx'), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        
-        // Subir el archivo procesado
         resultado = await uploadArchivoExcel(
           selectedCasoId,
-          'GPS', // Usar tipo GPS para los datos procesados
+          'GPS',
           processedFile,
           JSON.stringify(finalMapping)
         );
       } else {
-        // Lógica existente para Excel
         resultado = await uploadArchivoExcel(
           selectedCasoId,
           fileType,
@@ -510,117 +482,42 @@ function ImportarPage() {
           JSON.stringify(finalMapping)
         );
       }
-
-      // En handleImport, reemplazar notificación flotante por setImportWarning
-      if (resultado.total_registros === 0 && resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0) {
+      // Si la respuesta es exitosa pero no contiene el archivo, mostrar advertencia de procesamiento
+      if (!resultado || !resultado.archivo) {
         setImportWarning(
-          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
-            <Text size="sm" fw={500} c="yellow.8">Todos los registros del archivo ya existían en el sistema y fueron ignorados como duplicados.</Text>
-            <Text size="sm" mt="xs">Ejemplos de duplicados:</Text>
-            <Text size="xs" component="ul" mt="xs">
-              {resultado.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
-                <li key={index}>{duplicado}</li>
-              ))}
-              {resultado.lecturas_duplicadas.length > 5 && (
-                <li>...y {resultado.lecturas_duplicadas.length - 5} más</li>
-              )}
-            </Text>
+          <Alert color="blue" title="Procesando archivo..." icon={<IconUpload />} mt="md">
+            El archivo se está procesando en segundo plano. Aparecerá en la lista de archivos importados en unos segundos.
           </Alert>
         );
-      } else if (resultado.total_registros === 0) {
-        setImportWarning(
-          <Alert color="yellow" title="No se importó ningún registro" icon={<IconAlertCircle size={18} />} mt="md">
-            No se importaron registros. Esto puede deberse a que el archivo está vacío, los datos no son válidos o todos los registros ya existían previamente (duplicados).
-          </Alert>
-        );
+        // Refrescar la lista de archivos tras unos segundos
+        setTimeout(() => {
+          fetchArchivos(selectedCasoId);
+        }, 5000);
       } else {
-        notifications.show({
-            title: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'Importación con Advertencias' : 'Éxito',
-          message: (
-            <Box>
-              <Text size="sm">Archivo "{resultado.archivo.Nombre_del_Archivo}" importado correctamente</Text>
-              <Text size="sm">Total de registros importados: {resultado.total_registros}</Text>
-              {resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 && (
-                  <Alert color="yellow" title="¡Atención! Se encontraron lecturas duplicadas" mt="xs" icon={<IconAlertCircle size={16} />}> 
-                    <Text size="sm" fw={500}>Se ignoraron {resultado.lecturas_duplicadas.length} lecturas duplicadas:</Text>
-                  <Text size="xs" component="ul" mt="xs">
-                      {resultado.lecturas_duplicadas.slice(0, 5).map((duplicado, index) => (
-                        <li key={index}>{duplicado}</li>
-                      ))}
-                      {resultado.lecturas_duplicadas.length > 5 && (
-                        <li>...y {resultado.lecturas_duplicadas.length - 5} más</li>
-                      )}
-                  </Text>
-                    <Text size="xs" mt="xs" c="dimmed">Estas lecturas ya existían en el sistema y no fueron importadas.</Text>
-                </Alert>
-              )}
-            </Box>
-          ),
-          color: resultado.lecturas_duplicadas && resultado.lecturas_duplicadas.length > 0 ? 'yellow' : 'green',
-          autoClose: false
-        });
+        // Si todo fue bien, refrescar la lista de archivos
+        fetchArchivos(selectedCasoId);
       }
-
-      // --- Notificación de Nuevos Lectores --- 
-      if (resultado.nuevos_lectores_creados && resultado.nuevos_lectores_creados.length > 0) {
-          const numNuevos = resultado.nuevos_lectores_creados.length;
-          notifications.show({
-              title: 'Lectores Nuevos Creados',
-              message: (
-                  <Box>
-                      <Text size="sm">Se crearon automáticamente {numNuevos} lectores nuevos.</Text>
-                      <Text size="sm">Se recomienda revisar y completar su información.</Text>
-                      <Button 
-                          size="xs" 
-                          variant="light" 
-                          mt="xs" 
-                          onClick={() => navigate('/lectores')} // O la ruta correcta
-                      >
-                          Ir a Gestión de Lectores
-                      </Button>
-                  </Box>
-              ),
-              color: 'blue',
-              autoClose: 10000, // Dar más tiempo para leer y hacer clic
-              withCloseButton: true,
-          });
-      }
-      // --- Fin Notificación --- 
-
-      // Limpiar formulario
       setSelectedFile(null);
       setExcelHeaders([]);
       setColumnMapping({});
-
-      // Recargar lista de archivos
-      if (selectedCasoId) {
-          await fetchArchivos(selectedCasoId);
-      }
-
     } catch (err: any) {
       let message = 'Error al importar el archivo.';
-      let detail = err.response?.data?.detail; // Obtener el detalle
-
-      console.error("Error completo recibido:", err.response || err); // Loguear el error completo en consola del navegador
-
+      let detail = err.response?.data?.detail;
       if (detail) {
-          // Intentar formatear el detalle, sea string, objeto o array
-          try {
-              if (typeof detail === 'string') {
-                  message = `${message} Detalle: ${detail}`;
-              } else {
-                  // Convertir objeto/array a JSON string formateado
-                  message = `${message} Detalle: \n${JSON.stringify(detail, null, 2)}`;
-              }
-          } catch (jsonError) {
-              message = `${message} (No se pudo formatear detalle del error)`;
+        try {
+          if (typeof detail === 'string') {
+            message = `${message} Detalle: ${detail}`;
+          } else {
+            message = `${message} Detalle: \n${JSON.stringify(detail, null, 2)}`;
           }
+        } catch (jsonError) {
+          message = `${message} (No se pudo formatear detalle del error)`;
+        }
       } else if (err.message) {
-          message = `${message} Mensaje: ${err.message}`;
+        message = `${message} Mensaje: ${err.message}`;
       }
-      // Limitar longitud del mensaje para que quepa en el Alert
       if (message.length > 500) {
-          message = message.substring(0, 497) + "...";
+        message = message.substring(0, 497) + "...";
       }
       setUploadError(message);
     } finally {
