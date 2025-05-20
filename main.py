@@ -61,10 +61,15 @@ class UploadTaskStatus(BaseModel):
 
 # --- Helper functions for data parsing --- START
 def get_optional_float(value: Any) -> Optional[float]:
+    """Convierte un valor a float si es posible, retorna None si no."""
     if pd.isna(value) or value is None:
         return None
     try:
-        return float(value)
+        # Intentar convertir a float, reemplazando coma por punto si es necesario
+        if isinstance(value, str):
+            value = value.replace(',', '.')
+        float_val = float(value)
+        return float_val
     except (ValueError, TypeError):
         return None
 
@@ -75,6 +80,12 @@ def get_optional_str(value: Any) -> Optional[str]:
         return str(value).strip()
     except (ValueError, TypeError):
         return None
+
+def validate_coordinates(lat: Optional[float], lon: Optional[float]) -> bool:
+    """Valida que las coordenadas estén dentro de rangos válidos."""
+    if lat is None or lon is None:
+        return False
+    return -90 <= lat <= 90 and -180 <= lon <= 180
 # --- Helper functions for data parsing --- END
 
 # Configurar logging básico para ver más detalles
@@ -1846,7 +1857,6 @@ def get_lecturas_por_caso(
         if duracion_parada is not None:
             # Obtener todas las lecturas ordenadas por matrícula y fecha/hora
             lecturas_all = query.order_by(models.Lectura.Matricula, models.Lectura.Fecha_y_Hora).all()
-            paradas = []
             def haversine(lat1, lon1, lat2, lon2):
                 R = 6371000  # metros
                 dlat = radians(lat2 - lat1)
@@ -1854,842 +1864,85 @@ def get_lecturas_por_caso(
                 a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
                 c = 2 * asin(sqrt(a))
                 return R * c
+            # Calcular duracion_parada_min para todas las lecturas que sean inicio de parada
+            duraciones_parada = {}
             for i in range(len(lecturas_all) - 1):
                 l1 = lecturas_all[i]
                 l2 = lecturas_all[i+1]
-                # Solo comparar si es la misma matrícula
+
+                # --- LOG DE DEPURACIÓN --- START
+                # Solo loguear para el vehículo específico si se proporciona en los parámetros
+                if matricula and l1.Matricula == matricula:
+                    log_msg = f"[DEBUG Parada] Matricula: {l1.Matricula}, Index: {i}"
+                    log_msg += f"\n  L1: Fecha={l1.Fecha_y_Hora}, Coords=({l1.Coordenada_Y}, {l1.Coordenada_X}), Velocidad={l1.Velocidad}"
+                    log_msg += f"\n  L2: Fecha={l2.Fecha_y_Hora}, Coords=({l2.Coordenada_Y}, {l2.Coordenada_X}), Velocidad={l2.Velocidad}"
+                    
+                    if l1.Matricula != l2.Matricula:
+                        log_msg += "\n  -> SKIPPED: Different Matricula"
+                    elif not (l1.Fecha_y_Hora and l2.Fecha_y_Hora and l1.Coordenada_X is not None and l1.Coordenada_Y is not None and l2.Coordenada_X is not None and l2.Coordenada_Y is not None):
+                         log_msg += "\n  -> SKIPPED: Missing Date/Time or Coords"
+                    else:
+                        diff_min_calc = (l2.Fecha_y_Hora - l1.Fecha_y_Hora).total_seconds() / 60
+                        log_msg += f"\n  Diff Min: {diff_min_calc:.2f}"
+                        if diff_min_calc <= 0:
+                             log_msg += "\n  -> SKIPPED: Time diff <= 0"
+                        else:
+                             dist_calc = haversine(l1.Coordenada_Y, l1.Coordenada_X, l2.Coordenada_Y, l2.Coordenada_X)
+                             log_msg += f"\n  Distance (m): {dist_calc:.2f}"
+                             if dist_calc > 300:
+                                 log_msg += "\n  -> SKIPPED: Distance > 300m"
+                             elif duracion_parada is not None and diff_min_calc < duracion_parada:
+                                 log_msg += f"\n  -> SKIPPED: Duration ({diff_min_calc:.2f}min) < Filtered Duration ({duracion_parada}min)"
+                             else:
+                                 log_msg += "\n  -> PASSED ALL CHECKS"
+                    logger.info(log_msg)
+                # --- LOG DE DEPURACIÓN --- END
+
                 if l1.Matricula != l2.Matricula:
                     continue
-                # Comprobar datos válidos
                 if not (l1.Fecha_y_Hora and l2.Fecha_y_Hora and l1.Coordenada_X is not None and l1.Coordenada_Y is not None and l2.Coordenada_X is not None and l2.Coordenada_Y is not None):
                     continue
-                # Tiempo en minutos
                 diff_min = (l2.Fecha_y_Hora - l1.Fecha_y_Hora).total_seconds() / 60
-                if diff_min < duracion_parada or diff_min <= 0:
+                if diff_min <= 0:
                     continue
-                # Velocidad permisiva
-                if l1.Velocidad is None or l1.Velocidad > 12:
-                    continue
-                # Distancia
+                # Eliminar filtro de velocidad
+                # if l1.Velocidad is None or l1.Velocidad > 12:
+                #     continue
                 dist = haversine(l1.Coordenada_Y, l1.Coordenada_X, l2.Coordenada_Y, l2.Coordenada_X)
-                if dist > 220:
+                if dist > 300:
                     continue
-                # Crear dict y añadir duración
-                l1_dict = l1.__dict__.copy()
-                l1_dict['duracion_parada_min'] = diff_min
-                paradas.append(LecturaSchema(**l1_dict))
-            lecturas = paradas
-        else:
-            lecturas = query.all()
+                # Si hay filtro de duracion_parada, solo considerar si cumple
+                if duracion_parada is not None and diff_min < duracion_parada:
+                    continue
+                duraciones_parada[l1.ID_Lectura] = diff_min
+            # Construir la respuesta
+            lecturas_respuesta = []
+            for l in lecturas_all:
+                l_dict = l.__dict__.copy()
+                if l.ID_Lectura in duraciones_parada:
+                    l_dict['duracion_parada_min'] = duraciones_parada[l.ID_Lectura]
+                else:
+                    l_dict['duracion_parada_min'] = None
+                lecturas_respuesta.append(schemas.Lectura(**l_dict))
+            # Si hay filtro de duracion_parada, solo devolver las que sean inicio de parada y cumplen el mínimo
+            if duracion_parada is not None:
+                lecturas_respuesta = [l for l in lecturas_respuesta if l.duracion_parada_min is not None and l.duracion_parada_min >= duracion_parada]
+            logger.info(f"Encontradas {len(lecturas_respuesta)} lecturas para el caso {caso_id}")
+            return lecturas_respuesta
 
-        logger.info(f"Encontradas {len(lecturas)} lecturas para el caso {caso_id}")
-        return lecturas
+        # Si no hay filtro de duración de parada, ejecutar la consulta normal
+        lecturas = query.all()
+        return lecturas if lecturas else []
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error al obtener lecturas del caso {caso_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error interno al obtener lecturas: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al obtener lecturas: {str(e)}"
+        )
 
 @app.get("/casos/{caso_id}/matriculas/sugerencias", response_model=List[str])
 def get_sugerencias_matriculas(
-    caso_id: int,
-    query: str,
-    limit: int = 5,
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene sugerencias de matrículas para un caso específico basado en un texto de búsqueda.
-    Optimizado para rendimiento usando una subconsulta para matrículas únicas.
-    """
-    logger.info(f"GET /casos/{caso_id}/matriculas/sugerencias - query: {query}, limit: {limit}")
-    
-    try:
-        # Subconsulta optimizada para obtener matrículas únicas del caso
-        matriculas = db.query(models.Lectura.Matricula)\
-            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
-            .filter(
-                models.ArchivoExcel.ID_Caso == caso_id,
-                models.Lectura.Matricula.ilike(f"%{query}%")
-            )\
-            .distinct()\
-            .order_by(models.Lectura.Matricula)\
-            .limit(limit)\
-            .all()
-        
-        # Extraer las matrículas de la lista de tuplas
-        sugerencias = [m[0] for m in matriculas if m[0]]
-        
-        logger.info(f"Encontradas {len(sugerencias)} sugerencias para '{query}' en caso {caso_id}")
-        return sugerencias
-        
-    except Exception as e:
-        logger.error(f"Error al obtener sugerencias de matrículas para caso {caso_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error interno al obtener sugerencias: {str(e)}"
-        )
-
-@app.post("/api/analisis/busqueda-cruzada")
-async def busqueda_cruzada(request: Request):
-    try:
-        data = await request.json()
-        casos = data.get('casos', [])
-        
-        if len(casos) < 2:
-            raise HTTPException(status_code=400, detail="Se requieren al menos 2 casos para la búsqueda cruzada")
-
-        # Consulta para obtener todas las lecturas de los casos seleccionados
-        query = """
-            SELECT l.ID_Lectura, l.ID_Archivo, l.Matricula, l.Fecha_y_Hora, 
-                   lec.Nombre as Nombre_Lector, lec.ID_Lector
-            FROM Lecturas l
-            JOIN Lectores lec ON l.ID_Lector = lec.ID_Lector
-            WHERE l.ID_Archivo IN :casos
-            ORDER BY l.Matricula, l.Fecha_y_Hora
-        """
-        
-        result = await database.fetch_all(query, {"casos": tuple(casos)})
-        
-        # Agrupar lecturas por matrícula
-        vehiculos = {}
-        for lectura in result:
-            matricula = lectura['Matricula']
-            if matricula not in vehiculos:
-                vehiculos[matricula] = {
-                    'matricula': matricula,
-                    'casos': set(),
-                    'lecturas': []
-                }
-            
-            vehiculos[matricula]['casos'].add(lectura['ID_Archivo'])
-            vehiculos[matricula]['lecturas'].append({
-                'casoId': lectura['ID_Archivo'],
-                'fecha': lectura['Fecha_y_Hora'],
-                'lector': lectura['Nombre_Lector'] or f"Lector {lectura['ID_Lector']}"
-            })
-        
-        # Filtrar solo los vehículos que aparecen en más de un caso
-        vehiculos_coincidentes = [
-            {
-                'matricula': v['matricula'],
-                'casos': list(v['casos']),
-                'lecturas': v['lecturas']
-            }
-            for v in vehiculos.values()
-            if len(v['casos']) > 1
-        ]
-        
-        return vehiculos_coincidentes
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.patch("/casos/{caso_id}", response_model=schemas.Caso)
-def update_caso(caso_id: int, caso_update: schemas.CasoUpdate, db: Session = Depends(get_db)):
-    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
-    if db_caso is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
-    update_data = caso_update.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_caso, key, value)
-    db.commit()
-    db.refresh(db_caso)
-    return db_caso
-
-@app.post("/lecturas/por_filtros", response_model=List[schemas.Lectura])
-def read_lecturas_por_filtros(
-    # Filtros de Fecha/Hora
-    fecha_inicio: Optional[str] = None,
-    fecha_fin: Optional[str] = None,
-    hora_inicio: Optional[str] = None, 
-    hora_fin: Optional[str] = None, 
-    # Filtros de Identificadores (Listas)
-    lector_ids: Optional[List[str]] = Query(None), 
-    caso_ids: Optional[List[int]] = Query(None), 
-    carretera_ids: Optional[List[str]] = Query(None),
-    sentido: Optional[List[str]] = Query(None),
-    matricula: Optional[str] = Body(None),
-    matriculas: Optional[List[str]] = Body(None),
-    tipo_fuente: Optional[str] = Query(None),
-    solo_relevantes: Optional[bool] = False,
-    min_pasos: Optional[int] = None,
-    max_pasos: Optional[int] = None,
-    db: Session = Depends(get_db)
-):
-    logger.info(f"POST /lecturas/por_filtros - Filtros: matricula={matricula} matriculas={matriculas} min_pasos={min_pasos} max_pasos={max_pasos} carreteras={carretera_ids}")
-    
-    # Base query
-    base_query = db.query(models.Lectura).join(models.Lector).join(models.ArchivoExcel)
-    
-    # --- Aplicar filtros comunes ---
-    if caso_ids:
-        base_query = base_query.filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
-    if lector_ids:
-        base_query = base_query.filter(models.Lectura.ID_Lector.in_(lector_ids))
-    if carretera_ids:
-        base_query = base_query.filter(models.Lector.Carretera.in_(carretera_ids))
-    if sentido:
-        base_query = base_query.filter(models.Lector.Sentido.in_(sentido))
-    if tipo_fuente:
-        base_query = base_query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
-    if solo_relevantes:
-        base_query = base_query.join(models.LecturaRelevante)
-    
-    # Filtros de fecha y hora
-    try:
-        if fecha_inicio:
-            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
-            base_query = base_query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
-        if fecha_fin:
-            fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
-            base_query = base_query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
-        if hora_inicio:
-            hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
-            base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
-        if hora_fin:
-            hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
-            base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
-    except ValueError:
-        logger.warning("Formato de fecha/hora inválido recibido.")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
-
-    # Filtro por matrícula (string o lista)
-    from sqlalchemy import or_
-    condiciones = []
-    if matricula:
-        sql_pattern = matricula.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
-        if '*' in matricula or '%' in matricula or '?' in matricula or '_' in matricula:
-            condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
-        else:
-            condiciones.append(models.Lectura.Matricula == matricula)
-    if matriculas:
-        for m in matriculas:
-            sql_pattern = m.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
-            if '*' in m or '%' in m or '?' in m or '_' in m:
-                condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
-            else:
-                condiciones.append(models.Lectura.Matricula == m)
-    if condiciones:
-        base_query = base_query.filter(or_(*condiciones))
-
-    # Ordenar y aplicar paginación
-    query = base_query.order_by(models.Lectura.Fecha_y_Hora.desc())
-    query = query.options(joinedload(models.Lectura.lector), joinedload(models.Lectura.archivo).joinedload(models.ArchivoExcel.caso))
-    lecturas = query.all()
-
-    logger.info(f"POST /lecturas/por_filtros - Encontradas {len(lecturas)} lecturas tras aplicar filtros.")
-    return lecturas
-
-# --- NUEVO ENDPOINT PARA LECTURAS POR PERIODO (LANZADERA) ---
-# Removed as part of cleanup
-
-# --- NUEVO ENDPOINT PARA LECTURAS POR PERIODO (LANZADERA) ---
-# Removed as part of cleanup
-
-@app.post("/casos/{caso_id}/detectar-lanzaderas", response_model=schemas.LanzaderaResponse)
-def detectar_vehiculos_lanzadera(
-    caso_id: int,
-    request: schemas.LanzaderaRequest,
-    db: Session = Depends(get_db)
-):
-    # 1. Obtener todas las lecturas del vehículo objetivo en el rango de fechas
-    query = db.query(models.Lectura).filter(
-        models.Lectura.ID_Archivo.in_(
-            db.query(models.ArchivoExcel.ID_Archivo)
-            .filter(models.ArchivoExcel.ID_Caso == caso_id)
-        ),
-        models.Lectura.Matricula == request.matricula
-    )
-    if request.fecha_inicio:
-        query = query.filter(models.Lectura.Fecha_y_Hora >= request.fecha_inicio)
-    if request.fecha_fin:
-        query = query.filter(models.Lectura.Fecha_y_Hora <= f"{request.fecha_fin} 23:59:59")
-    lecturas_objetivo = query.order_by(models.Lectura.Fecha_y_Hora).all()
-
-    if not lecturas_objetivo:
-        return schemas.LanzaderaResponse(
-            vehiculos_lanzadera=[],
-            detalles=[]
-        )
-
-    # 2. Para cada lectura del objetivo, buscar vehículos acompañantes
-    vehiculos_acompanantes = defaultdict(lambda: defaultdict(list))  # {matricula: {fecha: [(hora, lector), ...]}}
-    
-    for lectura_objetivo in lecturas_objetivo:
-        # Calcular ventana temporal
-        ventana_inicio = lectura_objetivo.Fecha_y_Hora - timedelta(minutes=request.ventana_minutos)
-        ventana_fin = lectura_objetivo.Fecha_y_Hora + timedelta(minutes=request.ventana_minutos)
-        
-        # Buscar lecturas en la misma ventana temporal y lector
-        lecturas_acompanantes = db.query(models.Lectura).filter(
-            models.Lectura.ID_Archivo.in_(
-                db.query(models.ArchivoExcel.ID_Archivo)
-                .filter(models.ArchivoExcel.ID_Caso == caso_id)
-            ),
-            models.Lectura.ID_Lector == lectura_objetivo.ID_Lector,
-            models.Lectura.Fecha_y_Hora >= ventana_inicio,
-            models.Lectura.Fecha_y_Hora <= ventana_fin,
-            models.Lectura.Matricula != request.matricula
-        ).all()
-        
-        # Registrar las coincidencias
-        for lectura in lecturas_acompanantes:
-            fecha = lectura.Fecha_y_Hora.date().isoformat()
-            hora = lectura.Fecha_y_Hora.time().strftime("%H:%M")
-            vehiculos_acompanantes[lectura.Matricula][fecha].append((hora, lectura.ID_Lector))
-
-    # 3. Analizar los vehículos acompañantes según los criterios
-    vehiculos_lanzadera = []
-    detalles = []
-
-    # Añadir lecturas del objetivo al array detalles
-    for lectura in lecturas_objetivo:
-        detalles.append(schemas.LanzaderaDetalle(
-            matricula=lectura.Matricula,
-            fecha=lectura.Fecha_y_Hora.date().isoformat(),
-            hora=lectura.Fecha_y_Hora.time().strftime("%H:%M:%S"),
-            lector=lectura.ID_Lector,
-            tipo="Objetivo"
-        ))
-    
-    for matricula, coincidencias_por_dia in vehiculos_acompanantes.items():
-        # Verificar criterio 1: Al menos 2 días distintos
-        dias_distintos = len(coincidencias_por_dia)
-        
-        # Verificar criterio 2: Más de 2 lectores distintos el mismo día con lecturas distanciadas en el tiempo
-        cumple_criterio_2 = False
-        for fecha, lecturas in coincidencias_por_dia.items():
-            if len(set(lector for _, lector in lecturas)) > 2:
-                # Verificar que las lecturas estén distanciadas en el tiempo
-                horas = []
-                for hora_str, _ in lecturas:
-                    try:
-                        horas.append(datetime.strptime(hora_str, "%H:%M"))
-                    except Exception as e:
-                        logger.warning(f"Hora inválida '{hora_str}' para matrícula {matricula} en fecha {fecha}: {e}")
-                        continue
-                if any(abs((h2 - h1).total_seconds() / 60) >= request.diferencia_minima 
-                      for i, h1 in enumerate(horas) 
-                      for h2 in horas[i+1:]):
-                    cumple_criterio_2 = True
-                    break
-        
-        # Si cumple alguno de los criterios, es un vehículo lanzadera
-        if dias_distintos >= 2 or cumple_criterio_2:
-            vehiculos_lanzadera.append(matricula)
-            # Agregar todos los detalles de las coincidencias
-            for fecha, lecturas in coincidencias_por_dia.items():
-                for hora, lector in lecturas:
-                    detalles.append(schemas.LanzaderaDetalle(
-                        matricula=matricula,
-                        fecha=fecha,
-                        hora=hora if len(hora) == 8 else (hora+':00' if len(hora)==5 else hora),
-                        lector=lector,
-                        tipo="Lanzadera"
-                    ))
-
-    return schemas.LanzaderaResponse(
-        vehiculos_lanzadera=vehiculos_lanzadera,
-        detalles=detalles
-    )
-
-@app.get("/estadisticas", response_model=schemas.EstadisticasGlobales)
-def get_estadisticas_globales(db: Session = Depends(get_db)):
-    """
-    Obtiene estadísticas globales del sistema:
-    - Total de casos activos
-    - Total de lecturas
-    - Total de vehículos únicos
-    - Tamaño total de la base de datos
-    """
-    import os
-    try:
-        # Contar casos activos
-        total_casos = db.query(func.count(models.Caso.ID_Caso)).scalar() or 0
-        # Contar total de lecturas
-        total_lecturas = db.query(func.count(models.Lectura.ID_Lectura)).scalar() or 0
-        # Contar vehículos únicos
-        total_vehiculos = db.query(func.count(func.distinct(models.Lectura.Matricula))).scalar() or 0
-        # Detectar si es SQLite y calcular tamaño del archivo
-        tamanio_bd = 'No disponible'
-        try:
-            if db.bind and 'sqlite' in str(db.bind.url):
-                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tracer.db')
-                if os.path.exists(db_path):
-                    size_bytes = os.path.getsize(db_path)
-                    if size_bytes < 1024 * 1024:
-                        tamanio_bd = f"{size_bytes / 1024:.2f} KB"
-                    elif size_bytes < 1024 * 1024 * 1024:
-                        tamanio_bd = f"{size_bytes / (1024 * 1024):.2f} MB"
-                    else:
-                        tamanio_bd = f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
-                else:
-                    tamanio_bd = 'No disponible'
-            else:
-                # Intentar consulta PostgreSQL
-                try:
-                    tamanio_bd = db.execute("SELECT pg_size_pretty(pg_database_size(current_database()))").scalar()
-                except Exception as e:
-                    logger.warning(f"No se pudo obtener el tamaño de la base de datos: {e}")
-                    tamanio_bd = 'No disponible'
-        except Exception as e:
-            logger.warning(f"Error al calcular tamaño de la base de datos: {e}")
-            tamanio_bd = 'No disponible'
-        return schemas.EstadisticasGlobales(
-            total_casos=total_casos,
-            total_lecturas=total_lecturas,
-            total_vehiculos=total_vehiculos,
-            tamanio_bd=tamanio_bd
-        )
-    except Exception as e:
-        logger.error(f"Error al obtener estadísticas globales: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al obtener estadísticas"
-        )
-
-# === Endpoint para Búsqueda Multicaso ===
-class BusquedaMulticasoRequest(BaseModel):
-    casos: list[int]
-
-@app.post("/busqueda/multicaso", response_model=List[Dict[str, Any]], tags=["Búsqueda"])
-def buscar_vehiculos_multicaso(request: BusquedaMulticasoRequest, db: Session = Depends(get_db)):
-    """
-    Busca vehículos que aparecen en múltiples casos.
-    Devuelve una lista de vehículos con sus lecturas en cada caso.
-    """
-    casos = request.casos
-    logger.info(f"POST /busqueda/multicaso - Buscando vehículos en casos: {casos}")
-    
-    # Verificar que todos los casos existen
-    casos_existentes = db.query(models.Caso).filter(models.Caso.ID_Caso.in_(casos)).all()
-    if len(casos_existentes) != len(casos):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Uno o más casos no existen"
-        )
-
-    # Obtener todas las lecturas de los casos seleccionados
-    lecturas = db.query(models.Lectura).join(models.ArchivoExcel).filter(
-        models.ArchivoExcel.ID_Caso.in_(casos)
-    ).all()
-
-    # Agrupar lecturas por matrícula
-    lecturas_por_matricula = defaultdict(lambda: defaultdict(list))
-    for lectura in lecturas:
-        lecturas_por_matricula[lectura.Matricula][lectura.archivo.ID_Caso].append(lectura)
-
-    # Filtrar solo las matrículas que aparecen en al menos 2 casos
-    coincidencias = []
-    for matricula, lecturas_en_casos in lecturas_por_matricula.items():
-        if len(lecturas_en_casos) >= 2:
-            casos_con_lecturas = []
-            for caso_id, lecturas in lecturas_en_casos.items():
-                caso = next(c for c in casos_existentes if c.ID_Caso == caso_id)
-                casos_con_lecturas.append({
-                    "id": caso_id,
-                    "nombre": caso.Nombre_del_Caso,
-                    "lecturas": [
-                        {
-                            "ID_Lectura": l.ID_Lectura,
-                            "Fecha_y_Hora": l.Fecha_y_Hora.isoformat(),
-                            "ID_Caso": l.archivo.ID_Caso,
-                            "Nombre_del_Caso": caso.Nombre_del_Caso
-                        }
-                        for l in lecturas
-                    ]
-                })
-            
-            coincidencias.append({
-                "matricula": matricula,
-                "casos": casos_con_lecturas
-            })
-
-    return coincidencias
-# --- Fin Endpoint ---
-
-@app.get("/archivos/recientes", response_model=List[schemas.ArchivoExcel])
-def read_archivos_recientes(
-    limit: int = 10,
-    db: Session = Depends(get_db)
-):
-    """
-    Obtiene los archivos más recientemente importados, incluyendo el caso asociado y el número real de registros importados.
-    """
-    archivos = (
-        db.query(models.ArchivoExcel)
-        .join(models.Caso)
-        .options(joinedload(models.ArchivoExcel.caso))
-        .order_by(models.ArchivoExcel.Fecha_de_Importacion.desc())
-        .limit(limit)
-        .all()
-    )
-    # Para cada archivo, contar el número de lecturas asociadas
-    resultado = []
-    for archivo in archivos:
-        total_registros = db.query(func.count(models.Lectura.ID_Lectura)).filter(models.Lectura.ID_Archivo == archivo.ID_Archivo).scalar() or 0
-        archivo.Total_Registros = total_registros
-        resultado.append(archivo)
-    return resultado
-
-grupos_router = APIRouter(prefix="/api/grupos", tags=["Grupos"])
-
-@grupos_router.get("", response_model=List[schemas.Grupo])
-def get_grupos(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFICADO
-    grupos = db.query(models.Grupo).options(joinedload(models.Grupo.casos)).all()
-    return grupos
-
-@grupos_router.post("", response_model=schemas.Grupo, status_code=201)
-def create_grupo(grupo: schemas.GrupoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
-    db_grupo = models.Grupo(Nombre=grupo.Nombre, Descripcion=grupo.Descripcion)
-    db.add(db_grupo)
-    try:
-        db.commit()
-        db.refresh(db_grupo)
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="El nombre del grupo ya existe")
-    return db_grupo
-
-@grupos_router.put("/{grupo_id}", response_model=schemas.Grupo)
-def update_grupo(grupo_id: int, grupo_update: schemas.GrupoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
-    db_grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == grupo_id).first()
-    if not db_grupo:
-        raise HTTPException(status_code=404, detail="Grupo no encontrado")
-    db_grupo.Nombre = grupo_update.Nombre
-    db_grupo.Descripcion = grupo_update.Descripcion
-    try:
-        db.commit()
-        db.refresh(db_grupo)
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(status_code=400, detail="El nombre del grupo ya existe")
-    return db_grupo
-
-@grupos_router.delete("/{grupo_id}", status_code=204)
-def delete_grupo(grupo_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
-    db_grupo = db.query(models.Grupo).options(joinedload(models.Grupo.casos)).filter(models.Grupo.ID_Grupo == grupo_id).first()
-    if not db_grupo:
-        raise HTTPException(status_code=404, detail="Grupo no encontrado")
-    if db_grupo.casos and len(db_grupo.casos) > 0:
-        raise HTTPException(status_code=400, detail="No se puede eliminar un grupo con casos asignados")
-    db.delete(db_grupo)
-    db.commit()
-    return
-
-app.include_router(grupos_router)
-
-usuarios_router = APIRouter(prefix="/api/usuarios", tags=["Usuarios"])
-
-@usuarios_router.get("", response_model=List[schemas.Usuario])
-def get_usuarios(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
-    usuarios = db.query(models.Usuario).all()
-    return [
-        schemas.Usuario(
-            User=u.User,  # Ensure this is not str(u.User)
-            Rol=u.Rol.value if hasattr(u.Rol, 'value') else u.Rol,
-            ID_Grupo=u.ID_Grupo,
-            grupo=u.grupo
-        )
-        for u in usuarios
-    ]
-
-@usuarios_router.post("", response_model=schemas.Usuario, status_code=201)
-def create_usuario(
-    # request: Request, <--- REMOVE request, no longer needed for Basic Auth
-    usuario: schemas.UsuarioCreate, 
-    db: Session = Depends(get_db),
-    # Usar la nueva dependencia opcional para la comprobación de superadmin
-    current_superadmin_check: Optional[models.Usuario] = Depends(get_current_active_superadmin_optional)
-):
-    logger.info(f"Intento de crear usuario. Payload recibido: {usuario.model_dump()}") # AÑADIDO LOG DEL PAYLOAD
-    logger.info(f"Solicitud POST /api/usuarios para crear usuario: {usuario.User}")
-    is_first_user = db.query(models.Usuario).count() == 0
-    
-    if not is_first_user:
-        # No es el primer usuario, se requiere que un superadmin autenticado realice esta acción.
-        if current_superadmin_check is None:
-            logger.warning(f"Intento de crear usuario '{usuario.User}' sin ser superadmin o sin autenticación válida (JWT).")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Se requiere autenticación de Superadmin para crear usuarios adicionales."
-            )
-        logger.info(f"Usuario '{usuario.User}' será creado por Superadmin (JWT): {current_superadmin_check.User}")
-    else: # Es el primer usuario
-        logger.info(f"Creando primer usuario del sistema: {usuario.User}")
-        # Validar que el rol del primer usuario sea 'superadmin'
-        # models.RolUsuarioEnum.superadmin.value sería la forma ideal si Rol es un Enum en el modelo
-        # Por ahora, asumimos que 'superadmin' es el string directo
-        rol_primer_usuario = usuario.Rol.value if hasattr(usuario.Rol, 'value') else usuario.Rol
-        if rol_primer_usuario != 'superadmin':
-            logger.error(f"Intento de crear primer usuario '{usuario.User}' con rol '{rol_primer_usuario}' en lugar de 'superadmin'.")
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El primer usuario debe tener el rol de superadmin.")
-        # Forzar ID_Grupo a None para el primer superadmin, independientemente de lo que venga en el payload
-        usuario.ID_Grupo = None
-        logger.info(f"Primer usuario '{usuario.User}' establecido como superadmin y sin grupo.")
-
-    # Verificar si el usuario ya existe (después de la lógica de primer usuario/superadmin)
-    db_user_exists = db.query(models.Usuario).filter(models.Usuario.User == usuario.User).first()
-    if db_user_exists:
-        logger.warning(f"Intento de crear usuario existente: {usuario.User}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre de usuario ya existe.")
-
-    # Hashear la contraseña ANTES de crear el objeto models.Usuario
-    hashed_password = get_password_hash(usuario.Contraseña)
-    
-    # Determinar el valor final para Rol (manejando Enum o string)
-    # Esto es importante si el schema UsuarioCreate.Rol puede ser un Enum de Pydantic
-    # y models.Usuario.Rol espera el .value si es un Enum de SQLAlchemy, o el string directo.
-    rol_value_to_save = usuario.Rol
-    if hasattr(usuario.Rol, 'value'): # Si usuario.Rol es un Enum (como schemas.RolUsuarioEnum)
-        rol_value_to_save = usuario.Rol.value
-    
-    # Ajustar ID_Grupo para superadmines creados por otros superadmines (si no son el primero)
-    if not is_first_user and rol_value_to_save == 'superadmin':
-        usuario.ID_Grupo = None # Los superadmines no tienen grupo
-
-    db_usuario_obj = models.Usuario(
-        User=usuario.User, # CORREGIDO: Quitar str()
-        Rol=rol_value_to_save, 
-            ID_Grupo=usuario.ID_Grupo,
-        Contraseña=hashed_password 
-    )
-    
-    try:
-        db.add(db_usuario_obj)
-        db.commit() # MOVIDO db.commit() aquí para asegurar que el objeto está en la BD antes de refresh
-        db.refresh(db_usuario_obj)
-        logger.info(f"Usuario '{db_usuario_obj.User}' creado exitosamente con rol '{db_usuario_obj.Rol}' y ID_Grupo '{db_usuario_obj.ID_Grupo}'.")
-    except IntegrityError as e:
-        db.rollback()
-        logger.error(f"Error de integridad al crear usuario {usuario.User}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error de base de datos al crear usuario: {e}")
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error inesperado al crear usuario {usuario.User}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al crear usuario: {e}")
-
-    # Para la respuesta, obtener el grupo asociado si existe
-    grupo_asociado = None
-    if db_usuario_obj.ID_Grupo:
-        grupo_asociado = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == db_usuario_obj.ID_Grupo).first()
-    
-    return schemas.Usuario(
-        User=db_usuario_obj.User, # CORREGIDO: Quitar str()
-        Rol=db_usuario_obj.Rol.value if hasattr(db_usuario_obj.Rol, 'value') else db_usuario_obj.Rol, # Asegurar que se pasa el valor del Enum
-        ID_Grupo=db_usuario_obj.ID_Grupo,
-        grupo=grupo_asociado
-    )
-
-@usuarios_router.put("/{user_id}", response_model=schemas.Usuario)
-def update_usuario(user_id: int, usuario_update: schemas.UsuarioUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)): # MODIFIED
-    logger.info(f"Superadmin {current_user.User} intentando actualizar usuario {user_id}")
-    
-    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
-    if not db_usuario:
-        logger.warning(f"Intento de actualizar usuario inexistente {user_id}")
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
-    # Si se está cambiando el rol de un superadmin, verificar que no sea el último
-    if (db_usuario.Rol == models.RolUsuarioEnum.superadmin.value and 
-        usuario_update.Rol is not None and 
-        usuario_update.Rol != models.RolUsuarioEnum.superadmin.value):
-        superadmin_count = db.query(models.Usuario).filter(
-            models.Usuario.Rol == models.RolUsuarioEnum.superadmin.value
-        ).count()
-        if superadmin_count <= 1:
-            logger.warning(f"Intento de cambiar rol del último superadmin {user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No se puede cambiar el rol del último superadmin del sistema"
-            )
-    
-    # Registrar cambios para auditoría
-    cambios = []
-    if usuario_update.Rol is not None and usuario_update.Rol != db_usuario.Rol:
-        cambios.append(f"Rol: {db_usuario.Rol} -> {usuario_update.Rol}")
-        db_usuario.Rol = usuario_update.Rol
-    if usuario_update.ID_Grupo is not None and usuario_update.ID_Grupo != db_usuario.ID_Grupo:
-        cambios.append(f"ID_Grupo: {db_usuario.ID_Grupo} -> {usuario_update.ID_Grupo}")
-        db_usuario.ID_Grupo = usuario_update.ID_Grupo
-    if usuario_update.Contraseña is not None:
-        cambios.append("Contraseña actualizada")
-        db_usuario.Contraseña = get_password_hash(usuario_update.Contraseña)
-    
-    if cambios:
-        logger.info(f"Actualizando usuario {user_id}: {', '.join(cambios)}")
-        db.commit()
-        db.refresh(db_usuario)
-        logger.info(f"Usuario {user_id} actualizado exitosamente")
-    else:
-        logger.info(f"No se realizaron cambios en el usuario {user_id}")
-    
-    return db_usuario
-
-@usuarios_router.delete("/{user_id}", status_code=204)
-def delete_usuario(user_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
-    logger.info(f"Superadmin {current_user.User} intentando eliminar usuario {user_id}")
-    
-    # No permitir eliminar el propio usuario
-    if user_id == current_user.User:
-        logger.warning(f"Intento de auto-eliminación por superadmin {current_user.User}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No puede eliminar su propio usuario"
-        )
-    
-    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
-    if not db_usuario:
-        logger.warning(f"Intento de eliminar usuario inexistente {user_id}")
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
-    # Verificar si es el último superadmin
-    if db_usuario.Rol == models.RolUsuarioEnum.superadmin.value:
-        superadmin_count = db.query(models.Usuario).filter(
-            models.Usuario.Rol == models.RolUsuarioEnum.superadmin.value
-        ).count()
-        if superadmin_count <= 1:
-            logger.warning(f"Intento de eliminar el último superadmin {user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No se puede eliminar el último superadmin del sistema"
-            )
-    
-    logger.info(f"Eliminando usuario {user_id} (Rol: {db_usuario.Rol})")
-    db.delete(db_usuario)
-    db.commit()
-    logger.info(f"Usuario {user_id} eliminado exitosamente")
-    return
-
-app.include_router(usuarios_router)
-
-# --- Configuración del Footer (persistencia en JSON) ---
-import json
-from pydantic import BaseModel
-
-FOOTER_CONFIG_PATH = "footer_config.json"
-
-class FooterConfig(BaseModel):
-    text: str
-
-def load_footer_config() -> FooterConfig:
-    try:
-        with open(FOOTER_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return FooterConfig(**data)
-    except Exception:
-        # Valor por defecto si no existe el archivo
-        return FooterConfig(text="JSP Madrid - Brigada Provincial de Policía Judicial")
-
-def save_footer_config(config: FooterConfig):
-    with open(FOOTER_CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(config.dict(), f, ensure_ascii=False, indent=2)
-
-@app.get("/config/footer", response_model=FooterConfig)
-def get_footer_config():
-    return load_footer_config()
-
-@app.post("/config/footer")
-def set_footer_config(config: FooterConfig):
-    save_footer_config(config)
-    return {"ok": True}
-
-@app.put("/lecturas_relevantes/{id_relevante}/nota", response_model=schemas.LecturaRelevante)
-def actualizar_nota_relevante(
-    id_relevante: int, 
-    nota_update: schemas.LecturaRelevanteUpdate, 
-    db: Session = Depends(get_db),
-    current_user: models.Usuario = Depends(get_current_active_user)
-):
-    """Actualiza la nota de una lectura marcada como relevante."""
-    logger.info(f"Usuario {current_user.User} solicitando actualizar nota para LecturaRelevante ID {id_relevante}.")
-
-    db_relevante = db.query(models.LecturaRelevante)\
-        .options(joinedload(models.LecturaRelevante.lectura)
-                 .joinedload(models.Lectura.archivo)
-                 .joinedload(models.ArchivoExcel.caso))\
-        .filter(models.LecturaRelevante.ID_Relevante == id_relevante)\
-        .first()
-        
-    if not db_relevante:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de lectura relevante no encontrado.")
-
-    # BLOQUE DE AUTORIZACIÓN
-    if not db_relevante.lectura:
-        logger.error(f"Error de datos: LecturaRelevante ID {id_relevante} (solicitada por {current_user.User}) no tiene una lectura asociada.")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de consistencia de datos: Falta lectura asociada.")
-
-    db_lectura = db_relevante.lectura
-    if not db_lectura.archivo or not db_lectura.archivo.caso:
-        logger.error(f"Error de datos: Lectura ID {db_lectura.ID_Lectura} (asociada a LecturaRelevante ID {id_relevante}, solicitada por {current_user.User}) no está correctamente asociada a un archivo y caso para actualizar nota.")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de datos: Lectura no asociada a un caso.")
-
-    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
-    is_superadmin = user_rol == models.RolUsuarioEnum.superadmin.value
-    caso_de_lectura = db_lectura.archivo.caso
-
-    if not is_superadmin and (current_user.ID_Grupo is None or caso_de_lectura.ID_Grupo != current_user.ID_Grupo):
-        logger.warning(f"Usuario {current_user.User} no autorizado para actualizar nota de LecturaRelevante ID {id_relevante} (caso ID {caso_de_lectura.ID_Caso}, grupo caso {caso_de_lectura.ID_Grupo}, grupo user {current_user.ID_Grupo}).")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para modificar lecturas de este caso.")
-    # FIN BLOQUE DE AUTORIZACIÓN
-
-    db_relevante.Nota = nota_update.Nota
-    db_relevante.Fecha_Modificacion = datetime.now(timezone.utc) # Actualizar fecha de modificación
-    try:
-        db.commit()
-        db.refresh(db_relevante)
-        logger.info(f"Nota actualizada para LecturaRelevante ID {id_relevante} por usuario {current_user.User}.")
-        return db_relevante
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error al actualizar nota de LecturaRelevante ID {id_relevante} por usuario {current_user.User}: {e}", exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al actualizar la nota.")
-
-# Router para el estado de configuración inicial
-setup_router = APIRouter()
-
-class SetupStatusResponse(BaseModel):
-    needs_superadmin_setup: bool
-    superadmin_exists: bool
-    users_exist: bool
-
-@setup_router.get("/status", response_model=SetupStatusResponse, tags=["Setup"])
-async def get_setup_status(db: Session = Depends(get_db)):
-    total_users_count = db.query(func.count(models.Usuario.User)).scalar()
-    
-    # Contar superadmins. Asegurarse de que Rol es un Enum y comparar con el valor del Enum.
-    # models.RolUsuarioEnum.superadmin o directamente la cadena "superadmin" si Rol es str.
-    # Asumiendo que models.Usuario.Rol es un Enum como en schemas.RolUsuarioEnum
-    # Si es una simple cadena en el modelo, se usaría: models.Usuario.Rol == "superadmin"
-    try:
-        # Intenta acceder a .value si es un Enum, de lo contrario usa el valor directamente
-        superadmin_rol_value = models.RolUsuarioEnum.superadmin.value \
-            if hasattr(models.RolUsuarioEnum.superadmin, 'value') \
-            else models.RolUsuarioEnum.superadmin
-    except AttributeError:
-        # Fallback si RolUsuarioEnum no está definido en models o no es un enum como se espera
-        # Asumimos que el rol se almacena como una cadena simple si el Enum no está disponible aquí.
-        # Esto puede necesitar ajuste basado en la definición real en models.py
-        logger.warning("models.RolUsuarioEnum no se encontró o no es un Enum como se esperaba, usando 'superadmin' como string para la query.")
-        superadmin_rol_value = "superadmin"
-
-    superadmin_users_count = db.query(models.Usuario).filter(func.lower(models.Usuario.Rol) == superadmin_rol_value.lower()).count()
-
-    users_exist = total_users_count > 0
-    superadmin_exists = superadmin_users_count > 0
-    needs_superadmin_setup = not superadmin_exists # Necesita setup si no hay superadmin
-
-    return SetupStatusResponse(
-        needs_superadmin_setup=needs_superadmin_setup,
-        superadmin_exists=superadmin_exists,
-        users_exist=users_exist
-    )
-
-app.include_router(setup_router, prefix="/api/setup", tags=["Setup"])
-
-@app.post("/casos/{caso_id}/archivos/upload", response_model=schemas.UploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_excel_submission(
     caso_id: int,
     background_tasks: BackgroundTasks, # MOVED UP further
     tipo_archivo: str = Form(..., pattern="^(GPS|LPR)$"),

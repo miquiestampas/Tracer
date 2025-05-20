@@ -37,18 +37,18 @@ export const getLecturasGps = async (casoId: number, params?: {
     };
     
     const response = await apiClient.get<GpsLectura[]>(`/casos/${casoId}/lecturas`, { params: paramsWithType });
-    // Filtrar por distancia a Madrid (máx 2000 km)
-    const epicentro = { lat: 40.416775, lon: -3.703790 };
+    
+    // Solo filtrar coordenadas inválidas
     return response.data.filter(l => {
-      if (
-        typeof l.Coordenada_Y !== 'number' ||
-        typeof l.Coordenada_X !== 'number' ||
-        isNaN(l.Coordenada_Y) ||
-        isNaN(l.Coordenada_X) ||
-        l.Coordenada_Y < -90 || l.Coordenada_Y > 90 ||
-        l.Coordenada_X < -180 || l.Coordenada_X > 180
-      ) return false;
-      return haversineDistance(l.Coordenada_Y, l.Coordenada_X, epicentro.lat, epicentro.lon) <= 2000;
+        if (
+            typeof l.Coordenada_Y !== 'number' ||
+            typeof l.Coordenada_X !== 'number' ||
+            isNaN(l.Coordenada_Y) ||
+            isNaN(l.Coordenada_X) ||
+            l.Coordenada_Y < -90 || l.Coordenada_Y > 90 ||
+            l.Coordenada_X < -180 || l.Coordenada_X > 180
+        ) return false;
+        return true;
     });
 };
 
