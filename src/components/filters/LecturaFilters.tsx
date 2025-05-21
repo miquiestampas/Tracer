@@ -5,25 +5,21 @@ import { IconSearch, IconClearAll } from '@tabler/icons-react';
 
 // Exportar la interfaz FilterState para que pueda ser usada por el padre
 export interface FilterState {
-    matricula: string;
     fechaInicio: string;
     horaInicio: string;
     fechaFin: string;
     horaFin: string;
     lectorId: string;
-    soloRelevantes: boolean;
-    // tipoFuente no es necesario aquí si se maneja por pestañas separadas
 }
 
 // Definir las props que recibirá el componente (actualizado)
 interface LecturaFiltersProps {
   filters: FilterState;
   onFilterChange: (updates: Partial<FilterState>) => void;
-  onFiltrar: () => void; // Función para ejecutar al hacer clic en Filtrar
-  onLimpiar: () => void; // Función para ejecutar al hacer clic en Limpiar
-  loading?: boolean; // Para deshabilitar el botón de filtrar mientras carga
-  hideMatricula?: boolean; // Prop opcional para ocultar el campo de matrícula
-  lectorSuggestions?: string[]; // Nuevo prop para sugerencias de lectores
+  onFiltrar: () => void;
+  onLimpiar: () => void;
+  loading?: boolean;
+  lectorSuggestions?: string[];
 }
 
 const LecturaFilters: React.FC<LecturaFiltersProps> = ({
@@ -32,8 +28,7 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
   onFiltrar,
   onLimpiar,
   loading = false,
-  hideMatricula = false,
-  lectorSuggestions = [] // Valor por defecto array vacío
+  lectorSuggestions = []
 }) => {
   const handleInputChange = (field: keyof FilterState) => (value: string | null) => {
     handleChange({ [field]: value || '' });
@@ -46,15 +41,6 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
   return (
     <Stack gap="md">
       <Group grow>
-        {!hideMatricula && (
-          <Autocomplete
-            label="Matrícula"
-            placeholder="Buscar matrícula..."
-            value={filters.matricula}
-            onChange={handleInputChange('matricula')}
-            data={[]}
-          />
-        )}
         <Autocomplete
           label="ID Lector"
           placeholder="Filtrar por ID lector..."
@@ -95,29 +81,22 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
         />
       </Group>
 
-      <Group justify="space-between">
-        <Switch
-          label="Solo Relevantes"
-          checked={filters.soloRelevantes}
-          onChange={(e) => handleChange({ soloRelevantes: e.currentTarget.checked })}
-        />
-        <Group>
-          <Button
-            variant="outline"
-            leftSection={<IconClearAll size={16} />}
-            onClick={onLimpiar}
-            disabled={loading}
-          >
-            Limpiar Filtros
-          </Button>
-          <Button
-            leftSection={<IconSearch size={16} />}
-            onClick={onFiltrar}
-            loading={loading}
-          >
-            Aplicar Filtros
-          </Button>
-        </Group>
+      <Group justify="flex-end">
+        <Button
+          variant="outline"
+          leftSection={<IconClearAll size={16} />}
+          onClick={onLimpiar}
+          disabled={loading}
+        >
+          Limpiar Filtros
+        </Button>
+        <Button
+          leftSection={<IconSearch size={16} />}
+          onClick={onFiltrar}
+          loading={loading}
+        >
+          Aplicar Filtros
+        </Button>
       </Group>
     </Stack>
   );

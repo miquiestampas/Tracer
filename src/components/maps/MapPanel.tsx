@@ -105,13 +105,11 @@ interface Capa {
   lecturas: Lectura[];
   lectores: LectorCoordenadas[];
   filtros: {
-    matricula: string;
     fechaInicio: string;
     horaInicio: string;
     fechaFin: string;
     horaFin: string;
     lectorId: string;
-    soloRelevantes: boolean;
   };
 }
 
@@ -131,17 +129,23 @@ const InfoBanner = ({ info, onClose }: {
   return (
     <div style={{
       position: 'absolute',
-      top: 0,
+      bottom: 0,
       left: 0,
       width: '100%',
       zIndex: 2001,
-      background: 'white',
-      boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-      borderBottom: '2px solid #228be6',
-      animation: 'slideDown 0.3s',
+      background: 'rgba(33, 37, 41, 0.7)',
+      boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
+      borderTop: '2px solid #228be6',
+      animation: 'slideUp 0.3s',
       fontFamily: 'inherit',
     }}>
-      <Card shadow="sm" padding="md" radius="md" withBorder style={{ width: '100%', boxSizing: 'border-box', position: 'relative' }}>
+      <Card shadow="sm" padding="md" radius="md" withBorder style={{ 
+        width: '100%', 
+        boxSizing: 'border-box', 
+        position: 'relative',
+        background: 'rgba(33, 37, 41, 0.7)',
+        borderColor: '#228be6'
+      }}>
         <ActionIcon
           variant="subtle"
           color="gray"
@@ -151,75 +155,96 @@ const InfoBanner = ({ info, onClose }: {
         >
           <IconX size={20} />
         </ActionIcon>
-        <Card.Section withBorder inheritPadding py="sm">
-          <Group justify="space-between" style={{ minWidth: 0, width: '100%' }}>
-            <Text fw={700} size="sm" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {info.tipo === 'lector' ? 'Lector LPR' : 'Lectura LPR'}
-            </Text>
-            <Tooltip label={info.tipo === 'lector' ? info.ID_Lector : info.Matricula} withArrow>
-              <Badge
-                color="blue"
-                variant="light"
-                size="sm"
-                style={{
-                  maxWidth: 80,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  display: 'block',
-                  padding: '0 8px',
-                }}
-              >
+        <Card.Section withBorder inheritPadding py="sm" style={{ borderColor: '#228be6', padding: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'stretch', minWidth: 0, width: '100%' }}>
+            {/* Columna izquierda: Título */}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', padding: '0 16px', height: '48px' }}>
+              <Text fw={700} size="sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'white' }}>
+                {info.tipo === 'lector' ? 'Lector LPR' : 'Lectura LPR'}
+              </Text>
+            </div>
+            {/* Columna derecha: ID de lector o matrícula */}
+            <div style={{ width: '280px', minWidth: '200px', borderLeft: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', padding: '0 16px', height: '48px' }}>
+              <Text fw={700} size="sm" style={{ color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {info.tipo === 'lector' ? info.ID_Lector : info.Matricula}
-              </Badge>
-            </Tooltip>
-          </Group>
+              </Text>
+            </div>
+          </div>
         </Card.Section>
         <div style={{ width: '100%', marginTop: 8 }}>
           {info.tipo === 'lector' ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
+            <div style={{ display: 'flex', gap: '0' }}>
+              {/* Columna izquierda - Lecturas */}
+              <div style={{ flex: 1, padding: '0 16px' }}>
+                {info.lecturas && info.lecturas.length > 0 && (
+                  <>
+                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'white' }}>Pasos registrados:</div>
+                    <ul style={{ margin: 0, paddingLeft: 16 }}>
+                      {info.lecturas.map((lectura: any, idx: number) => (
+                        <li key={idx} style={{ fontSize: 14, color: 'white', marginBottom: 8 }}>
+                          {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')} - {lectura.Matricula} {lectura.Velocidad ? `(${lectura.Velocidad} km/h)` : ''}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </div>
-              {info.Nombre && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Nombre:</b> {info.Nombre}</div>}
-              {info.Carretera && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Carretera:</b> {info.Carretera}</div>}
-              {info.Provincia && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Provincia:</b> {info.Provincia}</div>}
-              {info.Organismo_Regulador && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Organismo:</b> {info.Organismo_Regulador}</div>}
-              {info.lecturas && info.lecturas.length > 0 && (
-                <>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>Pasos registrados:</div>
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    {info.lecturas.map((lectura: any, idx: number) => (
-                      <li key={idx} style={{ fontSize: 12 }}>
-                        {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')} - {lectura.Matricula} {lectura.Velocidad ? `(${lectura.Velocidad} km/h)` : ''}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </>
+
+              {/* Columna derecha - Información del lector */}
+              <div style={{ 
+                width: '280px', 
+                minWidth: '200px',
+                paddingLeft: 0,
+                borderLeft: '1px solid rgba(255, 255, 255, 0.2)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                padding: '0 16px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: 4 }}>
+                  <IconMapPin size={16} style={{ color: '#228be6' }} />
+                  <div style={{ fontSize: 14, color: 'white' }}>
+                    <span style={{ fontWeight: 600 }}>Coords:</span> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}
+                  </div>
+                </div>
+                {info.Nombre && (
+                  <div style={{ fontSize: 14, color: 'white' }}>
+                    <span style={{ fontWeight: 600 }}>Nombre:</span> {info.Nombre}
+                  </div>
+                )}
+                {info.Provincia && (
+                  <div style={{ fontSize: 14, color: 'white' }}>
+                    <span style={{ fontWeight: 600 }}>Provincia:</span> {info.Provincia}
+                  </div>
+                )}
+                {info.Organismo_Regulador && (
+                  <div style={{ fontSize: 14, color: 'white' }}>
+                    <span style={{ fontWeight: 600 }}>Organismo:</span> {info.Organismo_Regulador}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             <>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, color: '#666', wordBreak: 'break-word' }}>{dayjs(info.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
+                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: '#228be6' }} /></span>
+                <span style={{ fontSize: 13, color: 'white', wordBreak: 'break-word' }}>{dayjs(info.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
+                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: '#228be6' }} /></span>
+                <span style={{ fontSize: 13, wordBreak: 'break-word', color: 'white' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
+                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: '#228be6' }} /></span>
+                <span style={{ fontSize: 13, wordBreak: 'break-word', color: 'white' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
               </div>
             </>
           )}
         </div>
       </Card>
       <style>{`
-        @keyframes slideDown {
-          from { transform: translateY(-100%); opacity: 0; }
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
@@ -255,7 +280,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [lectorSuggestions, setLectorSuggestions] = useState<string[]>([]);
   const [capas, setCapas] = useState<Capa[]>([]);
   const [nuevaCapa, setNuevaCapa] = useState<Partial<Capa>>({ nombre: '', color: '#228be6' });
-  const [editandoCapa, setEditandoCapa] = useState<string | null>(null);
+  const [editandoCapa, setEditandoCapa] = useState<Capa | null>(null);
   const [mostrarFormularioCapa, setMostrarFormularioCapa] = useState(false);
   const [resultadosFiltro, setResultadosFiltro] = useState<{
     lecturas: Lectura[];
@@ -263,13 +288,11 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   }>({ lecturas: [], lectores: [] });
 
   const [filters, setFilters] = useState({
-    matricula: '',
     fechaInicio: '',
     horaInicio: '',
     fechaFin: '',
     horaFin: '',
-    lectorId: '',
-    soloRelevantes: false
+    lectorId: ''
   });
 
   const [mapControls, setMapControls] = useState<MapControls>({
@@ -351,8 +374,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             hora_inicio: filters.horaInicio,
             fecha_fin: filters.fechaFin,
             hora_fin: filters.horaFin,
-            lector_id: filters.lectorId,
-            solo_relevantes: filters.soloRelevantes
+            lector_id: filters.lectorId
           }
         })
       ]);
@@ -387,13 +409,11 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   // Función para limpiar los filtros
   const handleLimpiar = useCallback(() => {
     setFilters({
-      matricula: '',
       fechaInicio: '',
       horaInicio: '',
       fechaFin: '',
       horaFin: '',
-      lectorId: '',
-      soloRelevantes: false
+      lectorId: ''
     });
     setSelectedMatricula(null);
     setLecturas([]);
@@ -403,8 +423,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   useEffect(() => {
     const fetchLectores = async () => {
       try {
+        console.log('Cargando lectores para caso:', casoId);
         const response = await apiClient.get<LectorCoordenadas[]>(`/casos/${casoId}/lectores`);
         const lectoresData = response.data.filter(l => l.Coordenada_X != null && l.Coordenada_Y != null);
+        console.log('Lectores cargados:', lectoresData);
         setLectores(lectoresData);
       } catch (error) {
         console.error('Error al cargar lectores:', error);
@@ -459,14 +481,12 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   // Función para formatear los filtros de una capa
   const formatFiltrosCapa = (filtros: Capa['filtros']) => {
     const partes: string[] = [];
-    if (filtros.matricula) partes.push(`Matrícula: ${filtros.matricula}`);
     if (filtros.lectorId) partes.push(`Lector: ${filtros.lectorId}`);
     if (filtros.fechaInicio || filtros.fechaFin) {
       const fechaInicio = filtros.fechaInicio ? dayjs(filtros.fechaInicio).format('DD/MM/YYYY') : 'Inicio';
       const fechaFin = filtros.fechaFin ? dayjs(filtros.fechaFin).format('DD/MM/YYYY') : 'Fin';
       partes.push(`Período: ${fechaInicio} - ${fechaFin}`);
     }
-    if (filtros.soloRelevantes) partes.push('Solo relevantes');
     return partes.join(' | ');
   };
 
@@ -494,13 +514,11 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     setSelectedMatricula(null);
     // Resetear los filtros
     setFilters({
-      matricula: '',
       fechaInicio: '',
       horaInicio: '',
       fechaFin: '',
       horaFin: '',
-      lectorId: '',
-      soloRelevantes: false
+      lectorId: ''
     });
   };
 
@@ -512,7 +530,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       nombre: capa.nombre,
       color: capa.color
     });
-    setEditandoCapa(id);
+    setEditandoCapa(capa);
     setMostrarFormularioCapa(true);
   };
 
@@ -520,7 +538,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     if (!editandoCapa || !nuevaCapa.nombre) return;
 
     setCapas(prev => prev.map(capa => 
-      capa.id === editandoCapa
+      capa.id === editandoCapa.id
         ? { ...capa, nombre: nuevaCapa.nombre!, color: nuevaCapa.color || capa.color }
         : capa
     ));
@@ -539,278 +557,6 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
   const handleEliminarCapa = (id: string) => {
     setCapas(prev => prev.filter(capa => capa.id !== id));
-  };
-
-  // Función para renderizar los resultados del filtro actual
-  const renderResultadosFiltro = () => {
-    // Filtrar solo lecturas LPR
-    const lecturasLPR = resultadosFiltro.lecturas.filter(l => l.Tipo_Fuente !== 'GPS');
-    if (lecturasLPR.length === 0) return null;
-
-    console.log('Renderizando resultados. Lectura seleccionada:', selectedLectura);
-    console.log('Total lecturas LPR:', lecturasLPR.length);
-
-    return (
-      <>
-        {/* Renderizar lectores con lecturas */}
-        {resultadosFiltro.lectores.map((lector) => {
-          const lecturasEnLector = lecturasLPR.filter(l => l.ID_Lector === lector.ID_Lector);
-          return (
-            <Marker 
-              key={`filtro-lector-${lector.ID_Lector}`}
-              position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
-              icon={createMarkerIcon(lecturasEnLector.length, 'lector', '#228be6')}
-              zIndexOffset={500}
-              eventHandlers={{
-                click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
-              }}
-            />
-          );
-        })}
-
-        {/* Primero renderizar lecturas no seleccionadas */}
-        {lecturasLPR
-          .filter(l => !l.ID_Lector && l.ID_Lectura !== selectedLectura?.ID_Lectura)
-          .map((lectura) => (
-            <Marker 
-              key={`filtro-lectura-${lectura.ID_Lectura}`}
-              position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
-              icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', '#228be6')}
-              zIndexOffset={600}
-              eventHandlers={{
-                click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
-              }}
-            />
-          ))}
-
-        {/* Luego renderizar la lectura seleccionada para que esté por encima */}
-        {selectedLectura && lecturasLPR.some(l => l.ID_Lectura === selectedLectura.ID_Lectura) && (
-          <>
-            <Circle
-              center={[selectedLectura.Coordenada_Y!, selectedLectura.Coordenada_X!]}
-              radius={50}
-              pathOptions={{
-                color: '#228be6',
-                fillColor: '#228be6',
-                fillOpacity: 0.2,
-                weight: 2
-              }}
-            />
-            <Marker 
-              key={`filtro-lectura-selected-${selectedLectura.ID_Lectura}`}
-              position={[selectedLectura.Coordenada_Y!, selectedLectura.Coordenada_X!]}
-              icon={L.divIcon({
-                className: 'custom-div-icon',
-                html: `
-                  <div style="
-                    position: relative;
-                    width: 45px;
-                    height: 45px;
-                    z-index: 1000;
-                  ">
-                    <div style="
-                      position: absolute;
-                      top: 50%;
-                      left: 50%;
-                      transform: translate(-50%, -50%);
-                      width: 45px;
-                      height: 45px;
-                      background-color: #fa5252;
-                      border: 3px solid white;
-                      border-radius: 50%;
-                      box-shadow: 0 0 12px rgba(0,0,0,0.5);
-                      animation: pulse 1.5s infinite;
-                    "></div>
-                    <div style="
-                      position: absolute;
-                      top: 50%;
-                      left: 50%;
-                      transform: translate(-50%, -50%);
-                      width: 22px;
-                      height: 22px;
-                      background-color: white;
-                      border-radius: 50%;
-                      animation: pulse-inner 1.5s infinite;
-                    "></div>
-                    <div style="
-                      position: absolute;
-                      top: 50%;
-                      left: 50%;
-                      transform: translate(-50%, -50%);
-                      width: 11px;
-                      height: 11px;
-                      background-color: #fa5252;
-                      border-radius: 50%;
-                      animation: pulse-core 1.5s infinite;
-                    "></div>
-                  </div>
-                  <style>
-                    @keyframes pulse {
-                      0% { transform: translate(-50%, -50%) scale(1); }
-                      50% { transform: translate(-50%, -50%) scale(1.15); }
-                      100% { transform: translate(-50%, -50%) scale(1); }
-                    }
-                    @keyframes pulse-inner {
-                      0% { transform: translate(-50%, -50%) scale(1); }
-                      50% { transform: translate(-50%, -50%) scale(1.1); }
-                      100% { transform: translate(-50%, -50%) scale(1); }
-                    }
-                    @keyframes pulse-core {
-                      0% { transform: translate(-50%, -50%) scale(1); }
-                      50% { transform: translate(-50%, -50%) scale(1.05); }
-                      100% { transform: translate(-50%, -50%) scale(1); }
-                    }
-                  </style>
-                `,
-                iconSize: [45, 45],
-                iconAnchor: [22, 22]
-              })}
-              zIndexOffset={1000}
-              eventHandlers={{
-                click: () => setInfoBanner({ ...selectedLectura, tipo: 'lectura' })
-              }}
-            />
-          </>
-        )}
-      </>
-    );
-  };
-
-  // Función para renderizar los marcadores de una capa
-  const renderCapaMarkers = (capa: Capa) => {
-    if (!capa.activa) return null;
-
-    const markers: React.ReactElement[] = [];
-
-    // Renderizar lectores de la capa
-    capa.lectores.forEach((lector) => {
-      // Filtrar solo lecturas LPR
-      const lecturasEnLector = capa.lecturas.filter(l => l.ID_Lector === lector.ID_Lector && l.Tipo_Fuente !== 'GPS');
-      if (!lector.Coordenada_X || !lector.Coordenada_Y) return;
-
-      markers.push(
-        <Marker 
-          key={`${capa.id}-lector-${lector.ID_Lector}`}
-          position={[lector.Coordenada_Y, lector.Coordenada_X]}
-          icon={createMarkerIcon(lecturasEnLector.length, 'lector', capa.color)}
-          zIndexOffset={300}
-          eventHandlers={{
-            click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
-          }}
-        />
-      );
-    });
-
-    // Renderizar lecturas individuales (solo LPR)
-    capa.lecturas
-      .filter(l => !l.ID_Lector && l.Coordenada_X && l.Coordenada_Y && l.Tipo_Fuente !== 'GPS')
-      .forEach((lectura) => {
-        markers.push(
-          <Marker 
-            key={`${capa.id}-lectura-${lectura.ID_Lectura}`}
-            position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
-            icon={createMarkerIcon(1, lectura.Tipo_Fuente.toLowerCase() as 'gps' | 'lpr', capa.color)}
-            zIndexOffset={400}
-            eventHandlers={{
-              click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
-            }}
-          />
-        );
-      });
-
-    return markers;
-  };
-
-  // Add new function to handle map control changes
-  const handleMapControlChange = (updates: Partial<MapControls>) => {
-    setMapControls(prev => ({ ...prev, ...updates }));
-  };
-
-  // Add new function to get tile layer URL based on visualization type
-  const getTileLayerUrl = () => {
-    switch (mapControls.visualizationType) {
-      case 'satellite':
-        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-      case 'toner':
-        return 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png';
-      default:
-        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    }
-  };
-
-  // Add new function to fetch all system readers
-  useEffect(() => {
-    const fetchAllSystemReaders = async () => {
-      try {
-        const data = await getLectoresParaMapa();
-        setAllSystemReaders(data.filter(l => l.Coordenada_X != null && l.Coordenada_Y != null));
-      } catch (error) {
-        console.error('Error al cargar todos los lectores del sistema:', error);
-      }
-    };
-
-    if (mapControls.showAllReaders) {
-      fetchAllSystemReaders();
-    }
-  }, [mapControls.showAllReaders]);
-
-  // Add new function to render reader layers
-  const renderReaderLayers = () => {
-    return (
-      <>
-        {/* Render all system readers first (bottom layer) */}
-        {mapControls.showAllReaders && allSystemReaders.map((lector) => (
-          <Marker
-            key={`system-reader-${lector.ID_Lector}`}
-            position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
-            icon={createMarkerIcon(1, 'lector', '#228be6')}
-            zIndexOffset={100}
-            eventHandlers={{
-              click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: [] })
-            }}
-          />
-        ))}
-
-        {/* Render case readers (middle layer) */}
-        {mapControls.showCaseReaders && lectores.map((lector) => (
-          <Marker
-            key={`case-reader-${lector.ID_Lector}`}
-            position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
-            icon={L.divIcon({
-              className: 'custom-div-icon',
-              html: `
-                <div style="
-                  background-color: white;
-                  width: 16px;
-                  height: 16px;
-                  border-radius: 50%;
-                  border: 3px solid #40c057;
-                  box-shadow: 0 0 8px rgba(0,0,0,0.4);
-                  position: relative;
-                ">
-                  <div style="
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    width: 6px;
-                    height: 6px;
-                    background-color: #40c057;
-                    border-radius: 50%;
-                  "></div>
-                </div>
-              `,
-              iconSize: [16, 16],
-              iconAnchor: [8, 8]
-            })}
-            zIndexOffset={200}
-            eventHandlers={{
-              click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: [] })
-            }}
-          />
-        ))}
-      </>
-    );
   };
 
   // Función para detectar coincidencias entre capas
@@ -895,6 +641,319 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     
     return coincidencias;
   }, [capas, resultadosFiltro.lecturas, mapControls.showCoincidencias]);
+
+  // Función para renderizar los resultados del filtro actual
+  const renderResultadosFiltro = () => {
+    // Filtrar solo lecturas LPR
+    const lecturasLPR = resultadosFiltro.lecturas.filter(l => l.Tipo_Fuente !== 'GPS');
+    console.log('Renderizando resultados. Total lecturas LPR:', lecturasLPR.length);
+    console.log('Lectores en resultados:', resultadosFiltro.lectores.length);
+
+    if (lecturasLPR.length === 0) return null;
+
+    return (
+      <>
+        {/* Renderizar lectores con lecturas */}
+        {resultadosFiltro.lectores.map((lector) => {
+          const lecturasEnLector = lecturasLPR.filter(l => l.ID_Lector === lector.ID_Lector);
+          console.log(`Lector ${lector.ID_Lector} tiene ${lecturasEnLector.length} lecturas`);
+          return (
+            <Marker 
+              key={`filtro-lector-${lector.ID_Lector}`}
+              position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
+              icon={createMarkerIcon(lecturasEnLector.length, 'lector', '#228be6')}
+              zIndexOffset={500}
+              eventHandlers={{
+                click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
+              }}
+            />
+          );
+        })}
+
+        {/* Renderizar lecturas individuales */}
+        {lecturasLPR
+          .filter(l => !l.ID_Lector && l.Coordenada_X && l.Coordenada_Y)
+          .map((lectura) => {
+            console.log('Renderizando lectura individual:', lectura.ID_Lectura);
+            const isSelected = selectedLectura?.ID_Lectura === lectura.ID_Lectura;
+            return (
+              <React.Fragment key={`filtro-lectura-${lectura.ID_Lectura}`}>
+                {/* Círculo de resaltado para la lectura seleccionada */}
+                {isSelected && (
+                  <Circle
+                    center={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
+                    radius={50}
+                    pathOptions={{
+                      color: '#228be6',
+                      fillColor: '#228be6',
+                      fillOpacity: 0.1,
+                      weight: 2,
+                      dashArray: '5, 5'
+                    }}
+                  />
+                )}
+                <Marker 
+                  position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
+                  icon={L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `
+                      <div style="
+                        position: relative;
+                        width: ${isSelected ? '36px' : '16px'};
+                        height: ${isSelected ? '36px' : '16px'};
+                        background: ${isSelected ? 'rgba(34,139,230,0.25)' : '#228be6'};
+                        border-radius: 50%;
+                        border: ${isSelected ? '3px solid #fff' : '2px solid #fff'};
+                        box-shadow: 0 0 12px rgba(34,139,230,0.5);
+                        animation: ${isSelected ? 'gpsPulse 1.5s infinite' : 'none'};
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                      ">
+                        ${isSelected ? `
+                          <div style="
+                            position: absolute;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            width: 10px;
+                            height: 10px;
+                            background: #fff;
+                            border-radius: 50%;
+                            box-shadow: 0 0 8px #228be6;
+                          "></div>
+                        ` : ''}
+                      </div>
+                      <style>
+                        @keyframes gpsPulse {
+                          0% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
+                          70% { box-shadow: 0 0 0 12px rgba(34,139,230,0); }
+                          100% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
+                        }
+                      </style>
+                    `,
+                    iconSize: [isSelected ? 36 : 16, isSelected ? 36 : 16],
+                    iconAnchor: [isSelected ? 18 : 8, isSelected ? 18 : 8]
+                  })}
+                  zIndexOffset={isSelected ? 700 : 600}
+                  eventHandlers={{
+                    click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
+                  }}
+                />
+              </React.Fragment>
+            );
+          })}
+      </>
+    );
+  };
+
+  // Función para renderizar los marcadores de una capa
+  const renderCapaMarkers = (capa: Capa) => {
+    if (!capa.activa) return null;
+
+    console.log(`Renderizando capa ${capa.nombre}:`, {
+      lectores: capa.lectores.length,
+      lecturas: capa.lecturas.length
+    });
+
+    const markers: React.ReactElement[] = [];
+
+    // Renderizar lectores de la capa
+    capa.lectores.forEach((lector) => {
+      if (!lector.Coordenada_X || !lector.Coordenada_Y) return;
+      
+      // Filtrar solo lecturas LPR
+      const lecturasEnLector = capa.lecturas.filter(l => l.ID_Lector === lector.ID_Lector && l.Tipo_Fuente !== 'GPS');
+      console.log(`Lector ${lector.ID_Lector} en capa ${capa.nombre} tiene ${lecturasEnLector.length} lecturas`);
+
+      markers.push(
+        <Marker 
+          key={`${capa.id}-lector-${lector.ID_Lector}`}
+          position={[lector.Coordenada_Y, lector.Coordenada_X]}
+          icon={createMarkerIcon(lecturasEnLector.length, 'lector', capa.color)}
+          zIndexOffset={300}
+          eventHandlers={{
+            click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
+          }}
+        />
+      );
+    });
+
+    // Renderizar lecturas individuales (solo LPR)
+    capa.lecturas
+      .filter(l => !l.ID_Lector && l.Coordenada_X && l.Coordenada_Y && l.Tipo_Fuente !== 'GPS')
+      .forEach((lectura) => {
+        console.log('Renderizando lectura individual en capa:', lectura.ID_Lectura);
+        const isSelected = selectedLectura?.ID_Lectura === lectura.ID_Lectura;
+        markers.push(
+          <React.Fragment key={`${capa.id}-lectura-${lectura.ID_Lectura}`}>
+            {/* Círculo de resaltado para la lectura seleccionada */}
+            {isSelected && (
+              <Circle
+                center={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
+                radius={50}
+                pathOptions={{
+                  color: capa.color,
+                  fillColor: capa.color,
+                  fillOpacity: 0.1,
+                  weight: 2,
+                  dashArray: '5, 5'
+                }}
+              />
+            )}
+            <Marker 
+              position={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
+              icon={L.divIcon({
+                className: 'custom-div-icon',
+                html: `
+                  <div style="
+                    position: relative;
+                    width: ${isSelected ? '36px' : '16px'};
+                    height: ${isSelected ? '36px' : '16px'};
+                    background: ${isSelected ? 'rgba(34,139,230,0.25)' : capa.color};
+                    border-radius: 50%;
+                    border: ${isSelected ? '3px solid #fff' : '2px solid #fff'};
+                    box-shadow: 0 0 12px rgba(34,139,230,0.5);
+                    animation: ${isSelected ? 'gpsPulse 1.5s infinite' : 'none'};
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                  ">
+                    ${isSelected ? `
+                      <div style="
+                        position: absolute;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        width: 10px;
+                        height: 10px;
+                        background: #fff;
+                        border-radius: 50%;
+                        box-shadow: 0 0 8px #228be6;
+                      "></div>
+                    ` : ''}
+                  </div>
+                  <style>
+                    @keyframes gpsPulse {
+                      0% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
+                      70% { box-shadow: 0 0 0 12px rgba(34,139,230,0); }
+                      100% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
+                    }
+                  </style>
+                `,
+                iconSize: [isSelected ? 36 : 16, isSelected ? 36 : 16],
+                iconAnchor: [isSelected ? 18 : 8, isSelected ? 18 : 8]
+              })}
+              zIndexOffset={isSelected ? 500 : 400}
+              eventHandlers={{
+                click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
+              }}
+            />
+          </React.Fragment>
+        );
+      });
+
+    return markers;
+  };
+
+  // Add new function to handle map control changes
+  const handleMapControlChange = (updates: Partial<MapControls>) => {
+    setMapControls(prev => ({ ...prev, ...updates }));
+  };
+
+  // Add new function to get tile layer URL based on visualization type
+  const getTileLayerUrl = () => {
+    switch (mapControls.visualizationType) {
+      case 'satellite':
+        return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+      case 'toner':
+        return 'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png';
+      default:
+        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    }
+  };
+
+  // Add new function to fetch all system readers
+  useEffect(() => {
+    const fetchAllSystemReaders = async () => {
+      try {
+        const data = await getLectoresParaMapa();
+        setAllSystemReaders(data.filter(l => l.Coordenada_X != null && l.Coordenada_Y != null));
+      } catch (error) {
+        console.error('Error al cargar todos los lectores del sistema:', error);
+      }
+    };
+
+    if (mapControls.showAllReaders) {
+      fetchAllSystemReaders();
+    }
+  }, [mapControls.showAllReaders]);
+
+  // Add new function to render reader layers
+  const renderReaderLayers = () => {
+    console.log('Renderizando capas de lectores:', {
+      showCaseReaders: mapControls.showCaseReaders,
+      showAllReaders: mapControls.showAllReaders,
+      lectoresCaso: lectores.length,
+      lectoresSistema: allSystemReaders.length
+    });
+
+    return (
+      <>
+        {/* Render all system readers first (bottom layer) */}
+        {mapControls.showAllReaders && allSystemReaders.map((lector) => (
+          <Marker
+            key={`system-reader-${lector.ID_Lector}`}
+            position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
+            icon={createMarkerIcon(1, 'lector', '#228be6')}
+            zIndexOffset={100}
+            eventHandlers={{
+              click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: [] })
+            }}
+          />
+        ))}
+
+        {/* Render case readers (middle layer) */}
+        {mapControls.showCaseReaders && lectores.map((lector) => (
+          <Marker
+            key={`case-reader-${lector.ID_Lector}`}
+            position={[lector.Coordenada_Y!, lector.Coordenada_X!]}
+            icon={L.divIcon({
+              className: 'custom-div-icon',
+              html: `
+                <div style="
+                  background-color: white;
+                  width: 16px;
+                  height: 16px;
+                  border-radius: 50%;
+                  border: 3px solid #40c057;
+                  box-shadow: 0 0 8px rgba(0,0,0,0.4);
+                  position: relative;
+                ">
+                  <div style="
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 6px;
+                    height: 6px;
+                    background-color: #40c057;
+                    border-radius: 50%;
+                  "></div>
+                </div>
+              `,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            })}
+            zIndexOffset={200}
+            eventHandlers={{
+              click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: [] })
+            }}
+          />
+        ))}
+      </>
+    );
+  };
 
   // Función para renderizar las coincidencias en el mapa
   const renderCoincidencias = () => {
@@ -1001,13 +1060,11 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     
     // Resetear los filtros
     setFilters({
-      matricula: '',
       fechaInicio: '',
       horaInicio: '',
       fechaFin: '',
       horaFin: '',
-      lectorId: '',
-      soloRelevantes: false
+      lectorId: ''
     });
 
     // Forzar la actualización del mapa
@@ -1087,24 +1144,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             justifyContent: 'center',
             padding: 0
           }}
-          onClick={async () => {
-            const mapContainer = document.querySelector('.leaflet-container')?.parentElement;
-            if (!mapContainer) return;
-            const cameraBtn = document.getElementById('camera-capture-btn-lpr');
-            if (cameraBtn) cameraBtn.style.visibility = 'hidden';
-            await new Promise(r => setTimeout(r, 50));
-            html2canvas(mapContainer, { 
-              useCORS: true, 
-              backgroundColor: null,
-              willReadFrequently: true 
-            }).then(canvas => {
-              if (cameraBtn) cameraBtn.style.visibility = 'visible';
-              const link = document.createElement('a');
-              link.download = `captura-mapa-lpr.png`;
-              link.href = canvas.toDataURL('image/png');
-              link.click();
-            });
-          }}
+          onClick={handleExportarMapa}
           id="camera-capture-btn-lpr"
           aria-label="Exportar captura de pantalla"
         >
@@ -1163,7 +1203,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
         {/* Solo mostrar resultados del filtro si no se han guardado en una capa y no hay capas activas con la misma matrícula */}
         {resultadosFiltro.lecturas.length > 0 && 
          !mostrarFormularioCapa && 
-         !capas.some(capa => capa.activa && capa.filtros.matricula === selectedMatricula) && 
+         !capas.some(capa => capa.activa && capa.filtros.lectorId === selectedMatricula) && 
          renderResultadosFiltro()}
         {capas.map(renderCapaMarkers)}
         {renderCoincidencias()}
@@ -1278,6 +1318,27 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     );
   };
 
+  const handleExportarMapa = async () => {
+    const mapElement = document.querySelector('.leaflet-container');
+    if (!mapElement) return;
+
+    try {
+      const canvas = await html2canvas(mapElement as HTMLElement, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: null,
+        scale: 2
+      });
+
+      const link = document.createElement('a');
+      link.download = `captura-mapa-lpr.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Error al exportar el mapa:', error);
+    }
+  };
+
   if (fullscreenMap) {
     return (
       <div
@@ -1297,129 +1358,49 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   }
 
   return (
-    <Box>
-      <Group justify="flex-end" mb="xs">
-        <Button
-          variant="light"
-          color="blue"
-          size="xs"
-          onClick={() => setAyudaAbierta((v) => !v)}
-        >
-          {ayudaAbierta ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-        </Button>
-      </Group>
-      <Collapse in={ayudaAbierta}>
-        <Alert color="blue" title="¿Cómo funciona el Mapa de Lecturas?" mb="md">
-          <Text size="sm">
-            <b>¿Qué es este panel?</b><br />
-            El Mapa de Lecturas te permite visualizar geográficamente las lecturas LPR y GPS asociadas a un caso. Puedes filtrar por vehículo, fechas, lectores y guardar resultados en capas personalizadas para análisis avanzados.<br /><br />
-            <b>Filtros y búsqueda:</b><br />
-            - Selecciona un vehículo de interés para ver sus pasos en el mapa.<br />
-            - Filtra por fechas, horas, lector o relevancia para acotar los resultados.<br />
-            - Los resultados se muestran como marcadores en el mapa, agrupados por lector o ubicación.<br /><br />
-            <b>Capas:</b><br />
-            - Guarda cualquier resultado de filtro como una "capa" para compararlo con otros vehículos o periodos.<br />
-            - Activa/desactiva capas para ver coincidencias espaciales y temporales.<br />
-            - Personaliza el nombre y color de cada capa.<br /><br />
-            <b>Controles del mapa:</b><br />
-            - Cambia el tipo de visualización (estándar, satélite, toner).<br />
-            - Muestra todos los lectores del sistema o solo los del caso.<br />
-            - Activa la detección de coincidencias para resaltar ubicaciones donde varios vehículos han coincidido.<br /><br />
-            <b>Consejos:</b><br />
-            - Haz zoom y mueve el mapa para explorar los datos.<br />
-            - Haz clic en los marcadores para ver detalles de cada lectura o lector.<br />
-            - Usa el botón "Limpiar Mapa" para reiniciar la visualización.<br />
-          </Text>
-        </Alert>
-      </Collapse>
-      <Grid gutter="md">
-        <Grid.Col span={{ base: 12, md: 3 }}>
-          <Stack>
-            {/* Panel de Filtros */}
-            <Paper p="md" withBorder>
-              <Title order={2} mb="md">Mapa de Lecturas</Title>
-              <Group grow mb="md">
+    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Grid style={{ flex: 1, margin: 0 }}>
+        {/* Panel de filtros a la izquierda */}
+        <Grid.Col span={3} style={{ padding: '16px', borderRight: '1px solid #eee' }}>
+          <Stack gap="md">
+            <Paper shadow="xs" p="md">
+              <Title order={4} mb="md">Filtros</Title>
+              <Stack gap="md">
                 <Select
-                  label="Vehículo de Interés"
-                  placeholder="Seleccionar vehículo..."
+                  label="Vehículo"
+                  placeholder="Selecciona un vehículo"
                   value={selectedMatricula}
                   onChange={(value) => {
                     setSelectedMatricula(value);
-                    handleFilterChange({ matricula: value || '' });
                   }}
                   data={vehiculosOptions}
                   searchable
                   clearable
                 />
-              </Group>
-              <LecturaFilters
-                filters={filters}
-                onFilterChange={handleFilterChange}
-                onFiltrar={handleFiltrar}
-                onLimpiar={handleLimpiar}
-                loading={loading}
-                hideMatricula={true}
-                lectorSuggestions={lectorSuggestions}
-              />
-              
-              {/* Botón para guardar resultados en capa */}
-              {resultadosFiltro.lecturas.length > 0 && (
-                <Collapse in={mostrarFormularioCapa}>
-                  <Stack gap="sm" mt="md">
-                    <TextInput
-                      label="Nombre de la capa"
-                      value={nuevaCapa.nombre}
-                      onChange={(e) => setNuevaCapa(prev => ({ ...prev, nombre: e.target.value }))}
-                      placeholder="Ej: Lecturas GPS"
-                      description="Se recomienda incluir la matrícula y algún detalle adicional para identificar la capa"
-                    />
-                    <ColorInput
-                      label="Color de la capa"
-                      value={nuevaCapa.color}
-                      onChange={(color) => setNuevaCapa(prev => ({ ...prev, color }))}
-                      format="hex"
-                    />
-                    <Group justify="flex-end">
-                      <Button 
-                        variant="light" 
-                        color="gray" 
-                        onClick={() => setMostrarFormularioCapa(false)}
-                      >
-                        <IconX size={16} style={{ marginRight: 8 }} />
-                        Cancelar
-                      </Button>
-                      <Button 
-                        onClick={handleGuardarResultadosEnCapa}
-                        disabled={!nuevaCapa.nombre}
-                      >
-                        <IconCheck size={16} style={{ marginRight: 8 }} />
-                        Guardar en capa
-                      </Button>
-                    </Group>
-                  </Stack>
-                </Collapse>
-              )}
-              {resultadosFiltro.lecturas.length > 0 && !mostrarFormularioCapa && (
-                <Button 
-                  fullWidth 
-                  variant="light" 
-                  color="blue" 
-                  mt="md"
-                  onClick={() => setMostrarFormularioCapa(true)}
-                >
-                  <IconPlus size={16} style={{ marginRight: 8 }} />
-                  Guardar resultados en capa
-                </Button>
-              )}
+                <LecturaFilters
+                  filters={filters}
+                  onFilterChange={handleFilterChange}
+                  onFiltrar={handleFiltrar}
+                  onLimpiar={handleLimpiar}
+                  loading={loading}
+                  lectorSuggestions={lectorSuggestions}
+                />
+              </Stack>
             </Paper>
 
-            {/* Panel de Gestión de Capas */}
-            <Paper p="md" withBorder>
+            <Paper shadow="xs" p="md">
               <Group justify="space-between" mb="md">
-                <Title order={3}>Gestión de Capas</Title>
+                <Title order={4}>Capas</Title>
+                <Button
+                  variant="light"
+                  size="xs"
+                  leftSection={<IconPlus size={16} />}
+                  onClick={handleGuardarResultadosEnCapa}
+                  disabled={!selectedMatricula || resultadosFiltro.lecturas.length === 0}
+                >
+                  Nueva Capa
+                </Button>
               </Group>
-
-              {/* Lista de capas */}
               <Stack gap="xs">
                 {capas.map((capa) => (
                   <Paper key={capa.id} p="xs" withBorder>
@@ -1428,122 +1409,151 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                         <Switch
                           checked={capa.activa}
                           onChange={() => handleToggleCapa(capa.id)}
-                          size="sm"
+                          size="xs"
                         />
-                        <Box 
-                          style={{ 
-                            width: 16, 
-                            height: 16, 
-                            backgroundColor: capa.color,
-                            borderRadius: '50%'
-                          }} 
-                        />
-                        <Text size="sm">{capa.nombre}</Text>
-                        <Tooltip label={formatFiltrosCapa(capa.filtros)}>
-                          <ActionIcon variant="subtle" size="sm">
-                            <IconInfoCircle size={14} />
-                          </ActionIcon>
-                        </Tooltip>
+                        <Text size="sm" style={{ flex: 1 }}>{capa.nombre}</Text>
                       </Group>
                       <Group gap={4}>
-                        <ActionIcon 
-                          variant="subtle" 
+                        <ActionIcon
+                          variant="subtle"
                           color="blue"
+                          size="sm"
                           onClick={() => handleEditarCapa(capa.id)}
                         >
                           <IconEdit size={16} />
                         </ActionIcon>
-                        <ActionIcon 
-                          variant="subtle" 
+                        <ActionIcon
+                          variant="subtle"
                           color="red"
+                          size="sm"
                           onClick={() => handleEliminarCapa(capa.id)}
                         >
                           <IconTrash size={16} />
                         </ActionIcon>
                       </Group>
                     </Group>
-                    <Text size="xs" c="dimmed" mt={4}>
-                      {capa.lecturas.length} lecturas | {capa.lectores.length} lectores
-                    </Text>
                   </Paper>
                 ))}
-                {capas.length === 0 && (
-                  <Text size="sm" c="dimmed" ta="center" py="md">
-                    No hay capas creadas. Aplica un filtro y guárdalo en una capa.
-                  </Text>
-                )}
               </Stack>
             </Paper>
 
-            {/* Panel de Controles del Mapa */}
-            <Paper p="md" withBorder>
-              <Title order={3} mb="md">Controles del Mapa</Title>
-              <Stack gap="md">
+            <Paper shadow="xs" p="md">
+              <Title order={4} mb="md">Controles</Title>
+              <Stack gap="xs">
                 <Select
-                  label="Tipo de Visualización"
+                  label="Visualización"
                   value={mapControls.visualizationType}
                   onChange={(value) => handleMapControlChange({ visualizationType: value as MapControls['visualizationType'] })}
                   data={[
-                    { value: 'toner', label: 'Toner Lite' },
                     { value: 'standard', label: 'Estándar' },
-                    { value: 'satellite', label: 'Satélite' }
+                    { value: 'satellite', label: 'Satélite' },
+                    { value: 'toner', label: 'Toner' }
                   ]}
                 />
-                <Stack gap="xs">
-                  <Switch
-                    label="Mostrar lectores del caso"
-                    checked={mapControls.showCaseReaders}
-                    onChange={(event) => handleMapControlChange({ showCaseReaders: event.currentTarget.checked })}
-                  />
-                  <Switch
-                    label="Mostrar todos los lectores del sistema"
-                    checked={mapControls.showAllReaders}
-                    onChange={(event) => handleMapControlChange({ showAllReaders: event.currentTarget.checked })}
-                  />
-                  <Divider my="xs" />
-                  <Switch
-                    label={
-                      <Group gap="xs">
-                        <Text size="sm">Mostrar coincidencias</Text>
-                        <Badge color="red" variant="light" size="sm">
-                          {detectarCoincidencias.length}
-                        </Badge>
-                      </Group>
-                    }
-                    checked={mapControls.showCoincidencias}
-                    onChange={(event) => handleMapControlChange({ showCoincidencias: event.currentTarget.checked })}
-                  />
-                  <Divider my="xs" />
-                  <Button 
-                    variant="light" 
-                    color="red" 
-                    fullWidth
-                    onClick={handleLimpiarMapa}
-                  >
-                    Limpiar Mapa
-                  </Button>
-                </Stack>
+                <Switch
+                  label="Mostrar lectores del caso"
+                  checked={mapControls.showCaseReaders}
+                  onChange={(event) => handleMapControlChange({ showCaseReaders: event.currentTarget.checked })}
+                />
+                <Switch
+                  label="Mostrar todos los lectores"
+                  checked={mapControls.showAllReaders}
+                  onChange={(event) => handleMapControlChange({ showAllReaders: event.currentTarget.checked })}
+                />
+                <Switch
+                  label="Mostrar coincidencias"
+                  checked={mapControls.showCoincidencias}
+                  onChange={(event) => handleMapControlChange({ showCoincidencias: event.currentTarget.checked })}
+                />
               </Stack>
             </Paper>
           </Stack>
         </Grid.Col>
 
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <Paper p="md" withBorder style={{ height: 'calc(100vh - 300px)', position: 'relative' }}>
-            {lectores.length === 0 ? (
-              <Box style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Text c="dimmed">No hay lectores con coordenadas válidas para mostrar en el mapa.</Text>
-              </Box>
-            ) : (
-              <MapComponent isFullscreen={false} />
-            )}
-          </Paper>
+        {/* Mapa en el centro */}
+        <Grid.Col span={6} style={{ padding: 0 }}>
+          <MapComponent />
         </Grid.Col>
 
-        <Grid.Col span={{ base: 12, md: 3 }}>
-          <LecturasFiltradasPanel />
+        {/* Panel de lecturas a la derecha */}
+        <Grid.Col span={3} style={{ padding: '16px', borderLeft: '1px solid #eee' }}>
+          <Paper shadow="xs" p="md" style={{ height: '100%' }}>
+            <Title order={4} mb="md">Lecturas</Title>
+            <ScrollArea style={{ height: 'calc(12 * 80px)' }}> {/* Altura fija para 12 lecturas (80px por lectura) */}
+              <Stack gap="xs">
+                {resultadosFiltro.lecturas
+                  .filter(lectura => lectura.Tipo_Fuente !== 'GPS')
+                  .sort((a, b) => new Date(b.Fecha_y_Hora).getTime() - new Date(a.Fecha_y_Hora).getTime())
+                  .map((lectura) => (
+                    <Paper
+                      key={lectura.ID_Lectura}
+                      p="xs"
+                      withBorder
+                      style={{
+                        cursor: 'pointer',
+                        backgroundColor: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? 'var(--mantine-color-blue-1)' : undefined,
+                        borderLeft: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? '4px solid var(--mantine-color-blue-6)' : undefined,
+                        height: '80px', // Altura fija para cada lectura
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center'
+                      }}
+                      onClick={() => centerMapOnLectura(lectura)}
+                    >
+                      <Stack gap={4}>
+                        <Group justify="space-between">
+                          <Text size="sm" fw={500}>{lectura.Matricula}</Text>
+                          <Text size="xs" c="dimmed">{dayjs(lectura.Fecha_y_Hora).format('HH:mm:ss')}</Text>
+                        </Group>
+                        <Group gap="xs">
+                          <IconMapPin size={14} style={{ color: 'gray' }} />
+                          <Text size="xs" c="dimmed">
+                            {lectura.ID_Lector || 'Sin lector'}
+                          </Text>
+                        </Group>
+                        {lectura.Velocidad && (
+                          <Group gap="xs">
+                            <IconGauge size={14} style={{ color: 'gray' }} />
+                            <Text size="xs" c="dimmed">
+                              {lectura.Velocidad.toFixed(1)} km/h
+                            </Text>
+                          </Group>
+                        )}
+                      </Stack>
+                    </Paper>
+                  ))}
+              </Stack>
+            </ScrollArea>
+          </Paper>
         </Grid.Col>
       </Grid>
+
+      {/* Modal de edición de capa */}
+      <Modal
+        opened={!!editandoCapa}
+        onClose={() => setEditandoCapa(null)}
+        title="Editar Capa"
+        size="md"
+      >
+        {editandoCapa && (
+          <Stack gap="md">
+            <TextInput
+              label="Nombre"
+              value={editandoCapa.nombre}
+              onChange={(event) => setEditandoCapa({ ...editandoCapa, nombre: event.currentTarget.value })}
+            />
+            <ColorInput
+              label="Color"
+              value={editandoCapa.color}
+              onChange={(value) => setEditandoCapa({ ...editandoCapa, color: value })}
+            />
+            <Group justify="flex-end">
+              <Button variant="light" onClick={() => setEditandoCapa(null)}>Cancelar</Button>
+              <Button onClick={handleActualizarCapa}>Guardar</Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
     </Box>
   );
 };
