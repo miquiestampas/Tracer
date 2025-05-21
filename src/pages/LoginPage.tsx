@@ -33,7 +33,7 @@ const LoginPage: React.FC = () => {
 
   const checkInitialSetup = async () => {
     try {
-      const response = await fetch('/api/setup/status');
+      const response = await fetch('/api/admin/database/status');
       if (!response.ok) {
         throw new Error('Error al verificar el estado de configuración');
       }

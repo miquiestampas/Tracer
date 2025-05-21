@@ -68,7 +68,7 @@ export const buscarVehiculo = async (matricula: string): Promise<VehiculoSearchR
 
 export const getArchivosRecientes = async (): Promise<RecentFile[]> => {
   try {
-    const response = await apiClient.get<ArchivoExcel[]>('/archivos/recientes');
+    const response = await apiClient.get<ArchivoExcel[]>('/api/archivos/recientes');
     return response.data.map(archivo => ({
       id: archivo.ID_Archivo,
       name: archivo.Nombre_del_Archivo,
@@ -85,7 +85,7 @@ export const getArchivosRecientes = async (): Promise<RecentFile[]> => {
 
 export const getImportacionesRecientes = async (): Promise<ImportEvent[]> => {
   try {
-    const response = await apiClient.get<ArchivoExcel[]>('/archivos/recientes');
+    const response = await apiClient.get<ArchivoExcel[]>('/api/archivos/recientes');
     return response.data.map(archivo => ({
       id: archivo.ID_Archivo,
       fileName: archivo.Nombre_del_Archivo,

@@ -315,6 +315,45 @@ app.add_middleware(
 app.include_router(gps_capas_router)
 app.include_router(admin_database_router)
 
+# --- NEW CONFIGURATION ROUTER ---
+config_router = APIRouter(prefix="/api/config", tags=["Configuración"])
+
+class FooterConfigUpdate(BaseModel):
+    text: str
+
+@config_router.get("/footer")
+def get_footer_config():
+    # Aquí deberías leer la configuración del footer de alguna fuente persistente,
+    # como un archivo JSON, una base de datos, o variables de entorno.
+    # Por ahora, leeremos del archivo footer_config.json
+    try:
+        with open("footer_config.json", "r", encoding="utf-8") as f:
+            config = json.load(f)
+            return config
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Archivo de configuración del footer no encontrado")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail="Error al decodificar el archivo JSON de configuración del footer")
+    except Exception as e:
+        logger.error(f"Error al leer la configuración del footer: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor al obtener la configuración del footer")
+
+@config_router.post("/footer")
+def update_footer_config(config: FooterConfigUpdate):
+    # Aquí deberías guardar la configuración del footer en alguna fuente persistente.
+    # Por ahora, guardaremos en el archivo footer_config.json
+    try:
+        with open("footer_config.json", "w", encoding="utf-8") as f:
+            json.dump({"text": config.text}, f, ensure_ascii=False, indent=2)
+            return {"message": "Configuración del footer actualizada correctamente"}
+    except Exception as e:
+        logger.error(f"Error al guardar la configuración del footer: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor al actualizar la configuración del footer")
+
+# --- END NEW CONFIGURATION ROUTER ---
+
+app.include_router(config_router) # ADDED: Include the new config router
+
 # ... existing code ...
 
 localizaciones_router = APIRouter()
@@ -2369,3 +2408,89 @@ def process_file_in_background(
 
 # --- START JWT/OAuth2 Core Setup ---
 # ... existing code ...
+
+# --- Endpoint para Estadísticas Globales ---
+@app.get("/api/estadisticas", response_model=schemas.EstadisticasGlobales, tags=["Estadísticas"])
+def get_global_statistics(db: Session = Depends(get_db)):
+    """
+    Obtiene estadísticas globales del sistema (total casos, lecturas, vehículos, tamaño BD).
+    """
+    logger.info("GET /api/estadisticas - Solicitando estadísticas globales.")
+    try:
+        total_casos = db.query(models.Caso).count()
+        total_lecturas = db.query(models.Lectura).count()
+        total_vehiculos = db.query(models.Vehiculo).count()
+        
+        # Obtener tamaño del archivo de la base de datos
+        # Asumiendo que la base de datos es 'tracer.db' en el directorio padre de main.py
+        db_path = os.path.join(os.path.dirname(__file__), '../tracer.db')
+        size_bytes = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+        
+        # Formatear tamaño a un string legible (ej: KB, MB, GB)
+        def format_bytes(bytes: int) -> str:
+            if bytes == 0: return "0 Bytes"
+            k = 1024
+            sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
+            i = math.floor(math.log(bytes, k))
+            return f"{bytes / (k ** i):.2f} {sizes[i]}"
+            
+        tamanio_bd_formatted = format_bytes(size_bytes)
+        
+        logger.info(f"Estadísticas: Casos={total_casos}, Lecturas={total_lecturas}, Vehículos={total_vehiculos}, Tamaño BD={tamanio_bd_formatted}")
+        
+        return schemas.EstadisticasGlobales(
+            total_casos=total_casos,
+            total_lecturas=total_lecturas,
+            total_vehiculos=total_vehiculos,
+            tamanio_bd=tamanio_bd_formatted
+        )
+        
+    except Exception as e:
+        logger.error(f"Error al obtener estadísticas globales: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al obtener estadísticas: {e}")
+
+# --- END Endpoint para Estadísticas Globales ---
+
+# --- Endpoint para Archivos Recientes (Dashboard) ---
+@app.get("/api/archivos/recientes", response_model=List[schemas.ArchivoExcel], tags=["Archivos"])
+def get_recent_files(limit: int = 10, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    """
+    Obtiene una lista de los archivos importados más recientes a nivel global.
+    """
+    logger.info(f"GET /api/archivos/recientes - Solicitando los {limit} archivos más recientes por usuario {current_user.User}.")
+    
+    # Lógica para filtrar por grupo si el usuario no es superadmin
+    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol == models.RolUsuarioEnum.superadmin.value
+
+    try:
+        query = db.query(models.ArchivoExcel).options(joinedload(models.ArchivoExcel.caso))
+        
+        if not is_superadmin:
+            if current_user.ID_Grupo is None:
+                 logger.warning(f"Usuario {current_user.User} sin grupo intentó acceder a archivos recientes globales.")
+                 # Si no tiene grupo, no puede ver archivos recientes (a menos que estén sin grupo, pero el filtro por grupo es más restrictivo)
+                 return [] # Devolver lista vacía si no tiene grupo y no es superadmin
+                 
+            # Filtrar por archivos asociados a casos del grupo del usuario
+            query = query.join(models.Caso).filter(models.Caso.ID_Grupo == current_user.ID_Grupo)
+
+        # Ordenar por fecha de importación descendente y limitar
+        archivos_recientes = query.order_by(models.ArchivoExcel.Fecha_de_Importacion.desc()).limit(limit).all()
+        
+        # Asegurar que el caso se carga si existe para cada archivo
+        for archivo in archivos_recientes:
+            if archivo.ID_Caso and not archivo.caso:
+                 archivo.caso = db.query(models.Caso).filter(models.Caso.ID_Caso == archivo.ID_Caso).first()
+
+        logger.info(f"Encontrados {len(archivos_recientes)} archivos recientes para el usuario {current_user.User}.")
+        return archivos_recientes
+        
+    except Exception as e:
+        logger.error(f"Error al obtener archivos recientes: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno al obtener archivos recientes: {str(e)}"
+        )
+
+# --- END Endpoint para Archivos Recientes (Dashboard) ---
