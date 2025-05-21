@@ -5,10 +5,10 @@ export interface FooterConfig {
 }
 
 export const getFooterConfig = async (): Promise<FooterConfig> => {
-  const response = await api.get('/config/footer');
+  const response = await api.get('/api/config/footer');
   return response.data;
 };
 
 export const updateFooterConfig = async (text: string): Promise<void> => {
-  await api.post('/config/footer', { text });
+  await api.post('/api/config/footer', { text });
 }; 
