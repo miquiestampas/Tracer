@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
 import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/core';
-import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronUp, IconChevronDown, IconDownload } from '@tabler/icons-react';
+import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronLeft, IconChevronRight, IconDownload } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import HeatmapLayer from './HeatmapLayer';
 import MarkerClusterGroup from 'react-leaflet-markercluster';
@@ -118,8 +118,8 @@ const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion, onNavig
           <Group gap={8} style={{ marginLeft: 16 }}>
             {onNavigate && !isLocalizacion && (
               <>
-                <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('prev')}><IconChevronUp size={20} /></ActionIcon>
-                <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('next')}><IconChevronDown size={20} /></ActionIcon>
+                <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('prev')}><IconChevronLeft size={20} /></ActionIcon>
+                <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('next')}><IconChevronRight size={20} /></ActionIcon>
               </>
             )}
             {isLocalizacion && onEditLocalizacion && (

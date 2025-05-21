@@ -8,7 +8,7 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh, IconChevronUp, IconChevronDown } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
 
@@ -206,8 +206,8 @@ const InfoBanner = ({ info, onClose, onNavigate }: {
           </div>
           {onNavigate && !isLector && (
             <Group gap={8} style={{ marginLeft: 16 }}>
-              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('prev')}><IconChevronUp size={20} /></ActionIcon>
-              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('next')}><IconChevronDown size={20} /></ActionIcon>
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('prev')}><IconChevronLeft size={20} /></ActionIcon>
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('next')}><IconChevronRight size={20} /></ActionIcon>
             </Group>
           )}
         </Group>
