@@ -1857,41 +1857,52 @@ def get_lecturas_por_caso(
         if matricula:
             query = query.filter(models.Lectura.Matricula == matricula)
 
-        if fecha_inicio:
+        # --- NUEVO FILTRO: RANGO ABSOLUTO DE FECHA Y HORA ---
+        if fecha_inicio and hora_inicio and fecha_fin and hora_fin:
             try:
-                fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
-                query = query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+                dt_inicio = datetime.strptime(f"{fecha_inicio} {hora_inicio}", "%Y-%m-%d %H:%M")
+                dt_fin = datetime.strptime(f"{fecha_fin} {hora_fin}", "%Y-%m-%d %H:%M")
+                query = query.filter(models.Lectura.Fecha_y_Hora >= dt_inicio, models.Lectura.Fecha_y_Hora <= dt_fin)
             except ValueError as e:
-                logger.error(f"Error al parsear fecha_inicio: {e}")
-                raise HTTPException(status_code=400, detail=f"Formato de fecha_inicio inválido: {fecha_inicio}. Use YYYY-MM-DD")
+                logger.error(f"Error al parsear fecha/hora: {e}")
+                raise HTTPException(status_code=400, detail=f"Formato de fecha/hora inválido: {e}")
+        else:
+            # Filtros antiguos si falta alguno de los campos
+            if fecha_inicio:
+                try:
+                    fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+                    query = query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+                except ValueError as e:
+                    logger.error(f"Error al parsear fecha_inicio: {e}")
+                    raise HTTPException(status_code=400, detail=f"Formato de fecha_inicio inválido: {fecha_inicio}. Use YYYY-MM-DD")
 
-        if fecha_fin:
-            try:
-                fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
-                query = query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
-            except ValueError as e:
-                logger.error(f"Error al parsear fecha_fin: {e}")
-                raise HTTPException(status_code=400, detail=f"Formato de fecha_fin inválido: {fecha_fin}. Use YYYY-MM-DD")
+            if fecha_fin:
+                try:
+                    fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
+                    query = query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
+                except ValueError as e:
+                    logger.error(f"Error al parsear fecha_fin: {e}")
+                    raise HTTPException(status_code=400, detail=f"Formato de fecha_fin inválido: {fecha_fin}. Use YYYY-MM-DD")
 
-        if hora_inicio:
-            try:
-                hora_time = datetime.strptime(hora_inicio, "%H:%M").time()
-                query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
-                                  extract('minute', models.Lectura.Fecha_y_Hora) >= 
-                                  hora_time.hour * 100 + hora_time.minute)
-            except ValueError as e:
-                logger.error(f"Error al parsear hora_inicio: {e}")
-                raise HTTPException(status_code=400, detail=f"Formato de hora_inicio inválido: {hora_inicio}. Use HH:MM")
+            if hora_inicio and fecha_inicio:
+                try:
+                    hora_time = datetime.strptime(hora_inicio, "%H:%M").time()
+                    query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + \
+                                      extract('minute', models.Lectura.Fecha_y_Hora) >= \
+                                      hora_time.hour * 100 + hora_time.minute)
+                except ValueError as e:
+                    logger.error(f"Error al parsear hora_inicio: {e}")
+                    raise HTTPException(status_code=400, detail=f"Formato de hora_inicio inválido: {hora_inicio}. Use HH:MM")
 
-        if hora_fin:
-            try:
-                hora_time = datetime.strptime(hora_fin, "%H:%M").time()
-                query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + 
-                                  extract('minute', models.Lectura.Fecha_y_Hora) <= 
-                                  hora_time.hour * 100 + hora_time.minute)
-            except ValueError as e:
-                logger.error(f"Error al parsear hora_fin: {e}")
-                raise HTTPException(status_code=400, detail=f"Formato de hora_fin inválido: {hora_fin}. Use HH:MM")
+            if hora_fin and fecha_fin:
+                try:
+                    hora_time = datetime.strptime(hora_fin, "%H:%M").time()
+                    query = query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + \
+                                      extract('minute', models.Lectura.Fecha_y_Hora) <= \
+                                      hora_time.hour * 100 + hora_time.minute)
+                except ValueError as e:
+                    logger.error(f"Error al parsear hora_fin: {e}")
+                    raise HTTPException(status_code=400, detail=f"Formato de hora_fin inválido: {hora_fin}. Use HH:MM")
 
         if lector_id:
             query = query.filter(models.Lectura.ID_Lector == lector_id)

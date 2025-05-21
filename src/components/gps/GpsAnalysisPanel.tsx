@@ -678,12 +678,30 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     setLecturas([]);
   }, [casoId]);
 
-  // Modificar handleFiltrar para que solo cargue lecturas cuando el usuario pulse el botón
+  // Modificar handleFiltrar para que construya y envíe fecha-hora completas
   const handleFiltrar = useCallback(async () => {
     if (!vehiculoObjetivo) return;
     setLoading(true);
     try {
-      const cacheKey = `${casoId}_${vehiculoObjetivo}_${JSON.stringify(filters)}`;
+      // Construir fechas y horas correctas
+      let fechaInicio = filters.fechaInicio || undefined;
+      let horaInicio = filters.horaInicio || undefined;
+      let fechaFin = filters.fechaFin || undefined;
+      let horaFin = filters.horaFin || undefined;
+      // Si hay fecha inicio pero no hora, usar 00:00
+      if (fechaInicio && !horaInicio) horaInicio = '00:00';
+      // Si hay fecha fin pero no hora, usar 23:59
+      if (fechaFin && !horaFin) horaFin = '23:59';
+      // Si la fecha es igual y la hora fin < hora inicio, sumar un día a la fecha fin
+      if (fechaInicio && fechaFin && fechaInicio === fechaFin && horaInicio && horaFin && horaFin < horaInicio) {
+        const d = new Date(fechaFin);
+        d.setDate(d.getDate() + 1);
+        fechaFin = d.toISOString().slice(0, 10);
+      }
+      // Si no hay fecha, no enviar hora
+      if (!fechaInicio) horaInicio = undefined;
+      if (!fechaFin) horaFin = undefined;
+      const cacheKey = `${casoId}_${vehiculoObjetivo}_${fechaInicio}_${horaInicio}_${fechaFin}_${horaFin}_${filters.velocidadMin}_${filters.velocidadMax}_${filters.duracionParada}_${JSON.stringify(filters.zonaSeleccionada)}`;
       const cachedData = gpsCache.getLecturas(casoId, cacheKey);
       if (cachedData) {
         setLecturas(cachedData);
@@ -691,10 +709,10 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
         return;
       }
       const data = await getLecturasGps(casoId, {
-        fecha_inicio: filters.fechaInicio || undefined,
-        hora_inicio: filters.horaInicio || undefined,
-        fecha_fin: filters.fechaFin || undefined,
-        hora_fin: filters.horaFin || undefined,
+        fecha_inicio: fechaInicio,
+        hora_inicio: horaInicio,
+        fecha_fin: fechaFin,
+        hora_fin: horaFin,
         velocidad_min: filters.velocidadMin !== null ? filters.velocidadMin : undefined,
         velocidad_max: filters.velocidadMax !== null ? filters.velocidadMax : undefined,
         duracion_parada: filters.duracionParada !== null ? filters.duracionParada : undefined,
@@ -927,27 +945,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
   useEffect(() => {
     centerMapOnCurrentPoint();
   }, [currentIndex, centerMapOnCurrentPoint]);
-
-  // Add useEffect to set filters.fechaInicio and filters.fechaFin when vehiculoObjetivo changes
-  useEffect(() => {
-    if (!vehiculoObjetivo || !casoId) return;
-    (async () => {
-      try {
-        const data = await getLecturasGps(casoId, { matricula: vehiculoObjetivo });
-        if (data && data.length > 0) {
-          // Ordenar por fecha ascendente
-          const sorted = [...data].sort((a, b) => new Date(a.Fecha_y_Hora).getTime() - new Date(b.Fecha_y_Hora).getTime());
-          setFilters(prev => ({
-            ...prev,
-            fechaInicio: sorted[0].Fecha_y_Hora.slice(0, 10),
-            fechaFin: sorted[sorted.length - 1].Fecha_y_Hora.slice(0, 10)
-          }));
-        }
-      } catch (e) {
-        // Si hay error, no modificar filtros
-      }
-    })();
-  }, [vehiculoObjetivo, casoId]);
 
   const [heatmapMultiplier, setHeatmapMultiplier] = useState(1.65);
 
