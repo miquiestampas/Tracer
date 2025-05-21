@@ -976,6 +976,31 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
         onEditLocalizacion={selectedInfo?.isLocalizacion ? () => onGuardarLocalizacion(selectedInfo.info) : undefined}
         onNavigate={handleNavigate}
       />
+      <style>
+        {`
+          .leaflet-container {
+            z-index: ${fullscreenMap ? 10000 : 1} !important;
+          }
+          .leaflet-control-container {
+            z-index: 10000 !important;
+          }
+          .leaflet-div-icon {
+            background: transparent !important;
+            border: none !important;
+          }
+          .custom-div-icon {
+            background: transparent !important;
+            border: none !important;
+          }
+          .lectura-popup {
+            max-height: ${fullscreenMap ? '400px' : '200px'};
+            overflow-y: auto;
+          }
+          canvas {
+            will-read-frequently: true;
+          }
+        `}
+      </style>
     </div>
   );
 }));

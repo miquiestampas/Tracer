@@ -1031,6 +1031,15 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
 
   const [heatmapMultiplier, setHeatmapMultiplier] = useState(1.65);
 
+  useEffect(() => {
+    if (!fullscreenMap) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFullscreenMap(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [fullscreenMap]);
+
   // --- Renderizado principal ---
   if (fullscreenMap) {
     return (
@@ -1045,7 +1054,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
           zIndex: 9999,
         }}
       >
-        <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 1000 }}>
+        <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 10001 }}>
           <ActionIcon
             variant="default"
             size={32}
@@ -1060,7 +1069,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 0
+              padding: 0,
+              zIndex: 10001
             }}
             onClick={() => setFullscreenMap(false)}
             aria-label="Salir de pantalla completa"
@@ -1351,7 +1361,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
             position: 'absolute',
             top: 12,
             right: 16,
-            zIndex: 20,
+            zIndex: 10000,
             display: 'flex',
             gap: 8
           }}>
@@ -1369,7 +1379,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: 0
+                padding: 0,
+                zIndex: 10000
               }}
               onClick={async () => {
                 const mapContainer = document.querySelector('.leaflet-container')?.parentElement;
@@ -1404,7 +1415,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: 0
+                padding: 0,
+                zIndex: 10001
               }}
               onClick={() => setFullscreenMap(f => !f)}
               aria-label="Pantalla completa del mapa"
