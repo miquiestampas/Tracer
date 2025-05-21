@@ -1299,13 +1299,24 @@ def get_vehiculos_by_caso(caso_id: int, db: Session = Depends(get_db), current_u
                 for row in result:
                     # Convertir la fila a diccionario para crear el objeto
                     vehiculo_dict = {col: getattr(row, col) for col in row._mapping.keys() if hasattr(row, col)}
-                    vehiculo = models.Vehiculo(**{k: v for k, v in vehiculo_dict.items() if k in ['ID_Vehiculo', 'Matricula', 'Marca', 'Modelo', 'Color', 'Propietario', 'Observaciones']})
-                    
+                    # Extraer los campos booleanos correctamente
+                    vehiculo = models.Vehiculo(
+                        ID_Vehiculo=vehiculo_dict.get('ID_Vehiculo'),
+                        Matricula=vehiculo_dict.get('Matricula'),
+                        Marca=vehiculo_dict.get('Marca'),
+                        Modelo=vehiculo_dict.get('Modelo'),
+                        Color=vehiculo_dict.get('Color'),
+                        Propiedad=vehiculo_dict.get('Propiedad') or vehiculo_dict.get('Propietario'),
+                        Alquiler=vehiculo_dict.get('Alquiler', False),
+                        Observaciones=vehiculo_dict.get('Observaciones'),
+                        Comprobado=vehiculo_dict.get('Comprobado', False),
+                        Sospechoso=vehiculo_dict.get('Sospechoso', False)
+                    )
                     # Crear VehiculoWithStats con estadísticas
                     vehiculos_with_stats.append(schemas.VehiculoWithStats(
                         **vehiculo.__dict__,
                         num_lecturas_lpr=row.total_lecturas,
-                        num_lecturas_gps=0  # Se podría añadir esta métrica en la vista
+                        num_lecturas_gps=0
                     ))
                 
                 logger.info(f"Obtenidos {len(vehiculos_with_stats)} vehículos del caso {caso_id} mediante vista optimizada")
