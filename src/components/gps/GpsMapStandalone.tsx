@@ -60,134 +60,80 @@ const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion, onNavig
   return (
     <div style={{
       position: 'absolute',
-      top: 0,
       left: 0,
+      bottom: 0,
       width: '100%',
       zIndex: 1000,
-      background: 'white',
-      boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-      borderBottom: '2px solid #228be6',
-      animation: 'slideDown 0.3s',
+      background: 'rgba(60,60,60,0.85)',
+      boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
+      borderTop: '2px solid #228be6',
+      animation: 'slideUp 0.3s',
       fontFamily: 'inherit',
+      color: 'white',
+      padding: 0,
+      backdropFilter: 'blur(4px)'
     }}>
-      <Card shadow="sm" padding="md" radius="md" withBorder style={{ width: '100%', boxSizing: 'border-box', position: 'relative' }}>
+      <Card shadow="sm" padding="md" radius="md" withBorder style={{ width: '100%', boxSizing: 'border-box', position: 'relative', background: 'transparent', border: 'none', color: 'white', boxShadow: 'none' }}>
         <ActionIcon
           variant="subtle"
           color="gray"
-          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
+          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, color: 'white' }}
           onClick={onClose}
           aria-label="Cerrar info"
+          size="sm"
         >
-          <IconX size={20} />
+          <IconX size={18} />
         </ActionIcon>
-        <Card.Section withBorder inheritPadding py="sm">
-          <Group justify="space-between" style={{ minWidth: 0, width: '100%' }}>
-            <Text fw={700} size="sm" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {isLocalizacion ? 'Localización de Interés' : 'Lectura GPS'}
+        <Group justify="space-between" align="center" style={{ minWidth: 0, width: '100%' }}>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <Text fw={700} size="lg" style={{ color: 'white', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 18 }}>
+              {isLocalizacion ? info.titulo : info.Matricula}
             </Text>
-            <Tooltip label={isLocalizacion ? info.titulo : info.Matricula} withArrow>
-              <Badge
-                color="blue"
-                variant="light"
-                size="sm"
-                style={{
-                  maxWidth: 80,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  display: 'block',
-                  padding: '0 8px',
-                }}
-              >
-                {isLocalizacion ? info.titulo : info.Matricula}
-              </Badge>
-            </Tooltip>
+            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 500, color: '#fff' }}>
+              {(() => {
+                const raw = isLocalizacion ? info.fecha_hora : info.Fecha_y_Hora;
+                if (!raw) return null;
+                const [date, time] = raw.split('T');
+                return date && time ? `${date} - ${time.slice(0,8)}` : raw;
+              })()}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              {!isLocalizacion && (
+                <span style={{ marginLeft: 16, fontSize: 13, color: '#eee' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
+              )}
+              {!isLocalizacion && typeof info.duracion_parada_min === 'number' && !isNaN(info.duracion_parada_min) && (
+                <span style={{ marginLeft: 16, fontSize: 13, color: '#ffd700' }}><b>Duración parada:</b> {info.duracion_parada_min.toFixed(1)} min</span>
+              )}
+              <span style={{ marginLeft: 16, fontSize: 13, color: '#eee' }}><b>Coords:</b> {isLocalizacion
+                ? `${typeof info.coordenada_y === 'number' && !isNaN(info.coordenada_y) ? info.coordenada_y.toFixed(5) : '?'}, ${typeof info.coordenada_x === 'number' && !isNaN(info.coordenada_x) ? info.coordenada_x.toFixed(5) : '?'}`
+                : `${typeof info.Coordenada_Y === 'number' && !isNaN(info.Coordenada_Y) ? info.Coordenada_Y.toFixed(5) : '?'}, ${typeof info.Coordenada_X === 'number' && !isNaN(info.Coordenada_X) ? info.Coordenada_X.toFixed(5) : '?'}`
+              }</span>
+            </div>
+            {isLocalizacion && info.descripcion && (
+              <div style={{ marginTop: 4 }}>
+                <span style={{ fontSize: 13, color: '#ffd700', wordBreak: 'break-word' }}><b>Descripción:</b> {info.descripcion}</span>
+              </div>
+            )}
+          </div>
+          <Group gap={8} style={{ marginLeft: 16 }}>
+            {onNavigate && !isLocalizacion && (
+              <>
+                <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('prev')}><IconChevronUp size={20} /></ActionIcon>
+                <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('next')}><IconChevronDown size={20} /></ActionIcon>
+              </>
+            )}
+            {isLocalizacion && onEditLocalizacion && (
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={onEditLocalizacion}><IconMapPin size={20} /></ActionIcon>
+            )}
+            {!isLocalizacion && (
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={info.onGuardarLocalizacion}><IconMapPin size={20} /></ActionIcon>
+            )}
           </Group>
-        </Card.Section>
-        <div style={{ width: '100%', marginTop: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'gray' }} /></span>
-            <span style={{ fontSize: 13, color: '#666', wordBreak: 'break-word' }}>{isLocalizacion ? info.fecha_hora : info.Fecha_y_Hora}</span>
-          </div>
-          {isLocalizacion && info.descripcion && (
-            <div style={{ marginBottom: 4 }}>
-              <span style={{ fontSize: 13, color: '#228be6', wordBreak: 'break-word' }}><b>Descripción:</b> {info.descripcion}</span>
-            </div>
-          )}
-          {!isLocalizacion && (
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: 'gray' }} /></span>
-              <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
-            </div>
-          )}
-          {!isLocalizacion && typeof info.duracion_parada_min === 'number' && !isNaN(info.duracion_parada_min) && (
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'blue' }} /></span>
-              <span style={{ fontSize: 13, color: '#228be6', wordBreak: 'break-word' }}><b>Duración parada:</b> {info.duracion_parada_min.toFixed(1)} min</span>
-            </div>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
-            <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {isLocalizacion
-              ? `${typeof info.coordenada_y === 'number' && !isNaN(info.coordenada_y) ? info.coordenada_y.toFixed(5) : '?'}, ${typeof info.coordenada_x === 'number' && !isNaN(info.coordenada_x) ? info.coordenada_x.toFixed(5) : '?'}`
-              : `${typeof info.Coordenada_Y === 'number' && !isNaN(info.Coordenada_Y) ? info.Coordenada_Y.toFixed(5) : '?'}, ${typeof info.Coordenada_X === 'number' && !isNaN(info.Coordenada_X) ? info.Coordenada_X.toFixed(5) : '?'}`
-            }</span>
-          </div>
-        </div>
-        <Group mt="xs" gap="xs">
-          {!isLocalizacion && onNavigate && (
-            <>
-              <Button 
-                size="xs" 
-                variant="light" 
-                color="blue" 
-                leftSection={<IconChevronUp size={12} />}
-                onClick={() => onNavigate('prev')}
-                style={{ flex: 1 }}
-              >
-                Anterior
-              </Button>
-              <Button 
-                size="xs" 
-                variant="light" 
-                color="blue" 
-                leftSection={<IconChevronDown size={12} />}
-                onClick={() => onNavigate('next')}
-                style={{ flex: 1 }}
-              >
-                Siguiente
-              </Button>
-            </>
-          )}
-          {isLocalizacion && onEditLocalizacion && (
-            <Button 
-              size="xs" 
-              variant="light" 
-              color="blue" 
-              fullWidth
-              leftSection={<IconMapPin size={12} />}
-              onClick={onEditLocalizacion}
-            >
-              Editar Localización
-            </Button>
-          )}
-          {!isLocalizacion && (
-            <Button 
-              size="xs" 
-              variant="light" 
-              color="blue" 
-              fullWidth
-              leftSection={<IconMapPin size={12} />}
-              onClick={info.onGuardarLocalizacion}
-            >
-              Guardar Localización
-            </Button>
-          )}
         </Group>
       </Card>
       <style>{`
-        @keyframes slideDown {
-          from { transform: translateY(-100%); opacity: 0; }
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
