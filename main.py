@@ -2494,3 +2494,23 @@ def get_recent_files(limit: int = 10, db: Session = Depends(get_db), current_use
         )
 
 # --- END Endpoint para Archivos Recientes (Dashboard) ---
+
+@app.get("/casos/{caso_id}/matriculas_gps", response_model=List[str])
+def get_matriculas_gps_por_caso(caso_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    """
+    Devuelve una lista de matrículas únicas (solo GPS) para el caso dado.
+    """
+    caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    user_rol_value = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
+    is_superadmin = user_rol_value == 'superadmin'
+    if not is_superadmin and caso.ID_Grupo != current_user.ID_Grupo:
+        raise HTTPException(status_code=403, detail="No tiene permiso para acceder a las matrículas de este caso")
+    matriculas = db.query(models.Lectura.Matricula)\
+        .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+        .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+        .filter(models.Lectura.Tipo_Fuente == 'GPS')\
+        .distinct()\
+        .all()
+    return [m[0] for m in matriculas if m[0]]

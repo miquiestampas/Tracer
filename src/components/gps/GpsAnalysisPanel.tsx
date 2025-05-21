@@ -659,109 +659,26 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     ['Escape', () => fullscreenMap && setFullscreenMap(false)]
   ]);
 
-  // Función para cargar lecturas GPS con caché
-  const fetchLecturasGps = useCallback(async () => {
-    if (!casoId || !vehiculoObjetivo) return;
-    setLoading(true);
-    try {
-      // Intentar obtener del caché primero
-      const cachedLecturas = gpsCache.getLecturas(casoId, vehiculoObjetivo);
-      if (cachedLecturas) {
-        setLecturas(cachedLecturas);
-        setLoading(false);
-        return;
-      }
-
-      const data = await getLecturasGps(casoId, {
-        matricula: vehiculoObjetivo
-      });
-      setLecturas(data);
-      // Guardar en caché
-      gpsCache.setLecturas(casoId, vehiculoObjetivo, data);
-    } catch (error) {
-      console.error('Error al cargar lecturas GPS:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [casoId, vehiculoObjetivo]);
-
-  // Cargar datos iniciales
+  // Cargar matrículas únicas al montar o cambiar casoId
   useEffect(() => {
-    // No cargamos datos iniciales, solo cuando se seleccione un vehículo
+    if (!casoId) return;
+    setLoadingVehiculos(true);
+    apiClient.get(`/casos/${casoId}/matriculas_gps`).then(res => {
+      const matriculas = res.data || [];
+      setVehiculosDisponibles(matriculas.map((matricula: string) => ({ value: matricula, label: matricula })));
+    }).catch(() => {
+      setVehiculosDisponibles([]);
+    }).finally(() => {
+      setLoadingVehiculos(false);
+    });
+  }, [casoId]);
+
+  // Eliminar la carga masiva de lecturas al inicio
+  useEffect(() => {
     setLecturas([]);
   }, [casoId]);
 
-  // Cargar matrículas únicas al montar o cambiar casoId
-  useEffect(() => {
-    const cargarVehiculos = async () => {
-      if (!casoId) return;
-      setLoadingVehiculos(true);
-      try {
-        const data = await getLecturasGps(casoId);
-        const matriculas = [...new Set(data.map((l: any) => l.Matricula))]
-          .filter((matricula): matricula is string => matricula !== null && matricula !== undefined)
-          .sort();
-        setVehiculosDisponibles(matriculas.map(matricula => ({ value: matricula, label: matricula })));
-      } catch (error) {
-        setVehiculosDisponibles([]);
-      } finally {
-        setLoadingVehiculos(false);
-      }
-    };
-    cargarVehiculos();
-  }, [casoId]);
-
-  // Cargar capas GPS con caché
-  useEffect(() => {
-    if (!casoId) return;
-    (async () => {
-      try {
-        // Intentar obtener del caché primero
-        const cachedCapas = gpsCache.getCapas(casoId);
-        if (cachedCapas) {
-          setCapas(cachedCapas.map(c => ({ ...c, descripcion: c.descripcion || '' })));
-          return;
-        }
-
-        const capasBD = await getGpsCapas(casoId);
-        const capasFormateadas = capasBD.map(c => ({ ...c, descripcion: c.descripcion || '' }));
-        setCapas(capasFormateadas);
-        // Guardar en caché
-        gpsCache.setCapas(casoId, capasFormateadas);
-      } catch (error) {
-        setCapas([]);
-      }
-    })();
-  }, [casoId]);
-
-  // Cargar localizaciones con caché
-  useEffect(() => {
-    if (!casoId) return;
-    (async () => {
-      try {
-        // Intentar obtener del caché primero
-        const cachedLocs = gpsCache.getLocalizaciones(casoId);
-        if (cachedLocs) {
-          setLocalizaciones(cachedLocs);
-          return;
-        }
-
-        const locs = await getLocalizacionesInteres(casoId);
-        setLocalizaciones(locs);
-        // Guardar en caché
-        gpsCache.setLocalizaciones(casoId, locs);
-      } catch (error) {
-        setLocalizaciones([]);
-      }
-    })();
-  }, [casoId]);
-
-  // Función para manejar cambios en los filtros
-  const handleFilterChange = useCallback((updates: Partial<typeof filters>) => {
-    setFilters(prev => ({ ...prev, ...updates }));
-  }, []);
-
-  // Función para aplicar filtros con caché
+  // Modificar handleFiltrar para que solo cargue lecturas cuando el usuario pulse el botón
   const handleFiltrar = useCallback(async () => {
     if (!vehiculoObjetivo) return;
     setLoading(true);
@@ -773,7 +690,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
         setLoading(false);
         return;
       }
-
       const data = await getLecturasGps(casoId, {
         fecha_inicio: filters.fechaInicio || undefined,
         hora_inicio: filters.horaInicio || undefined,
@@ -786,7 +702,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
         matricula: vehiculoObjetivo
       });
       setLecturas(data);
-      // Guardar en caché
       gpsCache.setLecturas(casoId, cacheKey, data);
     } catch (error) {
       console.error('Error al filtrar lecturas GPS:', error);
@@ -794,6 +709,11 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
       setLoading(false);
     }
   }, [casoId, filters, vehiculoObjetivo]);
+
+  // Función para manejar cambios en los filtros
+  const handleFilterChange = useCallback((updates: Partial<typeof filters>) => {
+    setFilters(prev => ({ ...prev, ...updates }));
+  }, []);
 
   // Función para limpiar filtros
   const handleLimpiar = useCallback(() => {
@@ -808,11 +728,11 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
       zonaSeleccionada: null
     });
     if (vehiculoObjetivo) {
-      fetchLecturasGps();
+      handleFiltrar();
     } else {
       setLecturas([]);
     }
-  }, [fetchLecturasGps, vehiculoObjetivo]);
+  }, [handleFiltrar, vehiculoObjetivo]);
 
   // Función para limpiar el mapa completamente (igual que MapPanel)
   const handleLimpiarMapa = () => {
@@ -875,7 +795,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
       const capaGuardada = await createGpsCapa(casoId, nuevaCapaCompleta);
       setCapas(prev => [...prev, { ...capaGuardada, descripcion: capaGuardada.descripcion || '' }]);
       setLecturas([]);
-      setNuevaCapa({ nombre: '', color: '#228be6' });
+      setNuevaCapa({ nombre: '', color: '#228be7' });
       setMostrarFormularioCapa(false);
       setEditandoCapa(null);
     } catch (e: any) {
