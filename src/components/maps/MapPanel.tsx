@@ -8,7 +8,7 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh, IconChevronUp, IconChevronDown } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
 
@@ -123,40 +123,54 @@ interface MapControls {
 }
 
 // --- InfoBanner (copiado de GpsMapStandalone) ---
-const InfoBanner = ({ info, onClose }: {
+const InfoBanner = ({ info, onClose, onNavigate }: {
   info: any;
   onClose: () => void;
+  onNavigate?: (direction: 'prev' | 'next') => void;
 }) => {
   if (!info) return null;
+  const isLector = info.tipo === 'lector';
   return (
     <div style={{
       position: 'absolute',
-      top: 0,
       left: 0,
+      bottom: 0,
       width: '100%',
       zIndex: 2001,
-      background: 'white',
-      boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-      borderBottom: '2px solid #228be6',
-      animation: 'slideDown 0.3s',
+      background: 'rgba(60,60,60,0.85)',
+      boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
+      borderTop: '2px solid #228be6',
+      animation: 'slideUp 0.3s',
       fontFamily: 'inherit',
+      color: 'white',
+      padding: 0,
+      backdropFilter: 'blur(4px)'
     }}>
-      <Card shadow="sm" padding="md" radius="md" withBorder style={{ width: '100%', boxSizing: 'border-box', position: 'relative' }}>
+      <Card shadow="sm" padding="md" radius="md" withBorder style={{ width: '100%', boxSizing: 'border-box', position: 'relative', background: 'transparent', border: 'none', color: 'white', boxShadow: 'none' }}>
         <ActionIcon
           variant="subtle"
           color="gray"
-          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
+          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, color: 'white' }}
           onClick={onClose}
           aria-label="Cerrar info"
+          size="sm"
         >
-          <IconX size={20} />
+          <IconX size={18} />
         </ActionIcon>
-        <Card.Section withBorder inheritPadding py="sm">
-          <Group justify="space-between" style={{ minWidth: 0, width: '100%' }}>
-            <Text fw={700} size="sm" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {info.tipo === 'lector' ? 'Lector LPR' : 'Lectura LPR'}
+        <Group justify="space-between" align="center" style={{ minWidth: 0, width: '100%' }}>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <Text fw={700} size="lg" style={{ color: 'white', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 18 }}>
+              {isLector ? info.ID_Lector : info.Matricula}
             </Text>
-            <Tooltip label={info.tipo === 'lector' ? info.ID_Lector : info.Matricula} withArrow>
+            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 500, color: '#fff' }}>
+              {(() => {
+                const raw = isLector ? info.Fecha_Alta : info.Fecha_y_Hora;
+                if (!raw) return null;
+                const [date, time] = raw.split('T');
+                return date && time ? `${date} - ${time?.slice(0,8)}` : raw;
+              })()}
+            </div>
+            <Tooltip label={isLector ? info.ID_Lector : info.Matricula} withArrow>
               <Badge
                 color="blue"
                 variant="light"
@@ -168,58 +182,39 @@ const InfoBanner = ({ info, onClose }: {
                   whiteSpace: 'nowrap',
                   display: 'block',
                   padding: '0 8px',
+                  marginTop: 4
                 }}
               >
-                {info.tipo === 'lector' ? info.ID_Lector : info.Matricula}
+                {isLector ? info.ID_Lector : info.Matricula}
               </Badge>
             </Tooltip>
-          </Group>
-        </Card.Section>
-        <div style={{ width: '100%', marginTop: 8 }}>
-          {info.tipo === 'lector' ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
-              </div>
-              {info.Nombre && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Nombre:</b> {info.Nombre}</div>}
-              {info.Carretera && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Carretera:</b> {info.Carretera}</div>}
-              {info.Provincia && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Provincia:</b> {info.Provincia}</div>}
-              {info.Organismo_Regulador && <div style={{ fontSize: 13, marginBottom: 4 }}><b>Organismo:</b> {info.Organismo_Regulador}</div>}
-              {info.lecturas && info.lecturas.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              {isLector ? (
+                <span style={{ fontSize: 13, color: '#eee', wordBreak: 'break-word' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
+              ) : (
                 <>
-                  <div style={{ fontWeight: 700, fontSize: 13, marginTop: 8 }}>Pasos registrados:</div>
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    {info.lecturas.map((lectura: any, idx: number) => (
-                      <li key={idx} style={{ fontSize: 12 }}>
-                        {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')} - {lectura.Matricula} {lectura.Velocidad ? `(${lectura.Velocidad} km/h)` : ''}
-                      </li>
-                    ))}
-                  </ul>
+                  <span style={{ fontSize: 13, color: '#eee', wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
+                  <span style={{ marginLeft: 16, fontSize: 13, color: '#eee' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
                 </>
               )}
-            </>
-          ) : (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, color: '#666', wordBreak: 'break-word' }}>{dayjs(info.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
+            </div>
+            {isLector && info.Nombre && (
+              <div style={{ marginTop: 4 }}>
+                <span style={{ fontSize: 13, color: '#ffd700', wordBreak: 'break-word' }}><b>Nombre:</b> {info.Nombre}</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: 'gray' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
-              </div>
-            </>
+            )}
+          </div>
+          {onNavigate && !isLector && (
+            <Group gap={8} style={{ marginLeft: 16 }}>
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('prev')}><IconChevronUp size={20} /></ActionIcon>
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('next')}><IconChevronDown size={20} /></ActionIcon>
+            </Group>
           )}
-        </div>
+        </Group>
       </Card>
       <style>{`
-        @keyframes slideDown {
-          from { transform: translateY(-100%); opacity: 0; }
+        @keyframes slideUp {
+          from { transform: translateY(100%); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
