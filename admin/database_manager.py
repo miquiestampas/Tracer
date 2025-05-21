@@ -72,6 +72,10 @@ def get_database_status(db: Session = Depends(get_db)):
                 "count": count
             })
         
+        # Verificar si existe algún superadmin
+        superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == 'superadmin').count()
+        needs_superadmin_setup = superadmin_count == 0
+        
         # Obtener tamaño del archivo de la base de datos
         db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tracer.db')
         size_bytes = os.path.getsize(db_path) if os.path.exists(db_path) else 0
@@ -85,7 +89,8 @@ def get_database_status(db: Session = Depends(get_db)):
             "tables": tables,
             "size_bytes": size_bytes,
             "last_backup": last_backup,
-            "backups_count": len(backups)
+            "backups_count": len(backups),
+            "needs_superadmin_setup": needs_superadmin_setup
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
