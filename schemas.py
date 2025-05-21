@@ -38,8 +38,10 @@ class VehiculoBase(BaseModel):
     Marca: Optional[str] = Field(None, example="Toyota")
     Modelo: Optional[str] = Field(None, example="Corolla")
     Color: Optional[str] = Field(None, example="Azul")
-    Propietario: Optional[str] = Field(None, example="Juan Pérez")
     Observaciones: Optional[str] = Field(None, example="Visto en múltiples puntos")
+    Alquiler: Optional[bool] = Field(False, example=True)
+    Comprobado: Optional[bool] = Field(False, example=True)
+    Sospechoso: Optional[bool] = Field(False, example=True)
 
 # --- Schemas para Creación (POST) ---
 class GrupoCreate(GrupoBase):
@@ -61,8 +63,10 @@ class VehiculoUpdate(BaseModel):
     Marca: Optional[str] = None
     Modelo: Optional[str] = None
     Color: Optional[str] = None
-    Propietario: Optional[str] = None
     Observaciones: Optional[str] = None
+    Alquiler: Optional[bool] = None
+    Comprobado: Optional[bool] = None
+    Sospechoso: Optional[bool] = None
 
 class Vehiculo(VehiculoBase):
     ID_Vehiculo: int
@@ -141,9 +145,8 @@ class VehiculoUpdate(BaseModel):
     Marca: Optional[str] = Field(None, example="Seat")
     Modelo: Optional[str] = Field(None, example="Ibiza")
     Color: Optional[str] = Field(None, example="Rojo")
-    Propiedad: Optional[str] = Field(None, example="Juan Pérez")
-    Alquiler: Optional[bool] = Field(None)
     Observaciones: Optional[str] = Field(None, example="Actualización de notas")
+    Alquiler: Optional[bool] = Field(None)
     Comprobado: Optional[bool] = Field(None)
     Sospechoso: Optional[bool] = Field(None)
 

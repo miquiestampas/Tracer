@@ -8,14 +8,12 @@ import { notifications } from '@mantine/notifications';
 import { openConfirmModal } from '@mantine/modals';
 import appEventEmitter from '../../utils/eventEmitter';
 import _ from 'lodash';
-import { useAuth } from '../../context/AuthContext';
 
 interface VehiculosPanelProps {
     casoId: number;
 }
 
 function VehiculosPanel({ casoId }: VehiculosPanelProps) {
-    const { user } = useAuth();
     const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -37,19 +35,6 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
     const [comprobadoEdit, setComprobadoEdit] = useState(false);
     const [sospechosoEdit, setSospechosoEdit] = useState(false);
     const [loadingEdit, setLoadingEdit] = useState(false);
-
-    // Añadir estados para el modal de creación manual
-    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [matriculaNew, setMatriculaNew] = useState('');
-    const [marcaNew, setMarcaNew] = useState('');
-    const [modeloNew, setModeloNew] = useState('');
-    const [colorNew, setColorNew] = useState('');
-    const [propiedadNew, setPropiedadNew] = useState('');
-    const [alquilerNew, setAlquilerNew] = useState(false);
-    const [observacionesNew, setObservacionesNew] = useState('');
-    const [comprobadoNew, setComprobadoNew] = useState(false);
-    const [sospechosoNew, setSospechosoNew] = useState(false);
-    const [loadingCreate, setLoadingCreate] = useState(false);
 
     const sortOptions = [
         { value: 'sospechoso', label: 'Sospechosos primero' },
@@ -181,7 +166,7 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
         if (!selectedVehiculo) return;
         setLoadingEdit(true);
         try {
-            const updatePayload = {
+            await apiClient.put(`/vehiculos/${selectedVehiculo.ID_Vehiculo}`, {
                 Marca: marcaEdit || null,
                 Modelo: modeloEdit || null,
                 Color: colorEdit || null,
@@ -189,9 +174,8 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                 Alquiler: alquilerEdit,
                 Observaciones: observacionesEdit || null,
                 Comprobado: comprobadoEdit,
-                Sospechoso: sospechosoEdit
-            };
-            await apiClient.put(`/vehiculos/${selectedVehiculo.ID_Vehiculo}`, updatePayload);
+                Sospechoso: sospechosoEdit,
+            });
             notifications.show({ 
                 title: 'Éxito', 
                 message: `Vehículo ${selectedVehiculo.Matricula} actualizado.`, 
@@ -200,14 +184,13 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
             setIsEditModalOpen(false);
             fetchVehiculos();
         } catch (err: any) {
-            console.error("Error updating vehiculo:", err);
             notifications.show({ 
                 title: 'Error al Actualizar', 
                 message: err.response?.data?.detail || 'No se pudo guardar los cambios.', 
                 color: 'red' 
             });
         } finally {
-            setLoadingEdit(false);
+             setLoadingEdit(false);
         }
     }, [selectedVehiculo, marcaEdit, modeloEdit, colorEdit, propiedadEdit, alquilerEdit, observacionesEdit, comprobadoEdit, sospechosoEdit, fetchVehiculos]);
 
@@ -471,55 +454,6 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
             </Modal>
     );
 
-    // Función para abrir el modal y resetear campos
-    const openCreateModal = () => {
-        setMatriculaNew('');
-        setMarcaNew('');
-        setModeloNew('');
-        setColorNew('');
-        setPropiedadNew('');
-        setAlquilerNew(false);
-        setObservacionesNew('');
-        setComprobadoNew(false);
-        setSospechosoNew(false);
-        setIsCreateModalOpen(true);
-    };
-
-    // Función para crear vehículo
-    const handleCreateVehiculo = async () => {
-        setLoadingCreate(true);
-        try {
-            const createPayload = {
-                Matricula: matriculaNew.trim().toUpperCase(),
-                Marca: marcaNew || null,
-                Modelo: modeloNew || null,
-                Color: colorNew || null,
-                Propiedad: propiedadNew || null,
-                Alquiler: alquilerNew,
-                Observaciones: observacionesNew || null,
-                Comprobado: comprobadoNew,
-                Sospechoso: sospechosoNew
-            };
-            await apiClient.post('/vehiculos', createPayload);
-            notifications.show({ 
-                title: 'Vehículo añadido', 
-                message: 'Vehículo creado correctamente.', 
-                color: 'green' 
-            });
-            setIsCreateModalOpen(false);
-            fetchVehiculos();
-        } catch (err: any) {
-            console.error("Error creating vehiculo:", err);
-            notifications.show({ 
-                title: 'Error al crear vehículo', 
-                message: err.response?.data?.detail || 'No se pudo crear el vehículo.', 
-                color: 'red' 
-            });
-        } finally {
-            setLoadingCreate(false);
-        }
-    };
-
     if (loading) return <LoadingOverlay visible />;
     if (error) return <Alert color="red" title="Error">{error}</Alert>;
 
@@ -547,26 +481,24 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                         </Menu.Dropdown>
                     </Menu>
                     <Button
-                        variant="outline"
+                        variant="light"
                         leftSection={<IconRefresh size={16} />}
                         onClick={fetchVehiculos}
                         size="xs"
-                        color="blue"
                         style={{
-                          backgroundColor: 'white',
+                          backgroundColor: 'var(--mantine-color-blue-0)',
                           color: 'var(--mantine-color-blue-6)',
-                          border: '1px solid var(--mantine-color-blue-3)',
-                          fontWeight: 500,
+                          border: 'none',
+                          fontWeight: 600,
                           borderRadius: 8,
-                          paddingLeft: 14,
-                          paddingRight: 14,
+                          paddingLeft: 18,
+                          paddingRight: 18,
                           height: 32,
                           boxShadow: 'none',
                           fontSize: 15,
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
-                          minWidth: 0
                         }}
                     >
                         Actualizar
@@ -574,42 +506,12 @@ function VehiculosPanel({ casoId }: VehiculosPanelProps) {
                 </Group>
             </Group>
 
-            {user?.Rol === 'superadmin' && (
-                <Group justify="flex-start" mb="md">
-                    <Button leftSection={<IconCar size={18} />} color="blue" onClick={openCreateModal}>
-                        Añadir vehículo manualmente
-                    </Button>
-                </Group>
-            )}
-
             <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="md">
                 {sortedVehiculos.map(renderVehiculoCard)}
             </SimpleGrid>
 
             {renderDetailModal()}
             {renderEditModal()}
-
-            <Modal opened={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Añadir Vehículo Manual" centered>
-                <Stack>
-                    <TextInput label="Matrícula" value={matriculaNew} onChange={e => setMatriculaNew(e.target.value)} required autoFocus />
-                    <TextInput label="Marca" value={marcaNew} onChange={e => setMarcaNew(e.target.value)} />
-                    <TextInput label="Modelo" value={modeloNew} onChange={e => setModeloNew(e.target.value)} />
-                    <TextInput label="Color" value={colorNew} onChange={e => setColorNew(e.target.value)} />
-                    <TextInput label="Propiedad" value={propiedadNew} onChange={e => setPropiedadNew(e.target.value)} />
-                    <Checkbox label="Alquiler" checked={alquilerNew} onChange={e => setAlquilerNew(e.currentTarget.checked)} />
-                    <Textarea label="Observaciones" value={observacionesNew} onChange={e => setObservacionesNew(e.target.value)} minRows={2} />
-                    <Group>
-                        <Checkbox label="Comprobado" checked={comprobadoNew} onChange={e => setComprobadoNew(e.currentTarget.checked)} />
-                        <Checkbox label="Sospechoso" checked={sospechosoNew} onChange={e => setSospechosoNew(e.currentTarget.checked)} />
-                    </Group>
-                    <Group justify="flex-end">
-                        <Button variant="default" onClick={() => setIsCreateModalOpen(false)} disabled={loadingCreate}>Cancelar</Button>
-                        <Button color="blue" onClick={handleCreateVehiculo} loading={loadingCreate} disabled={!matriculaNew.trim()}>
-                            Guardar
-                        </Button>
-                    </Group>
-                </Stack>
-            </Modal>
         </Box>
     );
 }
