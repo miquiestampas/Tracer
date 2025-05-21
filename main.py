@@ -407,6 +407,24 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": error_details},
 )
 
+# --- Manejador global de excepciones ---
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Error no manejado en {request.method} {request.url.path}: {str(exc)}")
+    
+    # Para errores HTTP ya manejados, mantener su comportamiento
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+        )
+    
+    # Para otros errores, devolver 500
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Error interno del servidor"},
+    )
+
 # --- Directorio para guardar archivos subidos (RUTA ABSOLUTA) ---
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 UPLOADS_DIR = BASE_DIR / "uploads"
@@ -2514,3 +2532,556 @@ def get_matriculas_gps_por_caso(caso_id: int, db: Session = Depends(get_db), cur
         .distinct()\
         .all()
     return [m[0] for m in matriculas if m[0]]
+
+# --- ENDPOINTS ADMIN: USUARIOS Y GRUPOS ---
+from sqlalchemy.orm import joinedload
+
+@app.get("/api/usuarios", response_model=List[schemas.Usuario])
+def get_usuarios(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    """Devuelve la lista de todos los usuarios (solo superadmin)."""
+    usuarios = db.query(models.Usuario).options(joinedload(models.Usuario.grupo)).all()
+    # Incluir el grupo en la respuesta si existe
+    for u in usuarios:
+        if u.ID_Grupo and not u.grupo:
+            u.grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == u.ID_Grupo).first()
+    return usuarios
+
+@app.post("/api/usuarios", response_model=schemas.Usuario)
+def create_usuario(usuario: schemas.UsuarioCreate, db: Session = Depends(get_db)):
+    """Crea un nuevo usuario. Si no hay superadmin, permite crear uno sin autenticación."""
+    # Verificar si ya existe un usuario con ese User
+    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == usuario.User).first()
+    if db_usuario:
+        raise HTTPException(status_code=400, detail="Ya existe un usuario con ese número de carné")
+    
+    # Verificar si es la primera vez (no hay superadmin)
+    superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == 'superadmin').count()
+    is_first_time = superadmin_count == 0
+    
+    # Si no es primera vez, verificar que el usuario actual es superadmin
+    if not is_first_time:
+        try:
+            current_user = get_current_active_superadmin(db)
+        except HTTPException:
+            raise HTTPException(status_code=403, detail="Solo los superadmin pueden crear usuarios")
+    
+    # Si es primera vez, solo permitir crear superadmin
+    if is_first_time and usuario.Rol != 'superadmin':
+        raise HTTPException(status_code=400, detail="En la primera configuración solo se puede crear un superadmin")
+    
+    # Si no es primera vez y el rol es superadmin, verificar que el usuario actual es superadmin
+    if not is_first_time and usuario.Rol == 'superadmin':
+        try:
+            current_user = get_current_active_superadmin(db)
+        except HTTPException:
+            raise HTTPException(status_code=403, detail="Solo los superadmin pueden crear otros superadmin")
+    
+    # Verificar que el grupo existe si se especificó uno
+    if usuario.ID_Grupo is not None:
+        grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == usuario.ID_Grupo).first()
+        if not grupo:
+            raise HTTPException(status_code=400, detail="El grupo especificado no existe")
+    
+    # Crear el usuario
+    db_usuario = models.Usuario(
+        User=usuario.User,
+        Contraseña=get_password_hash(usuario.Contraseña),
+        Rol=usuario.Rol,
+        ID_Grupo=usuario.ID_Grupo
+    )
+    db.add(db_usuario)
+    db.commit()
+    db.refresh(db_usuario)
+    return db_usuario
+
+@app.put("/api/usuarios/{user_id}", response_model=schemas.Usuario)
+def update_usuario(user_id: str, usuario: schemas.UsuarioUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    """Actualiza un usuario existente (solo superadmin)."""
+    # Verificar que el usuario existe
+    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
+    if not db_usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # No permitir cambiar el rol de superadmin si es el último
+    if db_usuario.Rol == 'superadmin' and usuario.Rol != 'superadmin':
+        superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == 'superadmin').count()
+        if superadmin_count <= 1:
+            raise HTTPException(status_code=400, detail="No se puede cambiar el rol del último superadmin")
+    
+    # Verificar que el grupo existe si se especifica
+    if usuario.ID_Grupo is not None:
+        grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == usuario.ID_Grupo).first()
+        if not grupo:
+            raise HTTPException(status_code=400, detail="El grupo especificado no existe")
+    
+    # Actualizar los campos
+    update_data = usuario.model_dump(exclude_unset=True)
+    if "Contraseña" in update_data:
+        update_data["Contraseña"] = get_password_hash(update_data["Contraseña"])
+    for key, value in update_data.items():
+        setattr(db_usuario, key, value)
+    
+    db.commit()
+    db.refresh(db_usuario)
+    return db_usuario
+
+@app.delete("/api/usuarios/{user_id}", status_code=204)
+def delete_usuario(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_superadmin)
+):
+    """Elimina un usuario (solo superadmin)."""
+    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
+    if not db_usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # No permitir eliminar el último superadmin
+    if db_usuario.Rol == 'superadmin':
+        superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == 'superadmin').count()
+        if superadmin_count <= 1:
+            raise HTTPException(status_code=400, detail="No se puede eliminar el último superadmin")
+    
+    db.delete(db_usuario)
+    db.commit()
+    return None
+
+@app.get("/api/grupos", response_model=List[schemas.Grupo])
+def get_grupos(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    """Devuelve la lista de todos los grupos (solo superadmin)."""
+    return db.query(models.Grupo).all()
+
+@app.post("/api/grupos", response_model=schemas.Grupo)
+def create_grupo(grupo: schemas.GrupoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    """Crea un nuevo grupo (solo superadmin)."""
+    # Verificar si ya existe un grupo con ese nombre
+    if db.query(models.Grupo).filter(models.Grupo.Nombre == grupo.Nombre).first():
+        raise HTTPException(status_code=400, detail="Ya existe un grupo con ese nombre")
+    
+    # Crear el grupo
+    db_grupo = models.Grupo(
+        Nombre=grupo.Nombre,
+        Descripcion=grupo.Descripcion,
+        Fecha_Creacion=datetime.now()
+    )
+    db.add(db_grupo)
+    db.commit()
+    db.refresh(db_grupo)
+    return db_grupo
+
+@app.put("/api/grupos/{grupo_id}", response_model=schemas.Grupo)
+def update_grupo(grupo_id: int, grupo: schemas.GrupoUpdate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    """Actualiza un grupo existente (solo superadmin)."""
+    # Verificar que el grupo existe
+    db_grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == grupo_id).first()
+    if not db_grupo:
+        raise HTTPException(status_code=404, detail="Grupo no encontrado")
+    
+    # Verificar si ya existe otro grupo con ese nombre
+    if grupo.Nombre and grupo.Nombre != db_grupo.Nombre:
+        if db.query(models.Grupo).filter(models.Grupo.Nombre == grupo.Nombre).first():
+            raise HTTPException(status_code=400, detail="Ya existe un grupo con ese nombre")
+    
+    # Actualizar los campos
+    update_data = grupo.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_grupo, key, value)
+    
+    db.commit()
+    db.refresh(db_grupo)
+    return db_grupo
+
+@app.delete("/api/grupos/{grupo_id}")
+def delete_grupo(grupo_id: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    """Elimina un grupo existente (solo superadmin)."""
+    # Verificar que el grupo existe
+    db_grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == grupo_id).first()
+    if not db_grupo:
+        raise HTTPException(status_code=404, detail="Grupo no encontrado")
+    
+    # Verificar si hay casos asociados al grupo
+    casos_count = db.query(models.Caso).filter(models.Caso.ID_Grupo == grupo_id).count()
+    if casos_count > 0:
+        raise HTTPException(status_code=400, detail="No se puede eliminar un grupo que tiene casos asociados")
+    
+    # Verificar si hay usuarios asociados al grupo
+    usuarios_count = db.query(models.Usuario).filter(models.Usuario.ID_Grupo == grupo_id).count()
+    if usuarios_count > 0:
+        raise HTTPException(status_code=400, detail="No se puede eliminar un grupo que tiene usuarios asociados")
+    
+    # Eliminar el grupo
+    db.delete(db_grupo)
+    db.commit()
+    return {"message": "Grupo eliminado correctamente"}
+
+@app.get("/api/admin/database/status")
+def get_database_status(db: Session = Depends(get_db)):
+    """Obtiene el estado actual de la base de datos y verifica si se necesita crear un superadmin."""
+    try:
+        # Verificar si existe algún superadmin
+        superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == 'superadmin').count()
+        needs_superadmin_setup = superadmin_count == 0
+        
+        # Obtener información de las tablas
+        tables = []
+        for table in Base.metadata.tables:
+            count = db.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+            tables.append({
+                "name": table,
+                "count": count
+            })
+        
+        # Obtener tamaño del archivo de la base de datos
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tracer.db')
+        size_bytes = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+        
+        return {
+            "status": "active",
+            "tables": tables,
+            "size_bytes": size_bytes,
+            "needs_superadmin_setup": needs_superadmin_setup
+        }
+    except Exception as e:
+        logger.error(f"Error al obtener el estado de la base de datos: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/usuarios/{user_id}")
+def delete_usuario(user_id: str, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
+    """Elimina un usuario existente (solo superadmin)."""
+    # Verificar que el usuario existe
+    db_usuario = db.query(models.Usuario).filter(models.Usuario.User == user_id).first()
+    if not db_usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # No permitir eliminar el último superadmin
+    if db_usuario.Rol == 'superadmin':
+        superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == 'superadmin').count()
+        if superadmin_count <= 1:
+            raise HTTPException(status_code=400, detail="No se puede eliminar el último superadmin")
+    
+    # Eliminar el usuario
+    db.delete(db_usuario)
+    db.commit()
+    return {"message": "Usuario eliminado correctamente"}
+
+# --- Endpoint para crear un nuevo usuario ---
+@app.post("/api/usuarios", response_model=schemas.Usuario)
+async def create_usuario(
+    usuario: schemas.UsuarioCreate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    try:
+        # Verificar si ya existe un usuario con el mismo username
+        if db.query(models.Usuario).filter(models.Usuario.Username == usuario.Username).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe un usuario con ese nombre de usuario"
+            )
+
+        # Contar cuántos superadmins hay
+        superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == "superadmin").count()
+        
+        # Si es el primer usuario, solo permitir crear superadmin
+        if superadmin_count == 0:
+            if usuario.Rol != "superadmin":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El primer usuario debe ser un superadmin"
+                )
+        else:
+            # Si no es el primer usuario, verificar que el usuario actual es superadmin
+            if current_user.Rol != "superadmin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Solo los superadmins pueden crear usuarios"
+                )
+            
+            # Si se intenta crear un superadmin, verificar que el usuario actual es superadmin
+            if usuario.Rol == "superadmin" and current_user.Rol != "superadmin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Solo los superadmins pueden crear otros superadmins"
+                )
+
+        # Verificar que el grupo existe si se especificó uno
+        if usuario.ID_Grupo:
+            grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == usuario.ID_Grupo).first()
+            if not grupo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El grupo con ID {usuario.ID_Grupo} no existe"
+                )
+
+        # Crear el usuario
+        db_usuario = models.Usuario(
+            Username=usuario.Username,
+            Password=get_password_hash(usuario.Password),  # La contraseña ya está hasheada en el modelo
+            Nombre=usuario.Nombre,
+            Apellido=usuario.Apellido,
+            Email=usuario.Email,
+            Rol=usuario.Rol,
+            ID_Grupo=usuario.ID_Grupo
+        )
+        db.add(db_usuario)
+        db.commit()
+        db.refresh(db_usuario)
+        return db_usuario
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error al crear usuario")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al crear el usuario"
+        )
+
+# --- Endpoint para actualizar un usuario existente ---
+@app.put("/api/usuarios/{user_id}", response_model=schemas.Usuario)
+async def update_usuario(
+    user_id: int,
+    usuario: schemas.UsuarioUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    try:
+        # Verificar que el usuario existe
+        db_usuario = db.query(models.Usuario).filter(models.Usuario.ID_Usuario == user_id).first()
+        if not db_usuario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado"
+            )
+
+        # Verificar que el usuario actual es superadmin
+        if current_user.Rol != "superadmin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo los superadmins pueden actualizar usuarios"
+            )
+
+        # Si se intenta cambiar el rol de un superadmin, verificar que no sea el último
+        if usuario.Rol and usuario.Rol != db_usuario.Rol and db_usuario.Rol == "superadmin":
+            superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == "superadmin").count()
+            if superadmin_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No se puede cambiar el rol del último superadmin"
+                )
+
+        # Verificar que el grupo existe si se especificó uno
+        if usuario.ID_Grupo:
+            grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == usuario.ID_Grupo).first()
+            if not grupo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El grupo con ID {usuario.ID_Grupo} no existe"
+                )
+
+        # Actualizar los campos del usuario
+        for field, value in usuario.dict(exclude_unset=True).items():
+            setattr(db_usuario, field, value)
+
+        db.commit()
+        db.refresh(db_usuario)
+        return db_usuario
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error al actualizar usuario")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al actualizar el usuario"
+        )
+
+# --- Endpoint para eliminar un usuario ---
+@app.delete("/api/usuarios/{user_id}")
+async def delete_usuario(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    try:
+        # Verificar que el usuario existe
+        db_usuario = db.query(models.Usuario).filter(models.Usuario.ID_Usuario == user_id).first()
+        if not db_usuario:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado"
+            )
+
+        # Verificar que el usuario actual es superadmin
+        if current_user.Rol != "superadmin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo los superadmins pueden eliminar usuarios"
+            )
+
+        # No permitir eliminar el último superadmin
+        if db_usuario.Rol == "superadmin":
+            superadmin_count = db.query(models.Usuario).filter(models.Usuario.Rol == "superadmin").count()
+            if superadmin_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No se puede eliminar el último superadmin"
+                )
+
+        # Eliminar el usuario
+        db.delete(db_usuario)
+        db.commit()
+        return {"message": "Usuario eliminado correctamente"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error al eliminar usuario")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al eliminar el usuario"
+        )
+
+# --- Endpoint para crear un nuevo grupo ---
+@app.post("/api/grupos", response_model=schemas.Grupo)
+async def create_grupo(
+    grupo: schemas.GrupoCreate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    try:
+        # Verificar que el usuario actual es superadmin
+        if current_user.Rol != "superadmin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo los superadmins pueden crear grupos"
+            )
+
+        # Verificar si ya existe un grupo con el mismo nombre
+        if db.query(models.Grupo).filter(models.Grupo.Nombre == grupo.Nombre).first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ya existe un grupo con ese nombre"
+            )
+
+        # Crear el grupo
+        db_grupo = models.Grupo(
+            Nombre=grupo.Nombre,
+            Descripcion=grupo.Descripcion,
+            Fecha_Creacion=datetime.now()
+        )
+        db.add(db_grupo)
+        db.commit()
+        db.refresh(db_grupo)
+        return db_grupo
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error al crear grupo")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al crear el grupo"
+        )
+
+# --- Endpoint para actualizar un grupo existente ---
+@app.put("/api/grupos/{grupo_id}", response_model=schemas.Grupo)
+async def update_grupo(
+    grupo_id: int,
+    grupo: schemas.GrupoUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    try:
+        # Verificar que el usuario actual es superadmin
+        if current_user.Rol != "superadmin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo los superadmins pueden actualizar grupos"
+            )
+
+        # Verificar que el grupo existe
+        db_grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == grupo_id).first()
+        if not db_grupo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Grupo no encontrado"
+            )
+
+        # Si se intenta cambiar el nombre, verificar que no exista otro grupo con ese nombre
+        if grupo.Nombre and grupo.Nombre != db_grupo.Nombre:
+            if db.query(models.Grupo).filter(models.Grupo.Nombre == grupo.Nombre).first():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Ya existe un grupo con ese nombre"
+                )
+
+        # Actualizar los campos del grupo
+        for field, value in grupo.dict(exclude_unset=True).items():
+            setattr(db_grupo, field, value)
+
+        db.commit()
+        db.refresh(db_grupo)
+        return db_grupo
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error al actualizar grupo")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al actualizar el grupo"
+        )
+
+# --- Endpoint para eliminar un grupo ---
+@app.delete("/api/grupos/{grupo_id}")
+async def delete_grupo(
+    grupo_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    try:
+        # Verificar que el usuario actual es superadmin
+        if current_user.Rol != "superadmin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Solo los superadmins pueden eliminar grupos"
+            )
+
+        # Verificar que el grupo existe
+        db_grupo = db.query(models.Grupo).filter(models.Grupo.ID_Grupo == grupo_id).first()
+        if not db_grupo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Grupo no encontrado"
+            )
+
+        # Verificar que el grupo no tiene casos asociados
+        casos_count = db.query(models.Caso).filter(models.Caso.ID_Grupo == grupo_id).count()
+        if casos_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede eliminar un grupo que tiene casos asociados"
+            )
+
+        # Verificar que el grupo no tiene usuarios asociados
+        usuarios_count = db.query(models.Usuario).filter(models.Usuario.ID_Grupo == grupo_id).count()
+        if usuarios_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No se puede eliminar un grupo que tiene usuarios asociados"
+            )
+
+        # Eliminar el grupo
+        db.delete(db_grupo)
+        db.commit()
+        return {"message": "Grupo eliminado correctamente"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error al eliminar grupo")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al eliminar el grupo"
+        )

@@ -64,7 +64,7 @@ const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion, onNavig
       bottom: 0,
       width: '100%',
       zIndex: 1000,
-      background: 'rgba(60,60,60,0.85)',
+      background: 'rgba(60,60,60,0.65)',
       boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
       borderTop: '2px solid #228be6',
       animation: 'slideUp 0.3s',
@@ -101,7 +101,7 @@ const InfoBanner = ({ info, onClose, onEditLocalizacion, isLocalizacion, onNavig
               {!isLocalizacion && (
                 <span style={{ marginLeft: 16, fontSize: 13, color: '#eee' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
               )}
-              {!isLocalizacion && typeof info.duracion_parada_min === 'number' && !isNaN(info.duracion_parada_min) && (
+              {!isLocalizacion && typeof info.duracion_parada_min === 'number' && !isNaN(info.duracion_parada_min) && info.duracion_parada_min >= 0.33 && (
                 <span style={{ marginLeft: 16, fontSize: 13, color: '#ffd700' }}><b>Duración parada:</b> {info.duracion_parada_min.toFixed(1)} min</span>
               )}
               <span style={{ marginLeft: 16, fontSize: 13, color: '#eee' }}><b>Coords:</b> {isLocalizacion

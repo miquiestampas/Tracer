@@ -468,3 +468,8 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
     # Podríamos añadir roles u otros datos aquí si fuera necesario en el payload del token
+
+# --- Schemas para Actualización (PUT) ---
+class GrupoUpdate(BaseModel):
+    Nombre: Optional[str] = Field(None, example="Grupo de Investigación 1")
+    Descripcion: Optional[str] = Field(None, example="Grupo especializado en investigaciones de tráfico")
