@@ -869,7 +869,7 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
           selectedInfo &&
           !selectedInfo.isLocalizacion &&
           selectedInfo.info &&
-          typeof selectedInfo.info.Coordenada_Y === 'number' && // Asegurar que tiene coordenadas válidas
+          typeof selectedInfo.info.Coordenada_Y === 'number' &&
           typeof selectedInfo.info.Coordenada_X === 'number' &&
           !isNaN(selectedInfo.info.Coordenada_Y) &&
           !isNaN(selectedInfo.info.Coordenada_X) &&
@@ -878,19 +878,18 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
               const lecturaSeleccionada = selectedInfo.info as GpsLectura;
               const color = '#007bff'; // Un color azul distintivo para el punto seleccionado directamente
               const isSelectedStyle = true; 
-              // Verificar si clusterSize existe en el objeto antes de usarlo
               const clusterSizeDisplay = (lecturaSeleccionada as any).clusterSize && (lecturaSeleccionada as any).clusterSize > 1 ? (lecturaSeleccionada as any).clusterSize : null;
 
               const customIcon = L.divIcon({
-                className: 'custom-div-icon-selected-explicitly', // Clase CSS diferente por si se necesita
+                className: 'custom-div-icon-selected-explicitly',
                 html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
-                  ${isSelectedStyle ? `<div style='position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>` : ''}
-                  <div style="background: ${color}; width: ${isSelectedStyle ? 24 : 12}px; height: ${isSelectedStyle ? 24 : 12}px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${color}; outline: ${isSelectedStyle ? '3px solid ' + color : 'none'};">
+                  <div style='position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>
+                  <div style="background: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${color}; outline: 3px solid ${color};">
                     ${clusterSizeDisplay ? `<span style="position: absolute; top: -8px; right: -8px; background: white; color: ${color}; font-size: 10px; padding: 2px 4px; border-radius: 8px; border: 1px solid ${color};">${clusterSizeDisplay}</span>` : ''}
                   </div>
                 </div>`,
-                iconSize: [isSelectedStyle ? 44 : 12, isSelectedStyle ? 44 : 12],
-                iconAnchor: [isSelectedStyle ? 22 : 6, isSelectedStyle ? 22 : 6]
+                iconSize: [44, 44],
+                iconAnchor: [22, 22]
               });
 
               return (
@@ -898,9 +897,9 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
                   key={`selected-explicit-${lecturaSeleccionada.ID_Lectura}`}
                   position={[lecturaSeleccionada.Coordenada_Y, lecturaSeleccionada.Coordenada_X]}
                   icon={customIcon}
-                  zIndexOffset={1000} // Para asegurar que esté por encima de otros marcadores
+                  zIndexOffset={1000}
                   eventHandlers={{
-                    click: () => { // Reafirmar selección para mantener consistencia del InfoBanner
+                    click: () => {
                       setSelectedInfo({
                         info: {
                           ...lecturaSeleccionada,
@@ -913,6 +912,25 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
                 />
               );
             })()
+        )}
+        {/* Resalta el punto seleccionado (GPS o localización de interés) */}
+        {selectedInfo && selectedInfo.info && (
+          <Marker
+            key={`highlight-selected-${selectedInfo.isLocalizacion ? 'loc' : 'gps'}-${selectedInfo.info.ID_Lectura || selectedInfo.info.id_lectura}`}
+            position={selectedInfo.isLocalizacion
+              ? [selectedInfo.info.coordenada_y, selectedInfo.info.coordenada_x]
+              : [selectedInfo.info.Coordenada_Y, selectedInfo.info.Coordenada_X]}
+            icon={L.divIcon({
+              className: 'custom-div-icon-highlight',
+              html: `<div style="display: flex; align-items: center; justify-content: center; width: 54px; height: 54px;">
+                <div style='position: absolute; width: 54px; height: 54px; border-radius: 50%; background: #228be640; border: 3px solid #228be6; box-shadow: 0 0 16px #228be6;'></div>
+                <div style="position: relative; background: #228be6; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 12px #228be6;"></div>
+              </div>`,
+              iconSize: [54, 54],
+              iconAnchor: [27, 27]
+            })}
+            zIndexOffset={2000}
+          />
         )}
       </MapContainer>
       <InfoBanner
