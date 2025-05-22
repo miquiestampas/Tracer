@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { notifications } from '@mantine/notifications'; // For displaying errors
+import { Modal, Stack, Text, Group, Button } from '@mantine/core';
 
 // Interfaz para el objeto Grupo (simplificada, ajusta según necesidad)
 interface GrupoData {
@@ -24,6 +25,7 @@ interface AuthContextType {
   logout: () => void;
   isLoading: boolean; // Para saber si se está procesando el login inicial
   getToken: () => string | null; // Para que otros servicios puedan obtener el token
+  keepAlive: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -33,20 +35,20 @@ const TOKEN_TIMESTAMP_KEY = 'jwt_token_timestamp'; // Para la gestión de sesió
 
 // Duración de sesión en el cliente (ej. 1 hora). El backend también valida la expiración del JWT.
 const SESSION_DURATION_MS = 60 * 60 * 1000; 
-// const SESSION_WARNING_MS = 5 * 60 * 1000; // Aviso 5 minutos antes (opcional)
+const SESSION_WARNING_MS = 5 * 60 * 1000; // Aviso 5 minutos antes
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Inicia como true hasta que se verifique el token
-  // const [showSessionWarning, setShowSessionWarning] = useState(false); // Opcional por ahora
-  // const [warningTimeout, setWarningTimeout] = useState<NodeJS.Timeout | null>(null); // Opcional
+  const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [warningTimeout, setWarningTimeout] = useState<NodeJS.Timeout | null>(null);
   const [logoutTimeout, setLogoutTimeout] = useState<NodeJS.Timeout | null>(null);
 
   const clearTimeouts = () => {
-    // if (warningTimeout) clearTimeout(warningTimeout);
+    if (warningTimeout) clearTimeout(warningTimeout);
     if (logoutTimeout) clearTimeout(logoutTimeout);
-    // setWarningTimeout(null);
+    setWarningTimeout(null);
     setLogoutTimeout(null);
   };
 
@@ -57,8 +59,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (!response.ok) {
-        if (response.status === 401) { // Token inválido o expirado
-          if (!isInitialLoad) { // No mostrar error si es carga inicial y el token simplemente no es válido
+        if (response.status === 401) {
+          if (!isInitialLoad) {
              notifications.show({
                 title: 'Error de autenticación',
                 message: 'Tu sesión ha expirado o el token es inválido. Por favor, inicia sesión de nuevo.',
@@ -84,15 +86,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Reiniciar timeouts de sesión (cliente)
       clearTimeouts();
       const timeToLogout = SESSION_DURATION_MS;
-      // const timeToWarning = SESSION_DURATION_MS - SESSION_WARNING_MS;
+      const timeToWarning = SESSION_DURATION_MS - SESSION_WARNING_MS;
 
-      // if (timeToWarning > 0) {
-      //   const newWarningTimeout = setTimeout(() => {
-      //     setShowSessionWarning(true);
-      //     // playWarningSound(); // Si tienes un sonido de aviso
-      //   }, timeToWarning);
-      //   setWarningTimeout(newWarningTimeout);
-      // }
+      if (timeToWarning > 0) {
+        const newWarningTimeout = setTimeout(() => {
+          setShowSessionWarning(true);
+        }, timeToWarning);
+        setWarningTimeout(newWarningTimeout);
+      }
       
       const newLogoutTimeout = setTimeout(() => {
         notifications.show({
@@ -100,19 +101,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           message: 'Tu sesión ha expirado por inactividad. Por favor, inicia sesión de nuevo.',
           color: 'orange',
         });
-        logout(); // Cierra sesión automáticamente
+        logout();
       }, timeToLogout);
       setLogoutTimeout(newLogoutTimeout);
 
-      return true; // Sesión establecida con éxito
+      return true;
 
     } catch (error) {
       console.error('Error establishing session:', error);
-      // Si falla al establecer la sesión (ej. token expirado en carga inicial), limpiar
       if (isInitialLoad) {
-        logout(); // Asegura limpieza si la carga inicial falla
+        logout();
       }
-      return false; // Fallo al establecer sesión
+      return false;
     }
   };
 
@@ -215,38 +215,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // const keepAlive = async () => { // Lógica de "Seguir conectado"
-  //   const token = localStorage.getItem(JWT_TOKEN_KEY);
-  //   if (token) {
-  //     // Intenta re-validar/refrescar el token o simplemente resetear el timestamp local
-  //     // Aquí, simplemente reseteamos el timestamp si el token sigue siendo válido (verificado por /me)
-  //     const stillValid = await _establishSession(token); 
-  //     if (stillValid) {
-  //       setShowSessionWarning(false);
-  //       notifications.show({
-  //           title: 'Sesión extendida',
-  //           message: 'Tu sesión ha sido extendida.',
-  //           color: 'green',
-  //       });
-  //     } else {
-  //       // _establishSession habrá llamado a logout si el token ya no es válido
-  //       // o habrá mostrado un error.
-  //     }
-  //   }
-  // };
+  const keepAlive = async () => {
+    const token = localStorage.getItem(JWT_TOKEN_KEY);
+    if (token) {
+      const stillValid = await _establishSession(token);
+      if (stillValid) {
+        setShowSessionWarning(false);
+        notifications.show({
+            title: 'Sesión extendida',
+            message: 'Tu sesión ha sido extendida.',
+            color: 'green',
+        });
+      }
+    }
+  };
 
   const getToken = () => localStorage.getItem(JWT_TOKEN_KEY);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isLoading, getToken }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, isLoading, getToken, keepAlive }}>
       {children}
-      {/* Sección de aviso de sesión (opcional, comentada por ahora para simplificar) */}
-      {/* {showSessionWarning && user && ( 
-        <div style={{...}}>
-          <b>¡Atención!</b> Tu sesión expirará pronto.<br />
-          <button onClick={keepAlive}>Seguir conectado</button>
-        </div>
-      )} */}
+      {showSessionWarning && user && (
+        <Modal
+          opened={showSessionWarning}
+          onClose={() => setShowSessionWarning(false)}
+          title="Sesión por expirar"
+          centered
+          withCloseButton={false}
+          closeOnClickOutside={false}
+          closeOnEscape={false}
+        >
+          <Stack>
+            <Text>
+              Tu sesión expirará en 5 minutos por inactividad.
+              ¿Deseas mantener la sesión activa?
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="light" color="red" onClick={logout}>
+                Cerrar sesión
+              </Button>
+              <Button onClick={keepAlive}>
+                Mantener sesión
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      )}
     </AuthContext.Provider>
   );
 };

@@ -21,7 +21,8 @@ import {
     SimpleGrid,
     LoadingOverlay,
     Paper,
-    TextInput
+    TextInput,
+    Checkbox
 } from '@mantine/core';
 import { IconUpload, IconAlertCircle, IconFileSpreadsheet, IconSettings, IconCheck, IconX, IconDownload, IconTrash } from '@tabler/icons-react';
 import { useDisclosure } from '@mantine/hooks';
@@ -115,6 +116,9 @@ function ImportarPage() {
   // --- NUEVO: Estado para el modal de confirmación de eliminación ---
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [archivoToDelete, setArchivoToDelete] = useState<ArchivoExcel | null>(null);
+
+  const [fechaHoraCombinada, setFechaHoraCombinada] = useState(false);
+  const [formatoFechaHora, setFormatoFechaHora] = useState('DD/MM/YYYY HH:mm:ss');
 
   // Cargar casos para el selector
   useEffect(() => {
@@ -446,8 +450,8 @@ function ImportarPage() {
 
   // --- MODIFICADO: Manejar el envío del formulario de importación ---
   const handleImport = async () => {
-    setUploadError(null); // Limpiar error previo
-    setImportWarning(null); // Limpiar advertencia previa
+    setUploadError(null);
+    setImportWarning(null);
     setIsUploading(true);
     try {
       const finalMapping = Object.entries(columnMapping)
@@ -456,6 +460,11 @@ function ImportarPage() {
           obj[key] = value as string;
           return obj;
         }, {} as { [key: string]: string });
+
+      // Añadir formato de fecha/hora si está combinada
+      if (fechaHoraCombinada) {
+        finalMapping['formato_fecha_hora'] = formatoFechaHora;
+      }
 
       let resultado: UploadResponse | undefined;
 
@@ -801,19 +810,64 @@ function ImportarPage() {
           </Text>
           
           <Divider my="sm" />
+
+          {/* Opción para fecha/hora combinada */}
+          <Checkbox
+            label="La fecha y hora vienen en una sola columna"
+            checked={fechaHoraCombinada}
+            onChange={(event) => setFechaHoraCombinada(event.currentTarget.checked)}
+          />
+
+          {fechaHoraCombinada && (
+            <Select
+              label="Formato de fecha y hora"
+              placeholder="Selecciona el formato"
+              value={formatoFechaHora}
+              onChange={(value) => setFormatoFechaHora(value || 'DD/MM/YYYY HH:mm:ss')}
+              data={[
+                { value: 'DD/MM/YYYY HH:mm:ss', label: 'DD/MM/YYYY HH:mm:ss' },
+                { value: 'YYYY-MM-DD HH:mm:ss', label: 'YYYY-MM-DD HH:mm:ss' },
+                { value: 'DD-MM-YYYY HH:mm:ss', label: 'DD-MM-YYYY HH:mm:ss' },
+                { value: 'MM/DD/YYYY HH:mm:ss', label: 'MM/DD/YYYY HH:mm:ss' },
+                { value: 'YYYY/MM/DD HH:mm:ss', label: 'YYYY/MM/DD HH:mm:ss' },
+              ]}
+            />
+          )}
+          
+          <Divider my="sm" />
           
           <SimpleGrid cols={2}>
-            {REQUIRED_FIELDS[fileType].map((field) => (
-              <Select
-                key={field}
-                label={field}
-                placeholder={`Selecciona columna para ${field}`}
-                data={excelHeaders}
-                value={columnMapping[field] || null}
-                onChange={(value) => handleMappingChange(field, value)}
-                required
-              />
-            ))}
+            {REQUIRED_FIELDS[fileType].map((field) => {
+              // Si fecha y hora están combinadas, solo mostrar uno de los campos
+              if (fechaHoraCombinada && (field === 'Hora' || field === 'Fecha')) {
+                if (field === 'Hora') return null; // Ocultar el campo Hora
+                return (
+                  <Select
+                    key={field}
+                    label="Fecha y Hora"
+                    placeholder="Selecciona columna para Fecha y Hora"
+                    data={excelHeaders}
+                    value={columnMapping[field] || null}
+                    onChange={(value) => {
+                      handleMappingChange('Fecha', value);
+                      handleMappingChange('Hora', value);
+                    }}
+                    required
+                  />
+                );
+              }
+              return (
+                <Select
+                  key={field}
+                  label={field}
+                  placeholder={`Selecciona columna para ${field}`}
+                  data={excelHeaders}
+                  value={columnMapping[field] || null}
+                  onChange={(value) => handleMappingChange(field, value)}
+                  required
+                />
+              );
+            })}
           </SimpleGrid>
 
           <Divider my="sm" />
