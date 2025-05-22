@@ -3342,3 +3342,123 @@ def buscar_vehiculos_multicaso(
         vehiculos_coincidentes.append(vehiculo_info)
 
     return vehiculos_coincidentes
+
+from collections import defaultdict
+from datetime import datetime, timedelta
+from fastapi import HTTPException, status
+
+@app.post("/casos/{caso_id}/detectar-lanzaderas", response_model=schemas.LanzaderaResponse)
+def detectar_vehiculos_lanzadera(
+    caso_id: int,
+    request: schemas.LanzaderaRequest,
+    db: Session = Depends(get_db)
+):
+    # 1. Obtener todas las lecturas del vehículo objetivo en el rango de fechas
+    query = db.query(models.Lectura).filter(
+        models.Lectura.ID_Archivo.in_(
+            db.query(models.ArchivoExcel.ID_Archivo)
+            .filter(models.ArchivoExcel.ID_Caso == caso_id)
+        ),
+        models.Lectura.Matricula == request.matricula
+    )
+
+    # Aplicar filtros de fecha solo si existen
+    if request.fecha_inicio:
+        query = query.filter(models.Lectura.Fecha_y_Hora >= request.fecha_inicio)
+    if request.fecha_fin:
+        # Convertir fecha_fin a datetime con hora máxima si es string
+        if isinstance(request.fecha_fin, str):
+            fecha_fin_dt = datetime.strptime(request.fecha_fin, "%Y-%m-%d")
+            fecha_fin_dt = datetime.combine(fecha_fin_dt, datetime.max.time())
+        else:
+            fecha_fin_dt = request.fecha_fin
+        query = query.filter(models.Lectura.Fecha_y_Hora <= fecha_fin_dt)
+
+    lecturas_objetivo = query.order_by(models.Lectura.Fecha_y_Hora).all()
+
+    if not lecturas_objetivo:
+        return schemas.LanzaderaResponse(
+            vehiculos_lanzadera=[],
+            detalles=[]
+        )
+
+    # 2. Para cada lectura del vehículo objetivo, buscar vehículos que pasaron por el mismo punto
+    # en un rango de tiempo cercano (por ejemplo, ±5 minutos)
+    vehiculos_lanzadera = []
+    detalles = []
+    tiempo_ventana = timedelta(minutes=5)  # Ventana de tiempo para considerar vehículos cercanos
+
+    # Añadir lecturas del objetivo al array detalles
+    for lectura in lecturas_objetivo:
+        detalles.append(schemas.LanzaderaDetalle(
+            matricula=lectura.Matricula,
+            fecha=lectura.Fecha_y_Hora.date().isoformat(),
+            hora=lectura.Fecha_y_Hora.time().strftime("%H:%M:%S"),
+            lector=lectura.ID_Lector,
+            tipo="Objetivo"
+        ))
+
+    for lectura_objetivo in lecturas_objetivo:
+        # Buscar lecturas de otros vehículos en el mismo punto y tiempo cercano
+        lecturas_cercanas = db.query(models.Lectura).filter(
+            models.Lectura.ID_Archivo.in_(
+                db.query(models.ArchivoExcel.ID_Archivo)
+                .filter(models.ArchivoExcel.ID_Caso == caso_id)
+            ),
+            models.Lectura.Matricula != request.matricula,  # Excluir el vehículo objetivo
+            models.Lectura.ID_Lector == lectura_objetivo.ID_Lector,  # Mismo punto de lectura
+            models.Lectura.Fecha_y_Hora >= lectura_objetivo.Fecha_y_Hora - tiempo_ventana,
+            models.Lectura.Fecha_y_Hora <= lectura_objetivo.Fecha_y_Hora + tiempo_ventana
+        ).all()
+
+        # Agrupar por matrícula y contar ocurrencias
+        conteo_vehiculos = {}
+        for lectura in lecturas_cercanas:
+            if lectura.Matricula not in conteo_vehiculos:
+                conteo_vehiculos[lectura.Matricula] = 0
+            conteo_vehiculos[lectura.Matricula] += 1
+            # Añadir detalle de la lectura
+            detalles.append(schemas.LanzaderaDetalle(
+                matricula=lectura.Matricula,
+                fecha=lectura.Fecha_y_Hora.date().isoformat(),
+                hora=lectura.Fecha_y_Hora.time().strftime("%H:%M:%S"),
+                lector=lectura.ID_Lector,
+                tipo="Lanzadera"
+            ))
+
+        # Considerar como posible lanzadera si aparece en al menos 2 lecturas cercanas
+        for matricula, conteo in conteo_vehiculos.items():
+            if conteo >= 2 and matricula not in vehiculos_lanzadera:
+                vehiculos_lanzadera.append(matricula)
+
+    return schemas.LanzaderaResponse(
+        vehiculos_lanzadera=vehiculos_lanzadera,
+        detalles=detalles
+    )
+
+@app.post("/casos/{caso_id}/saved_searches", response_model=schemas.SavedSearch, status_code=status.HTTP_201_CREATED)
+def create_saved_search(caso_id: int, saved_search_data: schemas.SavedSearchCreate, db: Session = Depends(get_db)):
+    logger.info(f"POST /casos/{caso_id}/saved_searches con datos: {saved_search_data.name}")
+    db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if not db_caso:
+        logger.warning(f"[Create SavedSearch] Caso con ID {caso_id} no encontrado.")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
+
+    # Crear la instancia del modelo
+    db_saved_search = models.SavedSearch(
+        caso_id=caso_id,
+        name=saved_search_data.name,
+        filters=saved_search_data.filters,
+        results=saved_search_data.results
+    )
+
+    try:
+        db.add(db_saved_search)
+        db.commit()
+        db.refresh(db_saved_search)
+        logger.info(f"Búsqueda guardada exitosamente con ID: {db_saved_search.id}")
+        return db_saved_search
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al guardar SavedSearch en BD: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al guardar la búsqueda.")

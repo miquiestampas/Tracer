@@ -482,11 +482,16 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         const apiFilters = getCurrentApiFilters();
         
         const payload = {
-            nombre: nombreBusqueda.trim(),
-            filtros: apiFilters, // Guardar los filtros normalizados
-            // color y notas podrían pedirse en un modal más complejo
-            color: null, 
-            notas: null,
+            name: nombreBusqueda.trim(),
+            caso_id: casoId,
+            filters: apiFilters,
+            results: displayedResults.map(result => ({
+                matricula: result.matricula,
+                count: result.count,
+                firstSeen: result.firstSeen,
+                lastSeen: result.lastSeen,
+                readings: result.readings
+            }))
         };
         
         setLoading(true);
@@ -499,12 +504,11 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
             });
 
             if (!response.ok) {
-                 // ... (Manejo de error HTTP) ...
                 throw new Error('No se pudo guardar la búsqueda.');
             }
 
             const savedSearchData = await response.json();
-            notifications.show({ title: 'Búsqueda Guardada', message: `Búsqueda "${savedSearchData.nombre}" guardada con éxito.`, color: 'green' });
+            notifications.show({ title: 'Búsqueda Guardada', message: `Búsqueda "${savedSearchData.name}" guardada con éxito.`, color: 'green' });
             
             // --- Recargar lista de búsquedas guardadas --- 
             fetchSavedSearches(); 
@@ -1046,36 +1050,20 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                 <Paper shadow="sm" p="md" withBorder style={{ height: '100%' }}>
                     <Stack gap="sm">
                         <Title order={4} mb="sm">Definir Filtros</Title>
-                        <Input.Wrapper label="Fecha Inicio" size="xs" className="lpr-avanzado-datepicker-wrapper">
-                            <DatePicker
-                                selected={currentFilters.fechaInicio}
-                                onChange={(date) => handleFilterChange('fechaInicio', date)}
-                                dateFormat="yyyy-MM-dd"
-                                placeholderText="AAAA-MM-DD"
-                                isClearable
-                                customInput={
-                                    <Input 
-                                        leftSection={<IconCalendar style={iconStyle} />} 
-                                        style={{ width: '100%' }}
-                                    />
-                                }
+                        <Group grow>
+                            <TextInput
+                                label="Fecha Inicio"
+                                type="date"
+                                value={currentFilters.fechaInicio ? dayjs(currentFilters.fechaInicio).format('YYYY-MM-DD') : ''}
+                                onChange={e => handleFilterChange('fechaInicio', e.target.value ? new Date(e.target.value) : null)}
                             />
-                        </Input.Wrapper>
-                        <Input.Wrapper label="Fecha Fin" size="xs" className="lpr-avanzado-datepicker-wrapper">
-                            <DatePicker
-                                selected={currentFilters.fechaFin}
-                                onChange={(date) => handleFilterChange('fechaFin', date)}
-                                dateFormat="yyyy-MM-dd"
-                                placeholderText="AAAA-MM-DD"
-                                isClearable
-                                customInput={
-                                    <Input 
-                                        leftSection={<IconCalendar style={iconStyle} />} 
-                                        style={{ width: '100%' }}
-                                    />
-                                }
+                            <TextInput
+                                label="Fecha Fin"
+                                type="date"
+                                value={currentFilters.fechaFin ? dayjs(currentFilters.fechaFin).format('YYYY-MM-DD') : ''}
+                                onChange={e => handleFilterChange('fechaFin', e.target.value ? new Date(e.target.value) : null)}
                             />
-                        </Input.Wrapper>
+                        </Group>
                         <Group grow>
                              <TimeInput label="Desde Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeFrom} onChange={(e) => handleFilterChange('timeFrom', e.currentTarget.value)}/>
                              <TimeInput label="Hasta Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeTo} onChange={(e) => handleFilterChange('timeTo', e.currentTarget.value)} />
