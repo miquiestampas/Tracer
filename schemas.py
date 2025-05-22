@@ -60,13 +60,14 @@ class VehiculoCreate(VehiculoBase):
     pass
 
 class VehiculoUpdate(BaseModel):
-    Marca: Optional[str] = None
-    Modelo: Optional[str] = None
-    Color: Optional[str] = None
-    Observaciones: Optional[str] = None
-    Alquiler: Optional[bool] = None
-    Comprobado: Optional[bool] = None
-    Sospechoso: Optional[bool] = None
+    Marca: Optional[str] = Field(None, example="Seat")
+    Modelo: Optional[str] = Field(None, example="Ibiza")
+    Color: Optional[str] = Field(None, example="Rojo")
+    Propiedad: Optional[str] = Field(None, example="Empresa XYZ")
+    Observaciones: Optional[str] = Field(None, example="Actualización de notas")
+    Alquiler: Optional[bool] = Field(None)
+    Comprobado: Optional[bool] = Field(None)
+    Sospechoso: Optional[bool] = Field(None)
 
 class Vehiculo(VehiculoBase):
     ID_Vehiculo: int
@@ -145,6 +146,7 @@ class VehiculoUpdate(BaseModel):
     Marca: Optional[str] = Field(None, example="Seat")
     Modelo: Optional[str] = Field(None, example="Ibiza")
     Color: Optional[str] = Field(None, example="Rojo")
+    Propiedad: Optional[str] = Field(None, example="Empresa XYZ")
     Observaciones: Optional[str] = Field(None, example="Actualización de notas")
     Alquiler: Optional[bool] = Field(None)
     Comprobado: Optional[bool] = Field(None)

@@ -1306,7 +1306,7 @@ def get_vehiculos_by_caso(caso_id: int, db: Session = Depends(get_db), current_u
                         Marca=vehiculo_dict.get('Marca'),
                         Modelo=vehiculo_dict.get('Modelo'),
                         Color=vehiculo_dict.get('Color'),
-                        Propiedad=vehiculo_dict.get('Propiedad') or vehiculo_dict.get('Propietario'),
+                        Propiedad=vehiculo_dict.get('Propiedad'),
                         Alquiler=vehiculo_dict.get('Alquiler', False),
                         Observaciones=vehiculo_dict.get('Observaciones'),
                         Comprobado=vehiculo_dict.get('Comprobado', False),
@@ -2288,6 +2288,49 @@ def process_file_in_background(
         try:
             map_cliente_a_interno = json.loads(column_mapping_str)
             map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
+            
+            # Verificar si fecha y hora están combinadas
+            fecha_hora_combinada = map_cliente_a_interno.get('Fecha') == map_cliente_a_interno.get('Hora')
+            formato_fecha_hora = map_cliente_a_interno.get('formato_fecha_hora', 'DD/MM/YYYY HH:mm:ss')
+            
+            if fecha_hora_combinada:
+                logger.info(f"[Task {task_id}] Fecha y hora combinadas detectadas. Formato: {formato_fecha_hora}")
+                # Convertir el formato de fecha/hora a formato pandas
+                pandas_format = formato_fecha_hora.replace('DD', '%d').replace('MM', '%m').replace('YYYY', '%Y').replace('HH', '%H').replace('mm', '%M').replace('ss', '%S')
+                
+                # Convertir la columna combinada a datetime
+                columna_fecha_hora = map_cliente_a_interno['Fecha']
+                
+                # Función para limpiar y convertir la fecha/hora
+                def clean_datetime(dt_str):
+                    if pd.isna(dt_str):
+                        return None
+                    try:
+                        # Primero intentar con el formato especificado
+                        return pd.to_datetime(dt_str, format=pandas_format)
+                    except:
+                        try:
+                            # Si falla, intentar parsear automáticamente
+                            dt = pd.to_datetime(dt_str)
+                            # Si tiene milisegundos, truncar a segundos
+                            if dt.microsecond > 0:
+                                dt = dt.replace(microsecond=0)
+                            return dt
+                        except:
+                            logger.warning(f"[Task {task_id}] No se pudo parsear la fecha/hora: {dt_str}")
+                            return None
+
+                # Aplicar la limpieza a la columna
+                df['Fecha'] = df[columna_fecha_hora].apply(lambda x: clean_datetime(x).date() if clean_datetime(x) else None)
+                df['Hora'] = df[columna_fecha_hora].apply(lambda x: clean_datetime(x).time() if clean_datetime(x) else None)
+                
+                # Eliminar la columna original combinada
+                df = df.drop(columns=[columna_fecha_hora])
+                
+                # Actualizar el mapeo para reflejar las nuevas columnas
+                del map_cliente_a_interno['formato_fecha_hora']
+                map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
+            
         except json.JSONDecodeError as e:
             logger.error(f"[Task {task_id}] JSON inválido en mapeo: {e}", exc_info=True)
             raise ValueError(f"El mapeo de columnas no es un JSON válido: {e}")
@@ -3107,3 +3150,160 @@ async def delete_grupo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al eliminar el grupo"
         )
+
+@app.post("/lecturas/por_filtros", response_model=List[schemas.Lectura])
+def read_lecturas_por_filtros(
+    # Filtros de Fecha/Hora
+    fecha_inicio: Optional[str] = None,
+    fecha_fin: Optional[str] = None,
+    hora_inicio: Optional[str] = None, 
+    hora_fin: Optional[str] = None, 
+    # Filtros de Identificadores (Listas)
+    lector_ids: Optional[List[str]] = Query(None), 
+    caso_ids: Optional[List[int]] = Query(None), 
+    carretera_ids: Optional[List[str]] = Query(None),
+    sentido: Optional[List[str]] = Query(None),
+    matricula: Optional[str] = Body(None),
+    matriculas: Optional[List[str]] = Body(None),
+    tipo_fuente: Optional[str] = Query(None),
+    solo_relevantes: Optional[bool] = False,
+    min_pasos: Optional[int] = None,
+    max_pasos: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    logger.info(f"POST /lecturas/por_filtros - Filtros: matricula={matricula} matriculas={matriculas} min_pasos={min_pasos} max_pasos={max_pasos} carreteras={carretera_ids}")
+    
+    # Base query
+    base_query = db.query(models.Lectura).join(models.Lector).join(models.ArchivoExcel)
+    
+    # --- Aplicar filtros comunes ---
+    if caso_ids:
+        base_query = base_query.filter(models.ArchivoExcel.ID_Caso.in_(caso_ids))
+    if lector_ids:
+        base_query = base_query.filter(models.Lectura.ID_Lector.in_(lector_ids))
+    if carretera_ids:
+        base_query = base_query.filter(models.Lector.Carretera.in_(carretera_ids))
+    if sentido:
+        base_query = base_query.filter(models.Lector.Sentido.in_(sentido))
+    if tipo_fuente:
+        base_query = base_query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
+    if solo_relevantes:
+        base_query = base_query.join(models.LecturaRelevante)
+    
+    # Filtros de fecha y hora
+    try:
+        if fecha_inicio:
+            fecha_inicio_dt = datetime.strptime(fecha_inicio, "%Y-%m-%d").date()
+            base_query = base_query.filter(models.Lectura.Fecha_y_Hora >= fecha_inicio_dt)
+        if fecha_fin:
+            fecha_fin_dt = datetime.strptime(fecha_fin, "%Y-%m-%d").date() + timedelta(days=1)
+            base_query = base_query.filter(models.Lectura.Fecha_y_Hora < fecha_fin_dt)
+        if hora_inicio:
+            hora_inicio_time = datetime.strptime(hora_inicio, "%H:%M").time()
+            base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) >= hora_inicio_time.hour * 100 + hora_inicio_time.minute)
+        if hora_fin:
+            hora_fin_time = datetime.strptime(hora_fin, "%H:%M").time()
+            base_query = base_query.filter(extract('hour', models.Lectura.Fecha_y_Hora) * 100 + extract('minute', models.Lectura.Fecha_y_Hora) <= hora_fin_time.hour * 100 + hora_fin_time.minute)
+    except ValueError:
+        logger.warning("Formato de fecha/hora inválido recibido.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Formato de fecha/hora inválido.")
+
+    # Filtro por matrícula (string o lista)
+    from sqlalchemy import or_
+    condiciones = []
+    if matricula:
+        sql_pattern = matricula.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+        if '*' in matricula or '%' in matricula or '?' in matricula or '_' in matricula:
+            condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
+        else:
+            condiciones.append(models.Lectura.Matricula == matricula)
+    if matriculas:
+        for m in matriculas:
+            sql_pattern = m.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+            if '*' in m or '%' in m or '?' in m or '_' in m:
+                condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
+            else:
+                condiciones.append(models.Lectura.Matricula == m)
+    if condiciones:
+        base_query = base_query.filter(or_(*condiciones))
+
+    # Ordenar y aplicar paginación
+    query = base_query.order_by(models.Lectura.Fecha_y_Hora.desc())
+    query = query.options(joinedload(models.Lectura.lector), joinedload(models.Lectura.archivo).joinedload(models.ArchivoExcel.caso))
+    lecturas = query.all()
+
+    logger.info(f"POST /lecturas/por_filtros - Encontradas {len(lecturas)} lecturas tras aplicar filtros.")
+    return lecturas
+
+@app.post("/busqueda/multicaso", response_model=List[Dict[str, Any]], tags=["Búsqueda"])
+def buscar_vehiculos_multicaso(
+    casos: List[int] = Body(...),
+    matricula: Optional[str] = Body(None),
+    matriculas: Optional[List[str]] = Body(None),
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    logger.info(f"POST /busqueda/multicaso - Buscando vehículos en casos: {casos}")
+    
+    # Base query para obtener lecturas, cargando archivo y caso
+    base_query = db.query(models.Lectura).join(models.ArchivoExcel).filter(
+        models.ArchivoExcel.ID_Caso.in_(casos)
+    ).options(
+        joinedload(models.Lectura.archivo).joinedload(models.ArchivoExcel.caso)
+    )
+
+    # Aplicar filtros de matrícula
+    from sqlalchemy import or_
+    condiciones = []
+    if matricula:
+        sql_pattern = matricula.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+        if '*' in matricula or '%' in matricula or '?' in matricula or '_' in matricula:
+            condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
+        else:
+            condiciones.append(models.Lectura.Matricula == matricula)
+    if matriculas:
+        for m in matriculas:
+            sql_pattern = m.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_').replace('?', '_').replace('*', '%')
+            if '*' in m or '%' in m or '?' in m or '_' in m:
+                condiciones.append(models.Lectura.Matricula.ilike(sql_pattern))
+            else:
+                condiciones.append(models.Lectura.Matricula == m)
+    if condiciones:
+        base_query = base_query.filter(or_(*condiciones))
+
+    lecturas = base_query.all()
+
+    # Agrupar por matrícula y caso
+    resultados = defaultdict(lambda: defaultdict(list))
+    for lectura in lecturas:
+        resultados[lectura.Matricula][lectura.archivo.ID_Caso].append(lectura)
+
+    vehiculos_coincidentes = []
+    for matricula, casos_lecturas in resultados.items():
+        if len(casos_lecturas) < 2:
+            continue  # Solo incluir vehículos que aparecen en 2 o más casos
+        vehiculo_info = {
+            "matricula": matricula,
+            "casos": []
+        }
+        for caso_id, lecturas_caso in casos_lecturas.items():
+            caso = lecturas_caso[0].archivo.caso
+            caso_info = {
+                "id": caso.ID_Caso,
+                "nombre": caso.Nombre_del_Caso + f" ({caso.Año})",
+                "lecturas": [
+                    {
+                        "ID_Lectura": l.ID_Lectura,
+                        "Matricula": l.Matricula,
+                        "Fecha_y_Hora": l.Fecha_y_Hora.isoformat(),
+                        "ID_Caso": caso.ID_Caso,
+                        "Nombre_del_Caso": caso.Nombre_del_Caso
+                    }
+                    for l in lecturas_caso
+                ]
+            }
+            vehiculo_info["casos"].append(caso_info)
+        vehiculos_coincidentes.append(vehiculo_info)
+
+    return vehiculos_coincidentes

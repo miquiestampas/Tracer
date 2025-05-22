@@ -188,7 +188,7 @@ const helpTexts = {
           <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
             <li><b>Listado:</b> Muestra todos los vehículos de interés para la investigación, con detalles como marca, modelo, color, etc. (si se han añadido).</li>
             <li><b>Lecturas LPR:</b> Indica cuántas lecturas LPR tiene cada vehículo <i>dentro de este caso</i>.</li>
-            <li><b>Editar Detalles:</b> Modifica la información asociada a un vehículo (marca, modelo, propietario, observaciones, estado de comprobado/sospechoso).</li>
+            <li><b>Editar Detalles:</b> Modifica la información asociada a un vehículo (marca, modelo, propiedad, observaciones, estado de comprobado/sospechoso).</li>
             <li><b>Ver Lecturas:</b> Accede a una vista filtrada de todas las lecturas (LPR y GPS) de un vehículo específico dentro de este caso.</li>
             <li><b>Eliminar Vehículo:</b> Borra un vehículo de la lista del caso (Nota: Esto <i>no</i> elimina sus lecturas asociadas, solo el registro del vehículo).</li>
             <li><b>Actualizar:</b> Actualiza la lista si se han hecho cambios (como guardar un vehículo desde otra pestaña).</li>
