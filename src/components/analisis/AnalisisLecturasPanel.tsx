@@ -1199,46 +1199,29 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                          leftSection={<IconFolder style={iconStyle} />}
                                      />
                                  )}
-                                 <Input.Wrapper label="Fecha Inicio" size="xs" className="analisis-datepicker-wrapper">
-                                    <DatePicker
-                                        selected={fechaInicio}
-                                        onChange={(date) => setFechaInicio(date)}
-                                        dateFormat="yyyy-MM-dd"
-                                        placeholderText="AAAA-MM-DD"
-                                        isClearable
-                                        customInput={
-                                            <Input 
-                                                leftSection={<IconCalendar style={iconStyle} />} 
-                                                style={{ width: '100%' }}
-                                            />
-                                        }
+                                 <Group grow>
+                                    <TextInput
+                                        label="Fecha Inicio"
+                                        type="date"
+                                        value={fechaInicio ? dayjs(fechaInicio).format('YYYY-MM-DD') : ''}
+                                        onChange={(e) => setFechaInicio(e.target.value ? new Date(e.target.value) : null)}
                                     />
-                                </Input.Wrapper>
-                                
-                                <Input.Wrapper label="Fecha Fin" size="xs" className="analisis-datepicker-wrapper">
-                                 <DatePicker
-                                    selected={fechaFin}
-                                    onChange={(date) => setFechaFin(date)}
-                                    dateFormat="yyyy-MM-dd"
-                                    placeholderText="AAAA-MM-DD"
-                                    isClearable
-                                    customInput={
-                                        <Input 
-                                            leftSection={<IconCalendar style={iconStyle} />} 
-                                            style={{ width: '100%' }}
-                                        />
-                                    }
-                                />
-                                </Input.Wrapper>
-                                <Group grow>
                                     <TimeInput 
-                                        label="Desde Hora" 
+                                        label="Hora Inicio" 
                                         value={timeFrom} 
                                         onChange={(event) => setTimeFrom(event.currentTarget.value)} 
                                         leftSection={<IconClock style={iconStyle} />} 
                                     />
+                                </Group>
+                                <Group grow>
+                                    <TextInput
+                                        label="Fecha Fin"
+                                        type="date"
+                                        value={fechaFin ? dayjs(fechaFin).format('YYYY-MM-DD') : ''}
+                                        onChange={(e) => setFechaFin(e.target.value ? new Date(e.target.value) : null)}
+                                    />
                                     <TimeInput 
-                                        label="Hasta Hora" 
+                                        label="Hora Fin" 
                                         value={timeTo} 
                                         onChange={(event) => setTimeTo(event.currentTarget.value)} 
                                         leftSection={<IconClock style={iconStyle} />} 
