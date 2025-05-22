@@ -2276,13 +2276,28 @@ def process_file_in_background(
     task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "processing", "message": "Procesando archivo...", "progress": 0}
 
     try:
-        logger.info(f"[Task {task_id}] Leyendo archivo Excel: {temp_file_path}")
+        logger.info(f"[Task {task_id}] Leyendo archivo: {temp_file_path}")
         try:
-            df = pd.read_excel(temp_file_path)
-            logger.info(f"[Task {task_id}] Archivo Excel leído. Filas: {df.shape[0]}")
+            # Intentar leer como Excel primero
+            try:
+                df = pd.read_excel(temp_file_path)
+                logger.info(f"[Task {task_id}] Archivo Excel leído. Filas: {df.shape[0]}")
+            except Exception as e_xls:
+                logger.warning(f"[Task {task_id}] No es Excel, intentando como CSV: {e_xls}")
+                # Detectar delimitador automáticamente
+                import csv
+                with open(temp_file_path, 'r', encoding='utf-8') as f:
+                    sample = f.read(4096)
+                    f.seek(0)
+                    sniffer = csv.Sniffer()
+                    dialect = sniffer.sniff(sample)
+                    delimiter = dialect.delimiter
+                    logger.info(f"[Task {task_id}] Delimitador CSV detectado: '{delimiter}'")
+                    df = pd.read_csv(temp_file_path, delimiter=delimiter, encoding='utf-8')
+                logger.info(f"[Task {task_id}] Archivo CSV leído. Filas: {df.shape[0]}")
         except Exception as e:
-            logger.error(f"[Task {task_id}] Fallo al leer Excel {temp_file_path}: {e}", exc_info=True)
-            raise ValueError(f"Error al leer el archivo Excel: {e}")
+            logger.error(f"[Task {task_id}] Fallo al leer archivo {temp_file_path}: {e}", exc_info=True)
+            raise ValueError(f"Error al leer el archivo Excel o CSV: {e}")
 
         logger.info(f"[Task {task_id}] Parseando mapeo de columnas: {column_mapping_str}")
         try:
