@@ -120,6 +120,50 @@ function ImportarPage() {
   const [fechaHoraCombinada, setFechaHoraCombinada] = useState(false);
   const [formatoFechaHora, setFormatoFechaHora] = useState('DD/MM/YYYY HH:mm:ss');
 
+  // --- NUEVO: Estado y efecto para la vista previa de datos ---
+  const [previewRows, setPreviewRows] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchRows = async () => {
+      // Solo si hay archivo y cabeceras
+      if (!selectedFile || excelHeaders.length === 0) {
+        if (mounted) setPreviewRows([]);
+        return;
+      }
+      if (fileType === 'GPX_KML' && processedGpxKmlData.length > 0) {
+        if (mounted) setPreviewRows(processedGpxKmlData.slice(0, 3));
+        return;
+      }
+      try {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const data = e.target?.result;
+            if (!data) { if (mounted) setPreviewRows([]); return; }
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            if (!jsonData || jsonData.length < 2) { if (mounted) setPreviewRows([]); return; }
+            const headers = jsonData[0].map((h: any) => String(h || '').trim());
+            const rows = jsonData.slice(1, 4).map((row: any[]) => {
+              const obj: any = {};
+              headers.forEach((h: string, idx: number) => {
+                obj[h] = row[idx];
+              });
+              return obj;
+            });
+            if (mounted) setPreviewRows(rows);
+          } catch { if (mounted) setPreviewRows([]); }
+        };
+        reader.readAsArrayBuffer(selectedFile);
+      } catch { if (mounted) setPreviewRows([]); }
+    };
+    fetchRows();
+    return () => { mounted = false; };
+  }, [selectedFile, excelHeaders, columnMapping, fileType, processedGpxKmlData]);
+
   // Cargar casos para el selector
   useEffect(() => {
     const fetchCasosForSelect = async () => {
@@ -837,14 +881,22 @@ function ImportarPage() {
         opened={mappingModalOpened}
         onClose={closeMappingModal}
         title="Configurar Mapeo de Columnas"
-        size="lg"
+        size="xl"
+        styles={{
+          content: {
+            width: 1200,
+            maxHeight: 1200,
+            minHeight: 400,
+            overflowY: 'auto',
+          },
+        }}
       >
         <Stack>
           <Text size="sm" c="dimmed">
             Selecciona qué columna del archivo Excel corresponde a cada campo requerido.
           </Text>
           <Divider my="sm" />
-          <SimpleGrid cols={2}>
+          <SimpleGrid cols={Math.min(4, REQUIRED_FIELDS[fileType].length)} spacing="md">
             {REQUIRED_FIELDS[fileType].map((field) => {
               if (fechaHoraCombinada && (field === 'Hora' || field === 'Fecha')) {
                 if (field === 'Hora') return null;
@@ -915,6 +967,35 @@ function ImportarPage() {
               ]}
             />
           )}
+          {/* Vista previa de datos */}
+          <Divider my="sm" />
+          <Text size="sm" fw={500} mb={4}>Vista previa de datos</Text>
+          <Box style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: 6, background: '#fafbfc' }}>
+            <Table striped highlightOnHover withTableBorder>
+              <Table.Thead>
+                <Table.Tr>
+                  {[...REQUIRED_FIELDS[fileType], ...OPTIONAL_FIELDS[fileType]].map((field) => (
+                    <Table.Th key={field}>{field}</Table.Th>
+                  ))}
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {previewRows.length === 0 ? (
+                  <Table.Tr><Table.Td colSpan={REQUIRED_FIELDS[fileType].length + OPTIONAL_FIELDS[fileType].length}><Text c="dimmed" size="xs">No hay datos para vista previa.</Text></Table.Td></Table.Tr>
+                ) : (
+                  previewRows.map((row, idx) => (
+                    <Table.Tr key={idx}>
+                      {[...REQUIRED_FIELDS[fileType], ...OPTIONAL_FIELDS[fileType]].map((field) => {
+                        const excelCol = columnMapping[field];
+                        return <Table.Td key={field}>{excelCol ? row[excelCol] ?? '' : ''}</Table.Td>;
+                      })}
+                    </Table.Tr>
+                  ))
+                )}
+              </Table.Tbody>
+            </Table>
+          </Box>
+          {/* Fin vista previa */}
           <Group justify="flex-end" mt="md">
             <Button variant="outline" onClick={closeMappingModal}>
               Cancelar
