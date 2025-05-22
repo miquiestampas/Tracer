@@ -1,6 +1,6 @@
 import React from 'react';
-import { Stack, Text, UnstyledButton, useMantineTheme, Box, AppShell, Burger, Group, Button } from '@mantine/core';
-import { IconHome2, IconFolder, IconUsers, IconFileImport, IconSearch, IconDeviceCctv, IconArrowsExchange } from '@tabler/icons-react';
+import { Stack, Text, UnstyledButton, useMantineTheme, Box, AppShell, Burger, Group, Button, ActionIcon } from '@mantine/core';
+import { IconHome2, IconFolder, IconUsers, IconFileImport, IconSearch, IconDeviceCctv, IconArrowsExchange, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +19,8 @@ const navItems = [
 function Layout() {
   const location = useLocation();
   const theme = useMantineTheme();
-  const [opened, { toggle }] = useDisclosure();
+  const [opened, { toggle }] = useDisclosure(true);
+  const [collapsed, setCollapsed] = React.useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [helpOpen, setHelpOpen] = React.useState(false);
@@ -32,7 +33,7 @@ function Layout() {
   return (
     <AppShell
       header={{ height: 60 }}
-      navbar={{ width: 300, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      navbar={{ width: collapsed ? 70 : 260, breakpoint: 'sm', collapsed: { mobile: !opened } }}
       padding="md"
     >
       <AppShell.Header style={{ background: '#f5f6fa', color: '#222' }}>
@@ -57,8 +58,23 @@ function Layout() {
         </Group>
       </AppShell.Header>
 
-      <AppShell.Navbar p="md">
-        <Navbar />
+      <AppShell.Navbar p={0}>
+        <Box style={{ width: collapsed ? 70 : 260, height: '100%', position: 'relative' }}>
+          <Navbar collapsed={collapsed} />
+          <Box style={{ position: 'absolute', top: 12, right: collapsed ? -28 : -18, zIndex: 10 }}>
+            <ActionIcon
+              variant="filled"
+              color="gray"
+              size={32}
+              radius="xl"
+              onClick={() => setCollapsed((c) => !c)}
+              title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+              style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}
+            >
+              {collapsed ? <IconChevronRight size={22} /> : <IconChevronLeft size={22} />}
+            </ActionIcon>
+          </Box>
+        </Box>
       </AppShell.Navbar>
 
       <AppShell.Main>

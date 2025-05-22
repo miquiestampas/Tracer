@@ -13,7 +13,8 @@ const navItems = [
   { icon: IconDeviceCctv, label: 'Gestión de Lectores', path: '/lectores' },
 ];
 
-const Navbar: React.FC = () => {
+interface NavbarProps { collapsed: boolean }
+const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
   const location = useLocation();
   const theme = useMantineTheme();
   const navigate = useNavigate();
@@ -47,9 +48,6 @@ const Navbar: React.FC = () => {
       }}
     >
       <Stack gap={32} style={{ height: '100%' }}>
-        <Text fw={700} size="xl" style={{ color: '#fff', textAlign: 'center' }}>
-          LPR Tracer
-        </Text>
         <Stack gap={8} style={{ flex: 1 }}>
           {navItems.map((item) => (
             <UnstyledButton
@@ -58,45 +56,51 @@ const Navbar: React.FC = () => {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 12,
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                gap: collapsed ? 0 : 12,
                 fontSize: 18,
                 fontWeight: 500,
                 color: location.pathname === item.path ? '#000' : '#fff',
                 background: location.pathname === item.path ? '#fff' : 'transparent',
                 borderRadius: 8,
-                padding: '12px 10px',
+                padding: collapsed ? '12px 0' : '12px 10px',
                 transition: 'background 0.2s, color 0.2s',
                 width: '100%',
                 marginBottom: 2,
               }}
             >
-              <item.icon size="1.3rem" stroke={1.5} style={{ color: location.pathname === item.path ? '#000' : '#fff' }} />
-              <span>{item.label}</span>
+              <item.icon size="1.3rem" stroke={1.5} style={{ color: location.pathname === item.path ? '#000' : '#fff', margin: collapsed ? '0 auto' : undefined }} />
+              {!collapsed && <span>{item.label}</span>}
             </UnstyledButton>
           ))}
         </Stack>
         <Stack gap={4} align="center" mb={8}>
-          <Text size="md" style={{ color: '#fff' }}>Administrador</Text>
+          {!collapsed && <Text size="md" style={{ color: '#fff' }}>Administrador</Text>}
           {user?.Rol === 'superadmin' && (
             <UnstyledButton
               onClick={() => navigate('/admin')}
               style={{
                 display: 'block',
-                padding: '8px 16px',
+                padding: collapsed ? '8px 0' : '8px 16px',
                 borderRadius: theme.radius.sm,
                 color: '#fff',
                 fontWeight: 500,
                 fontSize: 16,
                 background: location.pathname === '/admin' ? 'rgba(255, 255, 255, 0.1)' : 'none',
                 transition: 'background 0.2s, color 0.2s',
+                width: '100%',
+                textAlign: 'center',
               }}
             >
-              <Text size="md" style={{ color: '#fff' }}>Panel de Administración</Text>
+              {!collapsed && <Text size="md" style={{ color: '#fff' }}>Panel de Administración</Text>}
+              {collapsed && <IconDeviceCctv size={20} color="#fff" />}
             </UnstyledButton>
           )}
-          <Text size="sm" style={{ color: '#fff', background: 'rgba(128, 128, 128, 0.5)', padding: '8px 16px', borderRadius: theme.radius.sm, textAlign: 'center' }}>
-            {footerText}
-          </Text>
+          {!collapsed && (
+            <Text size="sm" style={{ color: '#fff', background: 'rgba(128, 128, 128, 0.5)', padding: '8px 16px', borderRadius: theme.radius.sm, textAlign: 'center' }}>
+              {footerText}
+            </Text>
+          )}
         </Stack>
       </Stack>
     </div>

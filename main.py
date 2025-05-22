@@ -2562,27 +2562,47 @@ def get_recent_files(limit: int = 10, db: Session = Depends(get_db), current_use
     is_superadmin = user_rol == models.RolUsuarioEnum.superadmin.value
 
     try:
-        query = db.query(models.ArchivoExcel).options(joinedload(models.ArchivoExcel.caso))
+        # Subconsulta para contar lecturas por ID_Archivo
+        subquery = select(
+            models.Lectura.ID_Archivo,
+            func.count(models.Lectura.ID_Lectura).label("total_lecturas")
+        ).group_by(models.Lectura.ID_Archivo).subquery()
+
+        # Consulta principal uniendo ArchivoExcel con la subconsulta de conteo
+        query = db.query(
+            models.ArchivoExcel,
+            func.coalesce(subquery.c.total_lecturas, 0).label("num_registros")
+        ).outerjoin(
+            subquery, models.ArchivoExcel.ID_Archivo == subquery.c.ID_Archivo
+        ).options(joinedload(models.ArchivoExcel.caso))
         
         if not is_superadmin:
             if current_user.ID_Grupo is None:
-                 logger.warning(f"Usuario {current_user.User} sin grupo intentó acceder a archivos recientes globales.")
-                 # Si no tiene grupo, no puede ver archivos recientes (a menos que estén sin grupo, pero el filtro por grupo es más restrictivo)
-                 return [] # Devolver lista vacía si no tiene grupo y no es superadmin
-                 
+                logger.warning(f"Usuario {current_user.User} sin grupo intentó acceder a archivos recientes globales.")
+                return [] # Devolver lista vacía si no tiene grupo y no es superadmin
+                
             # Filtrar por archivos asociados a casos del grupo del usuario
             query = query.join(models.Caso).filter(models.Caso.ID_Grupo == current_user.ID_Grupo)
 
         # Ordenar por fecha de importación descendente y limitar
         archivos_recientes = query.order_by(models.ArchivoExcel.Fecha_de_Importacion.desc()).limit(limit).all()
         
-        # Asegurar que el caso se carga si existe para cada archivo
-        for archivo in archivos_recientes:
-            if archivo.ID_Caso and not archivo.caso:
-                 archivo.caso = db.query(models.Caso).filter(models.Caso.ID_Caso == archivo.ID_Caso).first()
-
-        logger.info(f"Encontrados {len(archivos_recientes)} archivos recientes para el usuario {current_user.User}.")
-        return archivos_recientes
+        # Formatear la respuesta para que coincida con el schema
+        respuesta = []
+        for archivo_db, num_registros in archivos_recientes:
+            archivo_schema = schemas.ArchivoExcel(
+                ID_Archivo=archivo_db.ID_Archivo,
+                ID_Caso=archivo_db.ID_Caso,
+                Nombre_del_Archivo=archivo_db.Nombre_del_Archivo,
+                Tipo_de_Archivo=archivo_db.Tipo_de_Archivo,
+                Fecha_de_Importacion=archivo_db.Fecha_de_Importacion,
+                Total_Registros=num_registros, # Asignar el conteo calculado
+                caso=archivo_db.caso
+            )
+            respuesta.append(archivo_schema)
+            
+        logger.info(f"Encontrados {len(respuesta)} archivos recientes para el usuario {current_user.User}.")
+        return respuesta
         
     except Exception as e:
         logger.error(f"Error al obtener archivos recientes: {e}", exc_info=True)
