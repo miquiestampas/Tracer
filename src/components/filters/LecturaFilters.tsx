@@ -53,11 +53,13 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
       </Group>
 
       <Group grow>
-        <TextInput
+        <DateInput
           label="Fecha Inicio"
-          type="date"
-          value={filters.fechaInicio}
-          onChange={e => handleChange({ fechaInicio: e.target.value })}
+          placeholder="DD/MM/YYYY"
+          value={filters.fechaInicio ? new Date(filters.fechaInicio) : null}
+          onChange={date => handleChange({ fechaInicio: date ? date.toISOString().split('T')[0] : '' })}
+          valueFormat="DD/MM/YYYY"
+          locale="es"
         />
         <TextInput
           label="Hora Inicio"
@@ -65,11 +67,13 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
           value={filters.horaInicio}
           onChange={e => handleChange({ horaInicio: e.target.value })}
         />
-        <TextInput
+        <DateInput
           label="Fecha Fin"
-          type="date"
-          value={filters.fechaFin}
-          onChange={e => handleChange({ fechaFin: e.target.value })}
+          placeholder="DD/MM/YYYY"
+          value={filters.fechaFin ? new Date(filters.fechaFin) : null}
+          onChange={date => handleChange({ fechaFin: date ? date.toISOString().split('T')[0] : '' })}
+          valueFormat="DD/MM/YYYY"
+          locale="es"
         />
         <TextInput
           label="Hora Fin"

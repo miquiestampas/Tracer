@@ -11,6 +11,7 @@ import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lector
 import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
+import { TimeInput } from '@mantine/dates';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -1385,6 +1386,34 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                   loading={loading}
                   lectorSuggestions={lectorSuggestions}
                 />
+                <Group grow>
+                  <TextInput
+                    label="Fecha Inicio"
+                    type="date"
+                    value={filters.fechaInicio}
+                    onChange={(e) => handleFilterChange({ fechaInicio: e.target.value })}
+                  />
+                  <TimeInput 
+                    label="Hora Inicio" 
+                    value={filters.horaInicio} 
+                    onChange={(event) => handleFilterChange({ horaInicio: event.currentTarget.value })} 
+                    leftSection={<IconClock style={markerIconStyle} />} 
+                  />
+                </Group>
+                <Group grow>
+                  <TextInput
+                    label="Fecha Fin"
+                    type="date"
+                    value={filters.fechaFin}
+                    onChange={(e) => handleFilterChange({ fechaFin: e.target.value })}
+                  />
+                  <TimeInput 
+                    label="Hora Fin" 
+                    value={filters.horaFin} 
+                    onChange={(event) => handleFilterChange({ horaFin: event.currentTarget.value })} 
+                    leftSection={<IconClock style={markerIconStyle} />} 
+                  />
+                </Group>
               </Stack>
             </Paper>
 
