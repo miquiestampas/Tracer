@@ -450,6 +450,11 @@ function ImportarPage() {
 
   // --- MODIFICADO: Manejar el envío del formulario de importación ---
   const handleImport = async () => {
+    if (!selectedFile || !selectedCasoId) {
+      setUploadError('Por favor, seleccione un archivo y un caso.');
+      return;
+    }
+
     setUploadError(null);
     setImportWarning(null);
     setIsUploading(true);
@@ -576,10 +581,27 @@ function ImportarPage() {
     setImportWarning(null);
   }, [selectedFile, selectedCasoId, fileType]);
 
+  const handleFileSelect = (file: File | null) => {
+    if (!file) return;
+
+    // Validar tipo de archivo
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    const validExtensions = ['xlsx', 'xls', 'csv'];
+    
+    if (!validExtensions.includes(fileExtension || '')) {
+      setUploadError('Por favor, seleccione un archivo Excel (.xlsx, .xls) o CSV (.csv) válido.');
+      return;
+    }
+
+    setSelectedFile(file);
+    setUploadError(null);
+    setImportWarning(null);
+  };
+
   // --- Renderizado del Componente ---
   return (
     <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
-      <Title order={2} mb="xl">Importar Datos desde Excel</Title>
+      <Title order={2} mb="xl">Importar Datos</Title>
       
       {/* Overlay global de carga - Solo mostrar si no está abierto el modal de matrícula */}
       {(isUploading || isReadingHeaders) && !matriculaModalOpened && (
@@ -662,37 +684,50 @@ function ImportarPage() {
             </Button>
           </Group>
 
-          {/* Tipo de Archivo */}
-          <Radio.Group
-            name="fileType"
-            label="Tipo de Archivo a Importar"
-            value={fileType}
-            onChange={(value) => setFileType(value as 'LPR' | 'GPS' | 'GPX_KML')}
-            required
-            mb="md"
-          >
-            <Group mt="xs">
-              <Radio value="LPR" label="Datos LPR" disabled={isUploading || isReadingHeaders} />
-              <Radio value="GPS" label="Datos GPS" disabled={isUploading || isReadingHeaders} />
-              <Radio value="GPX_KML" label="Archivo GPX/KML" disabled={isUploading || isReadingHeaders} />
+          {/* Tipo de Archivo - Reemplazado Radio.Group por Group de botones */}
+          <Box>
+            <Text size="sm" fw={500} mb="xs">Tipo de Archivo a Importar</Text>
+            <Group>
+              <Button
+                variant={fileType === 'LPR' ? 'filled' : 'outline'}
+                color="green"
+                onClick={() => setFileType('LPR')}
+                disabled={isUploading || isReadingHeaders}
+                leftSection={<IconFileSpreadsheet size={18} />}
+              >
+                Datos LPR
+              </Button>
+              <Button
+                variant={fileType === 'GPS' ? 'filled' : 'outline'}
+                color="green"
+                onClick={() => setFileType('GPS')}
+                disabled={isUploading || isReadingHeaders}
+                leftSection={<IconFileSpreadsheet size={18} />}
+              >
+                Datos GPS
+              </Button>
+              <Button
+                variant={fileType === 'GPX_KML' ? 'filled' : 'outline'}
+                color="orange"
+                onClick={() => setFileType('GPX_KML')}
+                disabled={isUploading || isReadingHeaders}
+                leftSection={<IconFileSpreadsheet size={18} />}
+              >
+                Archivo GPX/KML
+              </Button>
             </Group>
-          </Radio.Group>
+          </Box>
 
           {/* Input de Archivo */}
           <FileInput
             label="Archivo"
-            placeholder={
-              fileType === 'GPX_KML' 
-                ? "Selecciona o arrastra un archivo (.gpx, .kml)" 
-                : "Selecciona o arrastra un archivo (.xlsx, .xls)"
-            }
+            placeholder="Seleccione un archivo"
             leftSection={<IconFileSpreadsheet size={rem(18)} />}
             value={selectedFile}
-            onChange={setSelectedFile}
-            accept={fileType === 'GPX_KML' ? ".gpx,.kml" : ".xlsx,.xls"}
+            onChange={handleFileSelect}
+            accept={fileType === 'GPX_KML' ? ".gpx,.kml" : ".xlsx,.xls,.csv"}
             disabled={!selectedCasoId || isUploading || isReadingHeaders}
             clearable
-            required
           />
 
           {/* Botón Configurar Mapeo */}
@@ -808,16 +843,63 @@ function ImportarPage() {
           <Text size="sm" c="dimmed">
             Selecciona qué columna del archivo Excel corresponde a cada campo requerido.
           </Text>
-          
           <Divider my="sm" />
-
-          {/* Opción para fecha/hora combinada */}
+          <SimpleGrid cols={2}>
+            {REQUIRED_FIELDS[fileType].map((field) => {
+              if (fechaHoraCombinada && (field === 'Hora' || field === 'Fecha')) {
+                if (field === 'Hora') return null;
+                return (
+                  <Select
+                    key={field}
+                    label="Fecha y Hora"
+                    placeholder="Selecciona columna para Fecha y Hora"
+                    data={excelHeaders}
+                    value={columnMapping[field] || undefined}
+                    onChange={(value) => {
+                      handleMappingChange('Fecha', value);
+                      handleMappingChange('Hora', value);
+                    }}
+                    required
+                  />
+                );
+              }
+              return (
+                <Select
+                  key={field}
+                  label={field}
+                  placeholder={`Selecciona columna para ${field}`}
+                  data={excelHeaders}
+                  value={columnMapping[field] || undefined}
+                  onChange={(value) => handleMappingChange(field, value)}
+                  required
+                />
+              );
+            })}
+          </SimpleGrid>
+          <Divider my="sm" />
+          <Text size="sm" fw={500}>Campos Opcionales</Text>
+          <Text size="xs" c="dimmed" mb="md">
+            Estos campos no son obligatorios, pero si están disponibles en tu archivo, puedes mapearlos.
+          </Text>
+          <SimpleGrid cols={2}>
+            {OPTIONAL_FIELDS[fileType].map((field) => (
+              <Select
+                key={field}
+                label={field}
+                placeholder={`Selecciona columna para ${field}`}
+                data={excelHeaders}
+                value={columnMapping[field] || undefined}
+                onChange={(value) => handleMappingChange(field, value)}
+                clearable
+              />
+            ))}
+          </SimpleGrid>
+          <Divider my="sm" />
           <Checkbox
             label="La fecha y hora vienen en una sola columna"
             checked={fechaHoraCombinada}
             onChange={(event) => setFechaHoraCombinada(event.currentTarget.checked)}
           />
-
           {fechaHoraCombinada && (
             <Select
               label="Formato de fecha y hora"
@@ -833,64 +915,6 @@ function ImportarPage() {
               ]}
             />
           )}
-          
-          <Divider my="sm" />
-          
-          <SimpleGrid cols={2}>
-            {REQUIRED_FIELDS[fileType].map((field) => {
-              // Si fecha y hora están combinadas, solo mostrar uno de los campos
-              if (fechaHoraCombinada && (field === 'Hora' || field === 'Fecha')) {
-                if (field === 'Hora') return null; // Ocultar el campo Hora
-                return (
-                  <Select
-                    key={field}
-                    label="Fecha y Hora"
-                    placeholder="Selecciona columna para Fecha y Hora"
-                    data={excelHeaders}
-                    value={columnMapping[field] || null}
-                    onChange={(value) => {
-                      handleMappingChange('Fecha', value);
-                      handleMappingChange('Hora', value);
-                    }}
-                    required
-                  />
-                );
-              }
-              return (
-                <Select
-                  key={field}
-                  label={field}
-                  placeholder={`Selecciona columna para ${field}`}
-                  data={excelHeaders}
-                  value={columnMapping[field] || null}
-                  onChange={(value) => handleMappingChange(field, value)}
-                  required
-                />
-              );
-            })}
-          </SimpleGrid>
-
-          <Divider my="sm" />
-
-          <Text size="sm" fw={500}>Campos Opcionales</Text>
-          <Text size="xs" c="dimmed" mb="md">
-            Estos campos no son obligatorios, pero si están disponibles en tu archivo, puedes mapearlos.
-          </Text>
-
-          <SimpleGrid cols={2}>
-            {OPTIONAL_FIELDS[fileType].map((field) => (
-              <Select
-                key={field}
-                label={field}
-                placeholder={`Selecciona columna para ${field}`}
-                data={excelHeaders}
-                value={columnMapping[field] || null}
-                onChange={(value) => handleMappingChange(field, value)}
-                clearable
-              />
-            ))}
-          </SimpleGrid>
-
           <Group justify="flex-end" mt="md">
             <Button variant="outline" onClick={closeMappingModal}>
               Cancelar

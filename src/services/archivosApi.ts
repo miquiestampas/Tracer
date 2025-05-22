@@ -2,15 +2,15 @@ import apiClient from './api';
 import type { ArchivoExcel, Lectura, LecturaRelevante, LecturasResponse, UploadResponse } from '../types/data'; // Importa la interfaz ArchivoExcel, Lectura y LecturaRelevante
 
 /**
- * Sube un archivo Excel al backend para ser procesado e importado.
+ * Sube un archivo Excel o CSV al backend para ser procesado e importado.
  * @param casoId ID del caso al que pertenece el archivo.
  * @param tipoArchivo Tipo de archivo ('LPR' o 'GPS').
- * @param archivo El objeto File del archivo Excel seleccionado.
+ * @param archivo El objeto File del archivo Excel o CSV seleccionado.
  * @param columnMappingJson String JSON que contiene el mapeo de columnas.
  * @returns Promise<UploadResponse> - Respuesta con info del archivo y lectores nuevos.
  */
 export const uploadArchivoExcel = async (
-  casoId: string | number, // Aceptar number también por si acaso
+  casoId: string | number,
   tipoArchivo: 'LPR' | 'GPS',
   archivo: File,
   columnMappingJson: string
@@ -21,20 +21,17 @@ export const uploadArchivoExcel = async (
   // Añadir los campos requeridos por el endpoint del backend
   formData.append('tipo_archivo', tipoArchivo);
   formData.append('column_mapping', columnMappingJson);
-  formData.append('excel_file', archivo, archivo.name); // El tercer argumento es el nombre del archivo
+  formData.append('excel_file', archivo, archivo.name);
 
   try {
     // Realizar la petición POST al endpoint específico
-    // Es importante pasar el ID del caso en la URL
-    // Axios detectará FormData y establecerá Content-Type: multipart/form-data
     const response = await apiClient.post<UploadResponse>(
       `/casos/${casoId}/archivos/upload`,
       formData
     );
     return response.data;
   } catch (error) {
-    console.error('Error al subir el archivo Excel:', error);
-    // Relanzar el error para que sea manejado por el componente que llama
+    console.error('Error al subir el archivo:', error);
     throw error;
   }
 };
