@@ -101,13 +101,14 @@ function AdminPage() {
   const [editGrupo, setEditGrupo] = useState<number | null>(null);
   const [editPass, setEditPass] = useState('');
   const [casos, setCasos] = useState<Caso[]>([]);
-  const [casosLoading, setCasosLoading] = useState(false);
-  const [archivosPorCaso, setArchivosPorCaso] = useState<Record<number, ArchivoExcel[]>>({});
+  const [casosLoading, setCasosLoading] = useState(true);
+  const [archivosPorCaso, setArchivosPorCaso] = useState<{ [key: number]: ArchivoExcel[] }>({});
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [casoToReassign, setCasoToReassign] = useState<Caso | null>(null);
   const [nuevoGrupoId, setNuevoGrupoId] = useState<number | null>(null);
   const [footerText, setFooterText] = useState('JSP Madrid - Brigada Provincial de Policía Judicial');
   const [footerModalOpen, setFooterModalOpen] = useState(false);
+  const [casosSizes, setCasosSizes] = useState<{ [key: number]: number }>({});
 
   const fetchCasosYArchivos = async () => {
     setCasosLoading(true);
@@ -661,6 +662,16 @@ function AdminPage() {
     }
   };
 
+  // Función para cargar el tamaño de los archivos de un caso
+  const loadCasoSize = async (casoId: number) => {
+    try {
+      const response = await apiClient.get(`/api/casos/${casoId}/size`);
+      setCasosSizes(prev => ({ ...prev, [casoId]: response.data.size_mb }));
+    } catch (error) {
+      console.error(`Error al cargar el tamaño del caso ${casoId}:`, error);
+    }
+  };
+
   useEffect(() => {
     fetchDbStatus();
     fetchBackups();
@@ -676,6 +687,42 @@ function AdminPage() {
 
   useEffect(() => {
     fetchCasosYArchivos();
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setCasosLoading(true);
+      try {
+        const [casosData, archivosData] = await Promise.all([
+          getCasos(),
+          Promise.all(casos.map(caso => getArchivosPorCaso(caso.ID_Caso)))
+        ]);
+        
+        setCasos(casosData);
+        
+        // Crear el objeto de archivos por caso
+        const archivosMap: { [key: number]: ArchivoExcel[] } = {};
+        archivosData.forEach((archivos, index) => {
+          archivosMap[casos[index].ID_Caso] = archivos;
+        });
+        setArchivosPorCaso(archivosMap);
+        
+        // Cargar los tamaños de los casos
+        await Promise.all(casosData.map(caso => loadCasoSize(caso.ID_Caso)));
+        
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        notifications.show({
+          title: 'Error',
+          message: 'No se pudieron cargar los datos',
+          color: 'red'
+        });
+      } finally {
+        setCasosLoading(false);
+      }
+    };
+    
+    loadData();
   }, []);
 
   const formatBytes = (bytes: number) => {
@@ -982,7 +1029,7 @@ function AdminPage() {
                         const archivos = archivosPorCaso[caso.ID_Caso] || [];
                         const numArchivos = archivos.length;
                         const totalLecturas = archivos.reduce((acc, a) => acc + (a.Total_Registros || 0), 0);
-                        const totalMB = '-';
+                        const totalMB = casosSizes[caso.ID_Caso] ? `${casosSizes[caso.ID_Caso]} MB` : '-';
                         let grupoNombre = '-';
                         if ('grupo' in caso && (caso as any).grupo?.Nombre) {
                           grupoNombre = (caso as any).grupo.Nombre;
