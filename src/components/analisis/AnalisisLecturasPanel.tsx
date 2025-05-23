@@ -15,9 +15,10 @@ import * as XLSX from 'xlsx'; // Importación para la exportación a Excel
 import { ProgressOverlay } from '../common/ProgressOverlay';
 import { getLectorSugerencias } from '../../services/lectoresApi';
 import { Lectura as LecturaAPI } from '../../types/api.ts';
-import apiClient from './api';
-import type { GpsLectura } from '../types/data';
+import apiClient from '../../services/api';
+import type { GpsLectura } from '../../types/data';
 import { getLecturasGps } from '../../services/gpsApi';
+import appEventEmitter from '../../utils/eventEmitter';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -660,51 +661,67 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const handleMarcarRelevante = async () => {
         if (selectedRecords.length === 0) return;
         setLoading(true);
-        // Obtener todas las lecturas seleccionadas con ID válido
-        const lecturasParaMarcar = selectedRecords
-            .map(id => results.find(r => r.ID_Lectura === id))
-            .filter(r => r && typeof r.ID_Lectura === 'number');
-        if (lecturasParaMarcar.length === 0) {
-            notifications.show({ title: 'Error', message: 'No hay lecturas válidas para marcar.', color: 'red' });
-            setSelectedRecords([]);
-            setLoading(false);
-            return;
-        }
-        const idsToMark = lecturasParaMarcar.map(r => r!.ID_Lectura);
-        if (casoIdFijo === null || casoIdFijo === undefined || isNaN(casoIdFijo)) {
-            notifications.show({ title: 'Error', message: 'No se pudo determinar el ID del caso actual para marcar la lectura.', color: 'red' });
-            setSelectedRecords([]);
-            setLoading(false);
-            return;
-        }
-        let successCount = 0;
-        let errorCount = 0;
-        for (const id of idsToMark) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/lecturas/${id}/marcar_relevante`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        Nota: null,
-                        caso_id: casoIdFijo
-                    }) 
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => null);
-                    const detail = errorData?.detail || `HTTP ${response.status}`;
-                    throw new Error(`Error marcando ${id}: ${detail}`);
-                }
-                successCount++;
-            } catch (err: any) {
-                errorCount++;
-                notifications.show({ title: 'Error', message: err.message || 'Error desconocido', color: 'red' });
+        try {
+            // Obtener todas las lecturas seleccionadas con ID válido
+            const lecturasParaMarcar = selectedRecords
+                .map(id => results.find(r => r.ID_Lectura === id))
+                .filter(r => r && typeof r.ID_Lectura === 'number');
+
+            if (lecturasParaMarcar.length === 0) {
+                notifications.show({ title: 'Error', message: 'No hay lecturas válidas para marcar.', color: 'red' });
+                setSelectedRecords([]);
+                return;
             }
+
+            const idsToMark = lecturasParaMarcar.map(r => r!.ID_Lectura);
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const id of idsToMark) {
+                try {
+                    await apiClient.post(`/lecturas/${id}/marcar_relevante`, {
+                        caso_id: casoIdFijo
+                    });
+                    successCount++;
+                } catch (error) {
+                    errorCount++;
+                    console.error(`Error marcando lectura ${id}:`, error);
+                }
+            }
+
+            if (successCount > 0) {
+                notifications.show({
+                    title: 'Éxito',
+                    message: `${successCount} de ${idsToMark.length} lecturas marcadas como relevantes.`,
+                    color: 'green'
+                });
+                // Actualizar el estado local para reflejar los cambios
+                setResults(prevResults => 
+                    prevResults.map(r => 
+                        idsToMark.includes(r.ID_Lectura as number) 
+                            ? { ...r, es_relevante: true }
+                            : r
+                    )
+                );
+            }
+            if (errorCount > 0) {
+                notifications.show({
+                    title: 'Error Parcial',
+                    message: `${errorCount} lecturas no se pudieron marcar.`,
+                    color: 'orange'
+                });
+            }
+        } catch (error) {
+            console.error('Error en handleMarcarRelevante:', error);
+            notifications.show({
+                title: 'Error',
+                message: 'No se pudieron marcar las lecturas como relevantes.',
+                color: 'red'
+            });
+        } finally {
+            setSelectedRecords([]);
+            setLoading(false);
         }
-        if (successCount > 0) {
-            notifications.show({ title: 'Éxito', message: `${successCount} de ${idsToMark.length} lecturas marcadas como relevantes.`, color: 'green' });
-        }
-        setSelectedRecords([]);
-        setLoading(false);
     };
 
     const handleDesmarcarRelevante = async () => {
@@ -750,58 +767,76 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     };
 
     const handleGuardarVehiculos = async () => {
-        // Permitir guardar desde vista agrupada o normal
-        const matriculasUnicas = Array.from(new Set(selectedRecords
-            .map(id => {
-                const record = results.find(r => r.ID_Lectura === id) || processedResults.find(r => r.ID_Lectura === id);
-                if (record && record._isGroup && record.Matricula) return record.Matricula;
-                if (record && typeof record.Matricula === 'string' && record.Matricula.trim() !== '') return record.Matricula;
-                return null;
-            })
-            .filter(m => typeof m === 'string' && m.trim() !== '')));
-        if (matriculasUnicas.length === 0) {
-            notifications.show({ title: 'Sin matrículas', message: 'No hay matrículas válidas seleccionadas.', color: 'orange' });
-            return;
-        }
+        if (selectedRecords.length === 0) return;
         setLoading(true);
-        let vehiculosCreados = 0;
-        let vehiculosExistentes = 0;
-        let errores = 0;
-        for (const matricula of matriculasUnicas) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/vehiculos`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ Matricula: matricula }),
+        try {
+            // Obtener matrículas únicas de las lecturas seleccionadas
+            const matriculasUnicas = Array.from(new Set(
+                selectedRecords
+                    .map(id => {
+                        const record = results.find(r => r.ID_Lectura === id);
+                        return record?.Matricula;
+                    })
+                    .filter((m): m is string => typeof m === 'string' && m.trim() !== '')
+            ));
+
+            if (matriculasUnicas.length === 0) {
+                notifications.show({
+                    title: 'Sin matrículas',
+                    message: 'No hay matrículas válidas seleccionadas.',
+                    color: 'orange'
                 });
-                if (response.status === 201) {
-                    vehiculosCreados++;
-                } else if (response.status === 400 || response.status === 409) {
-                    vehiculosExistentes++;
-                } else {
-                    const errorData = await response.json().catch(() => null);
-                    throw new Error(errorData?.detail || `HTTP ${response.status}`);
-                }
-            } catch (e: any) {
-                errores++;
-                notifications.show({ title: 'Error Guardando Vehículo', message: e.message || 'Error desconocido', color: 'red' });
+                return;
             }
-        }
-        let message = '';
-        if (vehiculosCreados > 0) message += `${vehiculosCreados} vehículo(s) nuevo(s) guardado(s). `;
-        if (vehiculosExistentes > 0) message += `${vehiculosExistentes} vehículo(s) ya existían. `;
-        if (errores > 0) message += `${errores} matrícula(s) no se pudieron procesar.`;
-        if (message) {
+
+            let vehiculosCreados = 0;
+            let vehiculosExistentes = 0;
+            let errores = 0;
+
+            for (const matricula of matriculasUnicas) {
+                try {
+                    const response = await apiClient.post('/vehiculos', { Matricula: matricula });
+                    if (response.status === 201) {
+                        vehiculosCreados++;
+                    } else if (response.status === 400 || response.status === 409) {
+                        vehiculosExistentes++;
+                    }
+                } catch (error: any) {
+                    if (error.response?.status === 400 || error.response?.status === 409) {
+                        vehiculosExistentes++;
+                    } else {
+                        errores++;
+                        console.error(`Error guardando vehículo ${matricula}:`, error);
+                    }
+                }
+            }
+
+            let message = '';
+            if (vehiculosCreados > 0) message += `${vehiculosCreados} vehículo(s) nuevo(s) guardado(s). `;
+            if (vehiculosExistentes > 0) message += `${vehiculosExistentes} vehículo(s) ya existían. `;
+            if (errores > 0) message += `${errores} matrícula(s) no se pudieron procesar.`;
+
+            if (message) {
+                notifications.show({
+                    title: "Guardar Vehículos Completado",
+                    message: message.trim(),
+                    color: errores > 0 ? (vehiculosCreados > 0 ? 'orange' : 'red') : 'green'
+                });
+            }
+
+            // Emitir evento para actualizar la lista de vehículos en otros componentes
+            appEventEmitter.emit('listaVehiculosCambiada');
+        } catch (error) {
+            console.error('Error en handleGuardarVehiculos:', error);
             notifications.show({
-                title: "Guardar Vehículos Completado",
-                message: message.trim(),
-                color: errores > 0 ? (vehiculosCreados > 0 ? 'orange' : 'red') : 'green'
+                title: 'Error',
+                message: 'No se pudieron guardar los vehículos.',
+                color: 'red'
             });
-        } else {
-            notifications.show({ title: 'Nada que guardar', message: 'No se guardó ningún vehículo.', color: 'orange' });
+        } finally {
+            setSelectedRecords([]);
+            setLoading(false);
         }
-        setSelectedRecords([]);
-        setLoading(false);
     };
 
     // Función para expandir/colapsar grupos
@@ -1092,7 +1127,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     // Función para eliminar una búsqueda guardada
     const handleDeleteSavedSearch = async (searchId: number) => {
         try {
-            const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/saved_searches/${searchId}`, {
+            const response = await fetch(`${API_BASE_URL}/saved_searches/${searchId}`, {
                 method: 'DELETE'
             });
 

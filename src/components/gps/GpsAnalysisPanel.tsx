@@ -142,7 +142,6 @@ const LocalizacionItem = React.memo(({ loc, setLocalizacionActual, setModalAbier
         <Group gap="xs">
           <Icon size={18} color={loc.color} />
           <Text size="sm" fw={600}>{loc.titulo}</Text>
-          <Text size="xs" c="dimmed">{dayjs(loc.fecha_hora).format('DD/MM/YYYY HH:mm')}</Text>
         </Group>
         <Group gap={4}>
           <ActionIcon variant="subtle" color="blue" onClick={() => {
@@ -158,6 +157,7 @@ const LocalizacionItem = React.memo(({ loc, setLocalizacionActual, setModalAbier
           }}><IconTrash size={16} /></ActionIcon>
         </Group>
       </Group>
+      <Text size="xs" c="dimmed" mt={2}>{dayjs(loc.fecha_hora).format('DD/MM/YYYY HH:mm')}</Text>
       {loc.descripcion && <Text size="xs" c="dimmed" mt={2}>{loc.descripcion}</Text>}
     </Paper>
   );
