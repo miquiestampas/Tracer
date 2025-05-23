@@ -66,6 +66,7 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
         diferenciaMinima: 5,
         fechaInicio: '',
         fechaFin: '',
+        minCoincidencias: 2,
     });
     const [lanzaderaLoading, setLanzaderaLoading] = useState(false);
     const [lanzaderaResultados, setLanzaderaResultados] = useState<string[]>([]);
@@ -404,7 +405,8 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                 fecha_inicio: lanzaderaParams.fechaInicio || undefined,
                 fecha_fin: lanzaderaParams.fechaFin || undefined,
                 ventana_minutos: lanzaderaParams.ventanaMinutos,
-                diferencia_minima: lanzaderaParams.diferenciaMinima
+                diferencia_minima: lanzaderaParams.diferenciaMinima,
+                min_coincidencias: lanzaderaParams.minCoincidencias
             });
 
             setLanzaderaResultados(response.data.vehiculos_lanzadera);
@@ -698,6 +700,13 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                         min={1}
                         max={60}
                     />
+                    <NumberInput
+                        label="Mínimo de coincidencias"
+                        value={lanzaderaParams?.minCoincidencias || 2}
+                        onChange={v => setLanzaderaParams(p => ({ ...p, minCoincidencias: typeof v === 'number' ? v : 2 }))}
+                        min={2}
+                        max={20}
+                    />
                     <Group mt="md">
                         <Button
                             leftSection={<IconSearch size={16} />}
@@ -715,7 +724,8 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                                     ventanaMinutos: 10,
                                     diferenciaMinima: 5,
                                     fechaInicio: '',
-                                    fechaFin: ''
+                                    fechaFin: '',
+                                    minCoincidencias: 2
                                 });
                                 setLanzaderaDetalles([]);
                                 setLanzaderaResultados([]);
@@ -742,6 +752,9 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                     <tbody>
                         {lanzaderaDetalles && lanzaderaDetalles.length > 0 ? (
                             [...lanzaderaDetalles]
+                                .filter(d =>
+                                    d.tipo === 'Objetivo' || lanzaderaResultados.includes(d.matricula)
+                                )
                                 .sort((a, b) => {
                                     // Ordenar por fecha y hora
                                     const dateA = new Date(`${a.fecha}T${a.hora}`);

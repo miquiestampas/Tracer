@@ -8,7 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session, joinedload, contains_eager, relationship
 from sqlalchemy.sql import func, extract, select, label, text
 import models, schemas
-from database import SessionLocal, engine, get_db
+from database import SessionLocal, engine, get_db, DATABASE_URL
 import pandas as pd
 from io import BytesIO
 import datetime
@@ -2519,9 +2519,9 @@ def get_global_statistics(db: Session = Depends(get_db)):
         total_lecturas = db.query(models.Lectura).count()
         total_vehiculos = db.query(models.Vehiculo).count()
         
-        # Obtener tamaño del archivo de la base de datos
-        # Asumiendo que la base de datos es 'tracer.db' en el directorio padre de main.py
-        db_path = os.path.join(os.path.dirname(__file__), '../tracer.db')
+        # Obtener tamaño del archivo de la base de datos usando la ruta real de SQLAlchemy
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+        db_path = os.path.abspath(db_path)
         size_bytes = os.path.getsize(db_path) if os.path.exists(db_path) else 0
         
         # Formatear tamaño a un string legible (ej: KB, MB, GB)
@@ -2748,8 +2748,16 @@ def delete_usuario(
 
 @app.get("/api/grupos", response_model=List[schemas.Grupo])
 def get_grupos(db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
-    """Devuelve la lista de todos los grupos (solo superadmin)."""
-    return db.query(models.Grupo).all()
+    """Devuelve la lista de todos los grupos (solo superadmin), incluyendo el número de casos asociados en el campo 'casos'."""
+    grupos = db.query(models.Grupo).all()
+    # Para cada grupo, contar los casos asociados
+    grupos_con_casos = []
+    for grupo in grupos:
+        num_casos = db.query(models.Caso).filter(models.Caso.ID_Grupo == grupo.ID_Grupo).count()
+        grupo_dict = grupo.__dict__.copy()
+        grupo_dict['casos'] = num_casos
+        grupos_con_casos.append(grupo_dict)
+    return grupos_con_casos
 
 @app.post("/api/grupos", response_model=schemas.Grupo)
 def create_grupo(grupo: schemas.GrupoCreate, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_superadmin)):
@@ -2831,8 +2839,9 @@ def get_database_status(db: Session = Depends(get_db)):
                 "count": count
             })
         
-        # Obtener tamaño del archivo de la base de datos
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tracer.db')
+        # Obtener tamaño del archivo de la base de datos usando la ruta real de SQLAlchemy
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+        db_path = os.path.abspath(db_path)
         size_bytes = os.path.getsize(db_path) if os.path.exists(db_path) else 0
         
         return {
@@ -3350,10 +3359,11 @@ from fastapi import HTTPException, status
 @app.post("/casos/{caso_id}/detectar-lanzaderas", response_model=schemas.LanzaderaResponse)
 def detectar_vehiculos_lanzadera(
     caso_id: int,
-    request: schemas.LanzaderaRequest,
+    request: schemas.LanzaderaRequest,  # Debe incluir: matricula, ventana_minutos, diferencia_minima_lecturas_min, min_coincidencias (opcional), fecha_inicio/fin opcionales
     db: Session = Depends(get_db)
 ):
-    # 1. Obtener todas las lecturas del vehículo objetivo en el rango de fechas
+    logger.info(f"[Lanzadera] Params: matricula={request.matricula}, fecha_inicio={getattr(request, 'fecha_inicio', None)}, fecha_fin={getattr(request, 'fecha_fin', None)}, ventana_minutos={getattr(request, 'ventana_minutos', 5)}, diferencia_minima_lecturas_min={getattr(request, 'diferencia_minima_lecturas_min', 1)}, min_coincidencias={getattr(request, 'min_coincidencias', 2)}")
+    # 1. Obtener todas las lecturas del vehículo objetivo en el rango de fechas (si se especifican)
     query = db.query(models.Lectura).filter(
         models.Lectura.ID_Archivo.in_(
             db.query(models.ArchivoExcel.ID_Archivo)
@@ -3361,32 +3371,51 @@ def detectar_vehiculos_lanzadera(
         ),
         models.Lectura.Matricula == request.matricula
     )
-
-    # Aplicar filtros de fecha solo si existen
-    if request.fecha_inicio:
+    if getattr(request, 'fecha_inicio', None):
         query = query.filter(models.Lectura.Fecha_y_Hora >= request.fecha_inicio)
-    if request.fecha_fin:
-        # Convertir fecha_fin a datetime con hora máxima si es string
-        if isinstance(request.fecha_fin, str):
-            fecha_fin_dt = datetime.strptime(request.fecha_fin, "%Y-%m-%d")
+    if getattr(request, 'fecha_fin', None):
+        fecha_fin_val = request.fecha_fin
+        if isinstance(fecha_fin_val, str):
+            fecha_fin_dt = datetime.strptime(fecha_fin_val, "%Y-%m-%d")
             fecha_fin_dt = datetime.combine(fecha_fin_dt, datetime.max.time())
         else:
-            fecha_fin_dt = request.fecha_fin
+            fecha_fin_dt = fecha_fin_val
         query = query.filter(models.Lectura.Fecha_y_Hora <= fecha_fin_dt)
-
     lecturas_objetivo = query.order_by(models.Lectura.Fecha_y_Hora).all()
-
+    logger.info(f"[Lanzadera] Lecturas objetivo encontradas: {len(lecturas_objetivo)}")
     if not lecturas_objetivo:
-        return schemas.LanzaderaResponse(
-            vehiculos_lanzadera=[],
-            detalles=[]
-        )
+        logger.info("[Lanzadera] No se encontraron lecturas objetivo.")
+        return schemas.LanzaderaResponse(vehiculos_lanzadera=[], detalles=[])
 
-    # 2. Para cada lectura del vehículo objetivo, buscar vehículos que pasaron por el mismo punto
-    # en un rango de tiempo cercano (por ejemplo, ±5 minutos)
+    # 2. Para cada lectura del objetivo, buscar vehículos acompañantes
+    vehiculos_acompanantes = defaultdict(lambda: defaultdict(list))  # {matricula: {fecha: [(hora, lector), ...]}}
+    
+    for lectura_objetivo in lecturas_objetivo:
+        # Calcular ventana temporal
+        ventana_inicio = lectura_objetivo.Fecha_y_Hora - timedelta(minutes=request.ventana_minutos)
+        ventana_fin = lectura_objetivo.Fecha_y_Hora + timedelta(minutes=request.ventana_minutos)
+        
+        # Buscar lecturas en la misma ventana temporal y lector
+        lecturas_acompanantes = db.query(models.Lectura).filter(
+            models.Lectura.ID_Archivo.in_(
+                db.query(models.ArchivoExcel.ID_Archivo)
+                .filter(models.ArchivoExcel.ID_Caso == caso_id)
+            ),
+            models.Lectura.ID_Lector == lectura_objetivo.ID_Lector,
+            models.Lectura.Fecha_y_Hora >= ventana_inicio,
+            models.Lectura.Fecha_y_Hora <= ventana_fin,
+            models.Lectura.Matricula != request.matricula
+        ).all()
+        
+        # Registrar las coincidencias
+        for lectura in lecturas_acompanantes:
+            fecha = lectura.Fecha_y_Hora.date().isoformat()
+            hora = lectura.Fecha_y_Hora.time().strftime("%H:%M")
+            vehiculos_acompanantes[lectura.Matricula][fecha].append((hora, lectura.ID_Lector))
+
+    # 3. Analizar los vehículos acompañantes según los criterios
     vehiculos_lanzadera = []
     detalles = []
-    tiempo_ventana = timedelta(minutes=5)  # Ventana de tiempo para considerar vehículos cercanos
 
     # Añadir lecturas del objetivo al array detalles
     for lectura in lecturas_objetivo:
@@ -3397,40 +3426,45 @@ def detectar_vehiculos_lanzadera(
             lector=lectura.ID_Lector,
             tipo="Objetivo"
         ))
+    
+    for matricula, coincidencias_por_dia in vehiculos_acompanantes.items():
+        # Verificar criterio 1: Al menos 2 días distintos
+        dias_distintos = len(coincidencias_por_dia)
+        
+        # Verificar criterio 2: Más de 2 lectores distintos el mismo día con lecturas distanciadas en el tiempo
+        cumple_criterio_2 = False
+        for fecha, lecturas in coincidencias_por_dia.items():
+            if len(set(lector for _, lector in lecturas)) > 2:
+                # Verificar que las lecturas estén distanciadas en el tiempo
+                horas = []
+                for hora_str, _ in lecturas:
+                    try:
+                        horas.append(datetime.strptime(hora_str, "%H:%M"))
+                    except Exception as e:
+                        logger.warning(f"Hora inválida '{hora_str}' para matrícula {matricula} en fecha {fecha}: {e}")
+                        continue
+                if any(abs((h2 - h1).total_seconds() / 60) >= request.diferencia_minima_lecturas_min 
+                      for i, h1 in enumerate(horas) 
+                      for h2 in horas[i+1:]):
+                    cumple_criterio_2 = True
+                    break
+        
+        # Si cumple alguno de los criterios, es un vehículo lanzadera
+        if dias_distintos >= 2 or cumple_criterio_2:
+            vehiculos_lanzadera.append(matricula)
+            # Agregar todos los detalles de las coincidencias
+            for fecha, lecturas in coincidencias_por_dia.items():
+                for hora, lector in lecturas:
+                    detalles.append(schemas.LanzaderaDetalle(
+                        matricula=matricula,
+                        fecha=fecha,
+                        hora=hora if len(hora) == 8 else (hora+':00' if len(hora)==5 else hora),
+                        lector=lector,
+                        tipo="Lanzadera"
+                    ))
 
-    for lectura_objetivo in lecturas_objetivo:
-        # Buscar lecturas de otros vehículos en el mismo punto y tiempo cercano
-        lecturas_cercanas = db.query(models.Lectura).filter(
-            models.Lectura.ID_Archivo.in_(
-                db.query(models.ArchivoExcel.ID_Archivo)
-                .filter(models.ArchivoExcel.ID_Caso == caso_id)
-            ),
-            models.Lectura.Matricula != request.matricula,  # Excluir el vehículo objetivo
-            models.Lectura.ID_Lector == lectura_objetivo.ID_Lector,  # Mismo punto de lectura
-            models.Lectura.Fecha_y_Hora >= lectura_objetivo.Fecha_y_Hora - tiempo_ventana,
-            models.Lectura.Fecha_y_Hora <= lectura_objetivo.Fecha_y_Hora + tiempo_ventana
-        ).all()
-
-        # Agrupar por matrícula y contar ocurrencias
-        conteo_vehiculos = {}
-        for lectura in lecturas_cercanas:
-            if lectura.Matricula not in conteo_vehiculos:
-                conteo_vehiculos[lectura.Matricula] = 0
-            conteo_vehiculos[lectura.Matricula] += 1
-            # Añadir detalle de la lectura
-            detalles.append(schemas.LanzaderaDetalle(
-                matricula=lectura.Matricula,
-                fecha=lectura.Fecha_y_Hora.date().isoformat(),
-                hora=lectura.Fecha_y_Hora.time().strftime("%H:%M:%S"),
-                lector=lectura.ID_Lector,
-                tipo="Lanzadera"
-            ))
-
-        # Considerar como posible lanzadera si aparece en al menos 2 lecturas cercanas
-        for matricula, conteo in conteo_vehiculos.items():
-            if conteo >= 2 and matricula not in vehiculos_lanzadera:
-                vehiculos_lanzadera.append(matricula)
-
+    # Ordenar detalles cronológicamente
+    detalles.sort(key=lambda d: (d.fecha, d.hora, d.matricula))
     return schemas.LanzaderaResponse(
         vehiculos_lanzadera=vehiculos_lanzadera,
         detalles=detalles
@@ -3462,3 +3496,37 @@ def create_saved_search(caso_id: int, saved_search_data: schemas.SavedSearchCrea
         db.rollback()
         logger.error(f"Error al guardar SavedSearch en BD: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error interno al guardar la búsqueda.")
+
+@app.get("/api/casos/{caso_id}/size")
+def get_caso_size(caso_id: int, db: Session = Depends(get_db)):
+    """
+    Obtiene el tamaño total en bytes de todos los archivos asociados a un caso.
+    """
+    try:
+        # Obtener todos los archivos del caso
+        archivos = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
+        
+        # Carpeta de uploads
+        uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
+        
+        # Calcular el tamaño total
+        total_size = 0
+        for archivo in archivos:
+            ruta = archivo.Ruta_Archivo
+            if not ruta or not os.path.exists(ruta):
+                # Si no hay ruta, buscar por nombre en uploads
+                if archivo.Nombre_del_Archivo:
+                    posible_ruta = os.path.join(uploads_dir, archivo.Nombre_del_Archivo)
+                    if os.path.exists(posible_ruta):
+                        ruta = posible_ruta
+            if ruta and os.path.exists(ruta):
+                total_size += os.path.getsize(ruta)
+        
+        # Formatear el tamaño a MB con 2 decimales
+        size_mb = round(total_size / (1024 * 1024), 2)
+        
+        return {"size_mb": size_mb}
+        
+    except Exception as e:
+        logger.error(f"Error al obtener el tamaño del caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
