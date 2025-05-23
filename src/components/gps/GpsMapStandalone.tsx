@@ -412,6 +412,7 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
   const [selectedInfo, setSelectedInfo] = useState<any | null>(null);
   const [optimizedLecturas, setOptimizedLecturas] = useState<GpsLectura[]>([]);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [animatedPosition, setAnimatedPosition] = useState<[number, number] | null>(null);
 
   // Memoizar el centro inicial
   const initialCenter: L.LatLngTuple = useMemo(() => {
@@ -617,62 +618,48 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
     }
   };
 
-  // Renderizar puntos del recorrido
-  const renderRoutePoints = useMemo(() => {
-    if (!playbackLayer || currentPlaybackIndex === undefined) return null;
-    
-    return playbackLayer.lecturas.map((lectura, index) => {
-      const isVisited = index <= currentPlaybackIndex;
-      return (
-        <Marker
-          key={`route-point-${index}`}
-          position={[lectura.Coordenada_Y, lectura.Coordenada_X]}
-          icon={L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div style="
-              background: ${isVisited ? playbackLayer.color : '#adb5bd'};
-              width: 8px;
-              height: 8px;
-              border-radius: 50%;
-              border: 2px solid white;
-              box-shadow: 0 0 4px rgba(0,0,0,0.2);
-              opacity: ${isVisited ? 0.15 : 1};
-              transition: opacity 0.2s ease-in-out;
-            "></div>`,
-            iconSize: [8, 8],
-            iconAnchor: [4, 4]
-          })}
-        />
-      );
-    });
-  }, [playbackLayer, currentPlaybackIndex]);
-
-  // Obtener el punto actual para el reproductor
-  const currentPlaybackPoint = useMemo(() => {
-    if (!playbackLayer || currentPlaybackIndex === undefined || currentPlaybackIndex < 0) return null;
-    return playbackLayer.lecturas[currentPlaybackIndex];
-  }, [playbackLayer, currentPlaybackIndex]);
-
-  // Efecto para centrar el mapa cuando puntoSeleccionado cambia
+  // Efecto para animar la transición del marcador del reproductor
   useEffect(() => {
-    const map = internalMapRef.current;
-    if (puntoSeleccionado && map) {
-      const lat = puntoSeleccionado.Coordenada_Y;
-      const lng = puntoSeleccionado.Coordenada_X;
-      if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
-        console.log(`GpsMapStandalone: Centrando mapa en Lat ${lat}, Lng ${lng} por prop puntoSeleccionado.`);
-        map.flyTo([lat, lng], Math.max(map.getZoom() ?? 15, 16));
-        // Ahora también seleccionamos el punto para que se resalte y muestre el InfoBanner
-        setSelectedInfo({
-          info: {
-            ...puntoSeleccionado,
-            onGuardarLocalizacion: () => onGuardarLocalizacion(puntoSeleccionado), // Asegúrate que onGuardarLocalizacion esté disponible aquí
-          },
-          isLocalizacion: false // Asumimos que un punto GPS directo no es una LocalizacionDeInteres guardada
-        });
+    if (!playbackLayer || currentPlaybackIndex == null || currentPlaybackIndex < 0) return;
+    const current = playbackLayer.lecturas[currentPlaybackIndex];
+    if (!current) return;
+
+    // Si es el primer punto, ponerlo directamente
+    if (animatedPosition == null) {
+      setAnimatedPosition([current.Coordenada_Y, current.Coordenada_X]);
+      return;
+    }
+
+    const [startLat, startLng] = animatedPosition;
+    const endLat = current.Coordenada_Y;
+    const endLng = current.Coordenada_X;
+    const duration = 500; // ms
+    const startTime = performance.now();
+
+    function animate(now) {
+      const t = Math.min((now - startTime) / duration, 1);
+      const lat = startLat + (endLat - startLat) * t;
+      const lng = startLng + (endLng - startLng) * t;
+      setAnimatedPosition([lat, lng]);
+      if (t < 1) {
+        requestAnimationFrame(animate);
       }
     }
-  }, [puntoSeleccionado, internalMapRef.current, onGuardarLocalizacion]); // Añadir onGuardarLocalizacion a las dependencias
+    requestAnimationFrame(animate);
+  // eslint-disable-next-line
+  }, [currentPlaybackIndex, playbackLayer]);
+
+  // Resetear la posición animada si cambia la capa de reproducción o se reinicia
+  useEffect(() => {
+    if (!playbackLayer || currentPlaybackIndex == null || currentPlaybackIndex < 0) {
+      setAnimatedPosition(null);
+      return;
+    }
+    const current = playbackLayer.lecturas[currentPlaybackIndex];
+    if (current) {
+      setAnimatedPosition([current.Coordenada_Y, current.Coordenada_X]);
+    }
+  }, [playbackLayer]);
 
   // Componente interno para el clustering de marcadores
   const ClusteredMarkersInternal = () => {
@@ -775,12 +762,18 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
         />
         
         {/* Renderizar puntos del recorrido */}
-        {renderRoutePoints}
+        {playbackLayer && currentPlaybackIndex !== undefined && (
+          <Polyline
+            positions={playbackLayer.lecturas.map(lectura => [lectura.Coordenada_Y, lectura.Coordenada_X])}
+            color={playbackLayer.color}
+            weight={2}
+          />
+        )}
         
         {/* Renderizar punto actual del reproductor */}
-        {currentPlaybackPoint && playbackLayer && (
+        {animatedPosition && playbackLayer && (
           <Marker
-            position={[currentPlaybackPoint.Coordenada_Y, currentPlaybackPoint.Coordenada_X]}
+            position={animatedPosition}
             icon={L.divIcon({
               className: 'custom-div-icon',
               html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
