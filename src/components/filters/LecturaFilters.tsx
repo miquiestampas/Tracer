@@ -1,7 +1,8 @@
 import React, { ChangeEvent } from 'react';
 import { Box, SimpleGrid, TextInput, Select, Group, Button, Switch, Stack, Autocomplete } from '@mantine/core';
-import { TimeInput, DateInput } from '@mantine/dates';
+import { TimeInput } from '@mantine/dates';
 import { IconSearch, IconClearAll } from '@tabler/icons-react';
+import dayjs from 'dayjs';
 
 // Exportar la interfaz FilterState para que pueda ser usada por el padre
 export interface FilterState {
@@ -38,6 +39,45 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
     handleChange({ [field]: event.currentTarget.value || '' });
   };
 
+  const handleDateChange = (field: 'fechaInicio' | 'fechaFin') => (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.currentTarget.value;
+    
+    // Si está vacío, permitir el cambio
+    if (!value) {
+      handleChange({ [field]: '' });
+      return;
+    }
+
+    // Validar formato DD/MM/YYYY
+    const dateRegex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+    const match = value.match(dateRegex);
+    
+    if (match) {
+      const [_, day, month, year] = match;
+      const dayNum = parseInt(day);
+      const monthNum = parseInt(month);
+      const yearNum = parseInt(year);
+      
+      // Validar rangos de fecha
+      if (dayNum >= 1 && dayNum <= 31 && 
+          monthNum >= 1 && monthNum <= 12 && 
+          yearNum >= 1900 && yearNum <= 2100) {
+        handleChange({ [field]: value });
+      }
+    } else if (value.length <= 10) { // Permitir escritura parcial
+      handleChange({ [field]: value });
+    }
+  };
+
+  const formatDateForInput = (dateStr: string) => {
+    if (!dateStr) return '';
+    try {
+      return dayjs(dateStr).format('DD/MM/YYYY');
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <Stack gap="md">
       <Group grow>
@@ -53,13 +93,12 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
       </Group>
 
       <Group grow>
-        <DateInput
+        <TextInput
           label="Fecha Inicio"
           placeholder="DD/MM/YYYY"
-          value={filters.fechaInicio ? new Date(filters.fechaInicio) : null}
-          onChange={date => handleChange({ fechaInicio: date ? date.toISOString().split('T')[0] : '' })}
-          valueFormat="DD/MM/YYYY"
-          locale="es"
+          value={formatDateForInput(filters.fechaInicio)}
+          onChange={handleDateChange('fechaInicio')}
+          maxLength={10}
         />
         <TextInput
           label="Hora Inicio"
@@ -67,13 +106,12 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
           value={filters.horaInicio}
           onChange={e => handleChange({ horaInicio: e.target.value })}
         />
-        <DateInput
+        <TextInput
           label="Fecha Fin"
           placeholder="DD/MM/YYYY"
-          value={filters.fechaFin ? new Date(filters.fechaFin) : null}
-          onChange={date => handleChange({ fechaFin: date ? date.toISOString().split('T')[0] : '' })}
-          valueFormat="DD/MM/YYYY"
-          locale="es"
+          value={formatDateForInput(filters.fechaFin)}
+          onChange={handleDateChange('fechaFin')}
+          maxLength={10}
         />
         <TextInput
           label="Hora Fin"

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Stack, Text, UnstyledButton, useMantineTheme } from '@mantine/core';
-import { IconHome2, IconFolder, IconFileImport, IconArrowsExchange, IconDeviceCctv } from '@tabler/icons-react';
+import { IconHome2, IconFolder, IconFileImport, IconArrowsExchange, IconDeviceCctv, IconSettings } from '@tabler/icons-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getFooterConfig } from '../../services/configApi';
@@ -93,7 +93,7 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
               }}
             >
               {!collapsed && <Text size="md" style={{ color: '#fff' }}>Panel de Administración</Text>}
-              {collapsed && <IconDeviceCctv size={20} color="#fff" />}
+              {collapsed && <IconSettings size={20} color="#fff" />}
             </UnstyledButton>
           )}
           {!collapsed && (
