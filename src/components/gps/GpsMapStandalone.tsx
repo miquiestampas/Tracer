@@ -777,7 +777,7 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
             icon={L.divIcon({
               className: 'custom-div-icon',
               html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
-                <div style="position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${playbackLayer.color}20; border: 2.5px solid ${playbackLayer.color}40; box-shadow: 0 0 12px ${playbackLayer.color};"></div>
+                <div style="position: absolute; width: 44px; height: 44px; left: 0; top: 0; border-radius: 50%; background: ${playbackLayer.color}20; border: 2.5px solid ${playbackLayer.color}40; box-shadow: 0 0 12px ${playbackLayer.color};"></div>
                 <div style="background: ${playbackLayer.color}; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${playbackLayer.color}; outline: 3px solid ${playbackLayer.color};"></div>
               </div>`,
               iconSize: [44, 44],
@@ -876,7 +876,7 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
               const customIcon = L.divIcon({
                 className: 'custom-div-icon-selected-explicitly',
                 html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
-                  <div style='position: absolute; width: 44px; height: 44px; left: -16px; top: -16px; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>
+                  <div style='position: absolute; width: 44px; height: 44px; left: 0; top: 0; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>
                   <div style="background: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${color}; outline: 3px solid ${color};">
                     ${clusterSizeDisplay ? `<span style="position: absolute; top: -8px; right: -8px; background: white; color: ${color}; font-size: 10px; padding: 2px 4px; border-radius: 8px; border: 1px solid ${color};">${clusterSizeDisplay}</span>` : ''}
                   </div>

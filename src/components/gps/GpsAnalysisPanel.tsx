@@ -957,6 +957,19 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [fullscreenMap]);
 
+  // Cargar capas GPS persistentes al montar o cambiar de caso
+  useEffect(() => {
+    async function fetchCapas() {
+      try {
+        const capas = await getGpsCapas(casoId);
+        setCapas(capas);
+      } catch (e) {
+        setCapas([]); // Si hay error, dejar vacío
+      }
+    }
+    fetchCapas();
+  }, [casoId]);
+
   // --- Renderizado principal ---
   if (fullscreenMap) {
     return (
