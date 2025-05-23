@@ -418,6 +418,18 @@ const helpTexts = {
             <li><b>Detalle de puntos:</b> Haz clic en un punto del mapa para ver la información detallada (fecha, hora, velocidad, etc.).</li>
             <li><b>Animación de trayectorias:</b> Reproduce el movimiento de los vehículos a lo largo del tiempo para analizar secuencias.</li>
             <li><b>Exportación:</b> Descarga los datos GPS visualizados para su análisis externo.</li>
+            <li><b>Heatmap:</b> Usa el deslizador de intensidad para ajustar la visualización de densidad de puntos GPS y detectar zonas de mayor concentración de actividad.</li>
+            <li><b>Clustering (Agrupar puntos cercanos):</b> Activa la opción de clustering para agrupar automáticamente los puntos GPS cercanos en el mapa, facilitando la visualización y el análisis cuando hay muchos datos.</li>
+            <li><b>Creación de capas:</b> Puedes crear diferentes capas en el mapa para organizar rutas, puntos de interés o agrupaciones de datos. Esto permite comparar visualmente distintos recorridos o eventos relevantes.</li>
+            <li><b>Localizaciones de interés:</b> Marca ubicaciones clave en el mapa (por ejemplo, lugares de parada, domicilios, puntos de control, etc.) y visualízalos junto a los trayectos GPS para enriquecer el análisis.</li>
+            <li><b>Navegación punto a punto desde el infobanner:</b> Al seleccionar un punto o tramo en el mapa, el infobanner te permite navegar secuencialmente entre los diferentes puntos del recorrido, facilitando el análisis detallado de la ruta paso a paso.</li>
+            <li><b>Reproducción de recorrido por capas:</b> Puedes reproducir visualmente el recorrido de un vehículo o grupo de puntos dentro de una capa específica, observando la evolución temporal y espacial del trayecto.</li>
+          </ul>
+        </Text>
+        <Text size="md" fw={700} mb={2}>Recomendación para grandes volúmenes de datos</Text>
+        <Text size="sm" mb="xs">
+          <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
+            <li>Para cargas muy grandes de datos, se recomienda <b>activar siempre el clustering</b> antes de procesar el filtro, para evitar ralentizaciones y mejorar la experiencia de usuario.</li>
           </ul>
         </Text>
         <Text size="md" fw={700} mb={2}>Consejos</Text>

@@ -763,16 +763,6 @@ const handleDeleteArchivo = async (archivoId: number) => {
               </Box>
 
               <Box style={{ display: activeMainTab === 'archivos' ? 'block' : 'none', position: 'relative' }}>
-                  <Group justify="flex-end" mb="xs">
-                      <Button
-                          variant="light"
-                          color="blue"
-                          size="xs"
-                          onClick={() => setActiveMainTab(null)}
-                      >
-                          {activeMainTab === 'archivos' ? 'Ocultar ayuda' : 'Mostrar ayuda'}
-                      </Button>
-                  </Group>
                   <Group justify="space-between" mb="md">
                       <Title order={4}>Archivos Importados</Title>
                       <Button 
