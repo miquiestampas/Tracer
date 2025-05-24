@@ -142,6 +142,7 @@ export interface LectorCoordenadas {
   Nombre?: string | null;
   Carretera?: string | null;
   Provincia?: string | null;
+  Localidad?: string | null;
   Organismo_Regulador?: string | null;
   Coordenada_Y: number; // Latitud
   Coordenada_X: number; // Longitud

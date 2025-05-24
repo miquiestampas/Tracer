@@ -48,12 +48,6 @@ const defaultMarkerIcon = L.divIcon({
   iconAnchor: [6, 6]
 });
 
-// Opciones para el filtro de Sentido
-const SENTIDO_OPTIONS = [
-  { value: 'Creciente', label: 'Creciente' },
-  { value: 'Decreciente', label: 'Decreciente' },
-];
-
 // *** NUEVO: Importar CSS de leaflet-draw aquí ***
 import 'leaflet-draw/dist/leaflet.draw.css';
 // *** FIN: Importar CSS ***
@@ -141,8 +135,9 @@ function FiltrosMapaLectoresPanel({
   setFiltroOrganismo,
   filtroTextoLibre,
   setFiltroTextoLibre,
-  filtroSentido,
-  setFiltroSentido,
+  filtroLocalidad,
+  setFiltroLocalidad,
+  localidadesUnicas,
   mapLoading
 }) {
   const handleLimpiarFiltros = () => {
@@ -150,7 +145,7 @@ function FiltrosMapaLectoresPanel({
     setFiltroCarretera([]);
     setFiltroOrganismo([]);
     setFiltroTextoLibre('');
-    setFiltroSentido(null);
+    setFiltroLocalidad([]);
   };
 
   return (
@@ -174,6 +169,14 @@ function FiltrosMapaLectoresPanel({
           data={provinciasUnicas}
           value={filtroProvincia}
           onChange={setFiltroProvincia}
+          searchable clearable disabled={mapLoading}
+        />
+        <MultiSelect
+          label="Filtrar por Localidad"
+          placeholder="Todas las localidades"
+          data={localidadesUnicas}
+          value={filtroLocalidad}
+          onChange={setFiltroLocalidad}
           searchable clearable disabled={mapLoading}
         />
         <MultiSelect
@@ -202,15 +205,6 @@ function FiltrosMapaLectoresPanel({
           clearable
           disabled={mapLoading}
         />
-        <Select
-          label="Filtrar por Sentido"
-          placeholder="Ambos sentidos"
-          data={SENTIDO_OPTIONS}
-          value={filtroSentido}
-          onChange={setFiltroSentido}
-          clearable
-          disabled={mapLoading}
-        />
       </SimpleGrid>
     </Paper>
   );
@@ -229,7 +223,6 @@ function LectoresFiltradosPanel({ lectores }) {
               <Table.Th>Nombre</Table.Th>
               <Table.Th>Carretera</Table.Th>
               <Table.Th>Provincia</Table.Th>
-              <Table.Th>Sentido</Table.Th>
               <Table.Th>Organismo</Table.Th>
             </Table.Tr>
           </Table.Thead>
@@ -241,7 +234,6 @@ function LectoresFiltradosPanel({ lectores }) {
                   <Table.Td>{lector.Nombre || '-'}</Table.Td>
                   <Table.Td>{lector.Carretera || '-'}</Table.Td>
                   <Table.Td>{lector.Provincia || '-'}</Table.Td>
-                  <Table.Td>{lector.Sentido || '-'}</Table.Td>
                   <Table.Td>{lector.Organismo_Regulador || '-'}</Table.Td>
                 </Table.Tr>
               ))
@@ -282,7 +274,7 @@ function LectoresPage() {
   const [filtroCarretera, setFiltroCarretera] = useState<string[]>([]);
   const [filtroOrganismo, setFiltroOrganismo] = useState<string[]>([]);
   const [filtroTextoLibre, setFiltroTextoLibre] = useState<string>('');
-  const [filtroSentido, setFiltroSentido] = useState<string | null>(null);
+  const [filtroLocalidad, setFiltroLocalidad] = useState<string[]>([]);
 
   const [importModalOpened, { open: openImportModal, close: closeImportModal }] = useDisclosure(false);
 
@@ -310,7 +302,6 @@ function LectoresPage() {
       setFiltroCarretera([]);
       setFiltroOrganismo([]);
       setFiltroTextoLibre('');
-      setFiltroSentido(null);
       setMapLectores(lectores.map(lector => ({
         ...lector,
         Coordenada_X: lector.Coordenada_X ?? 0,
@@ -327,17 +318,14 @@ function LectoresPage() {
       const params = {
         skip: (pagination.page - 1) * pagination.pageSize,
         limit: pagination.pageSize,
-        // Añadir filtros solo si tienen valor
         ...(filtroTextoLibre && { texto_libre: filtroTextoLibre }),
-        ...(filtroProvincia.length > 0 && { provincia: filtroProvincia[0] }), // Por ahora solo usamos el primer valor
+        ...(filtroProvincia.length > 0 && { provincia: filtroProvincia[0] }),
         ...(filtroCarretera.length > 0 && { carretera: filtroCarretera[0] }),
         ...(filtroOrganismo.length > 0 && { organismo: filtroOrganismo[0] }),
-        ...(filtroSentido && { sentido: filtroSentido }),
-        // Añadir parámetros de ordenación
+        ...(filtroLocalidad.length > 0 && { localidad: filtroLocalidad[0] }),
         sort: sortStatus.columnAccessor,
         order: sortStatus.direction
       };
-
       const response = await getLectores(params);
       setLectores(response.lectores);
       setPagination(prev => ({ ...prev, totalCount: response.total_count }));
@@ -352,7 +340,7 @@ function LectoresPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, filtroTextoLibre, filtroProvincia, filtroCarretera, filtroOrganismo, filtroSentido, sortStatus]);
+  }, [pagination.page, pagination.pageSize, filtroTextoLibre, filtroProvincia, filtroCarretera, filtroOrganismo, filtroLocalidad, sortStatus]);
 
   // Efecto para recargar cuando cambian los filtros
   useEffect(() => {
@@ -400,7 +388,6 @@ function LectoresPage() {
       setFiltroCarretera([]);
       setFiltroOrganismo([]);
       setFiltroTextoLibre('');
-      setFiltroSentido(null);
     }
   }, [activeTab]);
 
@@ -417,6 +404,10 @@ function LectoresPage() {
   const organismosUnicos = useMemo(() => {
     return sugerencias.organismos.sort().map(organismo => ({ value: organismo, label: organismo }));
   }, [sugerencias.organismos]);
+
+  const localidadesUnicas = useMemo(() => {
+    return sugerencias.localidades.sort().map(localidad => ({ value: localidad, label: localidad }));
+  }, [sugerencias.localidades]);
 
   const lectorSearchSuggestions = useMemo(() => {
     const suggestions = new Set<string>();
@@ -437,10 +428,10 @@ function LectoresPage() {
       const provinciaMatch = filtroProvincia.length === 0 || (lector.Provincia && filtroProvincia.includes(lector.Provincia));
       const carreteraMatch = filtroCarretera.length === 0 || (lector.Carretera && filtroCarretera.includes(lector.Carretera));
       const organismoMatch = filtroOrganismo.length === 0 || (lector.Organismo_Regulador && filtroOrganismo.includes(lector.Organismo_Regulador));
+      const localidadMatch = filtroLocalidad.length === 0 || (lector.Localidad && filtroLocalidad.includes(lector.Localidad));
       const textoMatch = textoBusquedaLower === '' || 
                          (lector.ID_Lector && lector.ID_Lector.toLowerCase().includes(textoBusquedaLower)) ||
                          (lector.Nombre && lector.Nombre.toLowerCase().includes(textoBusquedaLower));
-      const sentidoMatch = filtroSentido === null || (lector.Sentido && lector.Sentido === filtroSentido);
 
       // Filtro espacial (usa drawnPolygonGeoJSON)
       let spatialMatch = true; 
@@ -453,12 +444,11 @@ function LectoresPage() {
           spatialMatch = false; 
         }
       } 
-      // else: spatialMatch sigue siendo true si no hay polígono o el lector no tiene coords
 
       // Devolver true solo si todos los filtros coinciden
-      return provinciaMatch && carreteraMatch && organismoMatch && textoMatch && sentidoMatch && spatialMatch;
+      return provinciaMatch && carreteraMatch && organismoMatch && localidadMatch && textoMatch && spatialMatch;
     });
-  }, [mapLectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido, drawnShape]);
+  }, [mapLectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroLocalidad, filtroTextoLibre, drawnShape]);
   
   // Callback cuando se dibuja una forma
   const handleShapeDrawn = useCallback((layer: L.Layer) => { 
@@ -617,10 +607,10 @@ function LectoresPage() {
     try {
       const result = await importarLectores(lectores);
       
-      if (result.errors && result.errors.length > 0) {
+      if (result.errores && result.errores.length > 0) {
         notifications.show({
           title: 'Importación Parcial',
-          message: `Se importaron ${result.imported} y actualizaron ${result.updated} lectores. ${result.errors.length} filas tuvieron errores. Revisa la consola para más detalles.`,
+          message: `Se importaron ${result.imported} y actualizaron ${result.updated} lectores. ${result.errores.length} filas tuvieron errores. Revisa la consola para más detalles.`,
           color: 'orange',
           autoClose: 10000,
         });
@@ -642,7 +632,6 @@ function LectoresPage() {
           provincia: filtroProvincia[0],
           carretera: filtroCarretera[0],
           organismo: filtroOrganismo[0],
-          sentido: filtroSentido === null ? undefined : filtroSentido
         }); 
         setLectores(response.lectores);
         setPagination(prev => ({ ...prev, totalCount: response.total_count, page: 1 }));
@@ -742,23 +731,18 @@ function LectoresPage() {
   // *** NUEVO: Lógica de Filtrado para la Tabla ***
   const lectoresFiltradosTabla = useMemo(() => {
     const textoBusquedaLower = filtroTextoLibre.toLowerCase().trim();
-    // Filtrar el array 'lectores' (los de la página actual de la tabla)
     let filtered = lectores.filter(lector => {
       const provinciaMatch = filtroProvincia.length === 0 || (lector.Provincia && filtroProvincia.includes(lector.Provincia));
       const carreteraMatch = filtroCarretera.length === 0 || (lector.Carretera && filtroCarretera.includes(lector.Carretera));
       const organismoMatch = filtroOrganismo.length === 0 || (lector.Organismo_Regulador && filtroOrganismo.includes(lector.Organismo_Regulador));
-      // Buscar en ID_Lector y Nombre para la tabla también
+      const localidadMatch = filtroLocalidad.length === 0 || (lector.Localidad && filtroLocalidad.includes(lector.Localidad));
       const textoMatch = textoBusquedaLower === '' || 
-                         (lector.ID_Lector && lector.ID_Lector.toLowerCase().includes(textoBusquedaLower)) ||
-                         (lector.Nombre && lector.Nombre.toLowerCase().includes(textoBusquedaLower));
-      const sentidoMatch = filtroSentido === null || (lector.Sentido && lector.Sentido === filtroSentido);
-      
-      // No aplicamos filtro espacial a la tabla
-      return provinciaMatch && carreteraMatch && organismoMatch && textoMatch && sentidoMatch;
+        (lector.ID_Lector && lector.ID_Lector.toLowerCase().includes(textoBusquedaLower)) ||
+        (lector.Nombre && lector.Nombre.toLowerCase().includes(textoBusquedaLower));
+      return provinciaMatch && carreteraMatch && organismoMatch && localidadMatch && textoMatch;
     });
-
     return filtered;
-  }, [lectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroTextoLibre, filtroSentido]);
+  }, [lectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroLocalidad, filtroTextoLibre]);
   // *** FIN: Lógica de Filtrado para la Tabla ***
 
   const rows = lectores.map((lector) => {
@@ -818,7 +802,6 @@ function LectoresPage() {
       <Table.Td>{lector.Nombre || '-'}</Table.Td>
       <Table.Td>{lector.Carretera || '-'}</Table.Td>
       <Table.Td>{lector.Provincia || '-'}</Table.Td>
-      <Table.Td>{lector.Sentido || '-'}</Table.Td>
       <Table.Td>{lector.Organismo_Regulador || '-'}</Table.Td>
     </Table.Tr>
   ));
@@ -934,7 +917,15 @@ function LectoresPage() {
                      onChange={setFiltroProvincia}
                      searchable clearable
                  />
-                  <MultiSelect
+                 <MultiSelect
+                     label="Filtrar por Localidad"
+                     placeholder="Todas las localidades"
+                     data={localidadesUnicas}
+                     value={filtroLocalidad}
+                     onChange={setFiltroLocalidad}
+                     searchable clearable
+                 />
+                 <MultiSelect
                      label="Filtrar por Carretera"
                      placeholder="Todas las carreteras"
                      data={carreterasUnicas}
@@ -942,7 +933,7 @@ function LectoresPage() {
                      onChange={setFiltroCarretera}
                      searchable clearable
                  />
-                  <MultiSelect
+                 <MultiSelect
                      label="Filtrar por Organismo"
                      placeholder="Todos los organismos"
                      data={organismosUnicos}
@@ -957,14 +948,6 @@ function LectoresPage() {
                      value={filtroTextoLibre}
                      onChange={setFiltroTextoLibre}
                      limit={10}
-                     clearable
-                 />
-                 <Select
-                     label="Filtrar por Sentido"
-                     placeholder="Ambos sentidos"
-                     data={SENTIDO_OPTIONS}
-                     value={filtroSentido}
-                     onChange={setFiltroSentido}
                      clearable
                  />
                </SimpleGrid>
@@ -998,7 +981,6 @@ function LectoresPage() {
                    },
                    { accessor: 'ID_Lector', title: 'ID Lector', sortable: true },
                    { accessor: 'Nombre', title: 'Nombre', sortable: true },
-                   { accessor: 'Sentido', title: 'Sentido', sortable: true },
                    { accessor: 'Carretera', title: 'Carretera', sortable: true },
                    { accessor: 'Provincia', title: 'Provincia', sortable: true },
                    { accessor: 'Localidad', title: 'Localidad', sortable: true },
@@ -1097,8 +1079,9 @@ function LectoresPage() {
                   setFiltroOrganismo={setFiltroOrganismo}
                   filtroTextoLibre={filtroTextoLibre}
                   setFiltroTextoLibre={setFiltroTextoLibre}
-                  filtroSentido={filtroSentido}
-                  setFiltroSentido={setFiltroSentido}
+                  filtroLocalidad={filtroLocalidad}
+                  setFiltroLocalidad={setFiltroLocalidad}
+                  localidadesUnicas={localidadesUnicas}
                   mapLoading={mapLoading}
                 />
                 <Box style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
@@ -1181,7 +1164,7 @@ function LectoresPage() {
           provincias: provinciasUnicas,
           carreteras: carreterasUnicas.map(c => c.value),
           organismos: organismosUnicos.map(o => o.value),
-          localidades: sugerencias.localidades
+          localidades: localidadesUnicas.map(l => l.value)
         }}
       />
 
