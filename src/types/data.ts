@@ -88,7 +88,8 @@ export interface LecturasResponse {
 
 // --- NUEVO: Interfaz para respuesta de subida de archivo ---
 export interface UploadResponse {
-  archivo: ArchivoExcel;
+  archivo?: ArchivoExcel;
+  task_id?: string;
   total_registros: number;
   errores?: string[];
   lectores_no_encontrados?: string[];

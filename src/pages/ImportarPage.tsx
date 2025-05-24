@@ -35,6 +35,7 @@ import * as XLSX from 'xlsx'; // Importar librería xlsx
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ProgressOverlay } from '../components/common/ProgressOverlay';
 import TaskStatusMonitor from '../components/common/TaskStatusMonitor';
+import { useTask } from '../contexts/TaskContext';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS' | 'GPX_KML']: string[] } = {
@@ -121,6 +122,7 @@ function ImportarPage() {
   const [fechaHoraCombinada, setFechaHoraCombinada] = useState(false);
   const [formatoFechaHora, setFormatoFechaHora] = useState('DD/MM/YYYY HH:mm:ss');
 
+  const { addTask } = useTask();
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
 
   // Cargar casos para el selector
@@ -502,7 +504,11 @@ function ImportarPage() {
 
       // Store the task ID if available
       if (resultado?.task_id) {
-        setCurrentTaskId(resultado.task_id);
+        addTask({
+          id: resultado.task_id,
+          onComplete: handleTaskComplete,
+          onError: handleTaskError
+        });
       }
 
       // Si la respuesta es exitosa pero no contiene el archivo, mostrar advertencia de procesamiento
@@ -557,7 +563,9 @@ function ImportarPage() {
       color: 'green',
       icon: <IconCheck size={18} />
     });
-    fetchArchivos(selectedCasoId);
+    if (selectedCasoId) {
+      fetchArchivos(selectedCasoId);
+    }
     setCurrentTaskId(null);
   };
 
@@ -1035,18 +1043,6 @@ function ImportarPage() {
           </Group>
         </Stack>
       </Modal>
-
-      {/* Add TaskStatusMonitor */}
-      {currentTaskId && (
-        <Paper shadow="sm" p="md" withBorder mt="md">
-          <Title order={3} mb="md">Estado de la Importación</Title>
-          <TaskStatusMonitor
-            taskId={currentTaskId}
-            onComplete={handleTaskComplete}
-            onError={handleTaskError}
-          />
-        </Paper>
-      )}
     </Box>
   );
 }

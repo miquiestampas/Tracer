@@ -8,6 +8,7 @@ import { lazy } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './pages/LoginPage';
+import { TaskProvider } from './contexts/TaskContext';
 // Importa otras páginas aquí a medida que las crees
 // import LectoresPage from './pages/LectoresPage';
 // import MapaPage from './pages/MapaPage';
@@ -34,43 +35,45 @@ function App() {
   // const theme = { ... };
 
   return (
-    <AuthProvider>
-      <React.StrictMode>
-        <MantineProvider theme={theme}>
-          <Notifications />
-          <ModalsProvider>
-            <BrowserRouter>
-              <Suspense fallback={<div>Cargando página...</div>}>
-                <Routes>
-                  {/* Ruta pública de login */}
-                  <Route path="/login" element={<LoginPage />} />
-                  
-                  {/* Rutas protegidas dentro del Layout */}
-                  <Route path="/" element={
-                    <ProtectedRoute>
-                      <Layout />
-                    </ProtectedRoute>
-                  }>
-                    <Route index element={<HomePage />} />
-                    <Route path="casos" element={<CasosPage />} />
-                    <Route path="casos/:idCaso" element={<CasoDetailPage />} />
-                    <Route path="importar" element={<ImportarPage />} />
-                    <Route path="lectores" element={<LectoresPage />} />
-                    <Route path="busqueda" element={<BusquedaPage />} />
-                    <Route path="admin" element={
-                      <ProtectedRoute requireSuperAdmin>
-                        <AdminPage />
+    <React.StrictMode>
+      <MantineProvider theme={theme}>
+        <Notifications />
+        <ModalsProvider>
+          <TaskProvider>
+            <AuthProvider>
+              <BrowserRouter>
+                <Suspense fallback={<div>Cargando página...</div>}>
+                  <Routes>
+                    {/* Ruta pública de login */}
+                    <Route path="/login" element={<LoginPage />} />
+                    
+                    {/* Rutas protegidas dentro del Layout */}
+                    <Route path="/" element={
+                      <ProtectedRoute>
+                        <Layout />
                       </ProtectedRoute>
-                    } />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Route>
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
-          </ModalsProvider>
-        </MantineProvider>
-      </React.StrictMode>
-    </AuthProvider>
+                    }>
+                      <Route index element={<HomePage />} />
+                      <Route path="casos" element={<CasosPage />} />
+                      <Route path="casos/:idCaso" element={<CasoDetailPage />} />
+                      <Route path="importar" element={<ImportarPage />} />
+                      <Route path="lectores" element={<LectoresPage />} />
+                      <Route path="busqueda" element={<BusquedaPage />} />
+                      <Route path="admin" element={
+                        <ProtectedRoute requireSuperAdmin>
+                          <AdminPage />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </Route>
+                  </Routes>
+                </Suspense>
+              </BrowserRouter>
+            </AuthProvider>
+          </TaskProvider>
+        </ModalsProvider>
+      </MantineProvider>
+    </React.StrictMode>
   );
 }
 
