@@ -34,6 +34,7 @@ import type { Caso, ArchivoExcel, UploadResponse } from '../types/data';
 import * as XLSX from 'xlsx'; // Importar librería xlsx
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ProgressOverlay } from '../components/common/ProgressOverlay';
+import TaskStatusMonitor from '../components/common/TaskStatusMonitor';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS' | 'GPX_KML']: string[] } = {
@@ -119,6 +120,8 @@ function ImportarPage() {
 
   const [fechaHoraCombinada, setFechaHoraCombinada] = useState(false);
   const [formatoFechaHora, setFormatoFechaHora] = useState('DD/MM/YYYY HH:mm:ss');
+
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
 
   // Cargar casos para el selector
   useEffect(() => {
@@ -496,6 +499,12 @@ function ImportarPage() {
           JSON.stringify(finalMapping)
         );
       }
+
+      // Store the task ID if available
+      if (resultado?.task_id) {
+        setCurrentTaskId(resultado.task_id);
+      }
+
       // Si la respuesta es exitosa pero no contiene el archivo, mostrar advertencia de procesamiento
       if (!resultado || !resultado.archivo) {
         setImportWarning(
@@ -538,6 +547,29 @@ function ImportarPage() {
       setIsUploading(false);
       setIsReadingHeaders(false);
     }
+  };
+
+  // Add task completion handler
+  const handleTaskComplete = (result: any) => {
+    notifications.show({
+      title: 'Importación Completada',
+      message: `Se procesaron ${result.total_registros} registros correctamente.`,
+      color: 'green',
+      icon: <IconCheck size={18} />
+    });
+    fetchArchivos(selectedCasoId);
+    setCurrentTaskId(null);
+  };
+
+  // Add task error handler
+  const handleTaskError = (error: string) => {
+    notifications.show({
+      title: 'Error en la Importación',
+      message: error,
+      color: 'red',
+      icon: <IconAlertCircle size={18} />
+    });
+    setCurrentTaskId(null);
   };
 
   // --- NUEVO: Manejar la eliminación de un archivo ---
@@ -1003,6 +1035,18 @@ function ImportarPage() {
           </Group>
         </Stack>
       </Modal>
+
+      {/* Add TaskStatusMonitor */}
+      {currentTaskId && (
+        <Paper shadow="sm" p="md" withBorder mt="md">
+          <Title order={3} mb="md">Estado de la Importación</Title>
+          <TaskStatusMonitor
+            taskId={currentTaskId}
+            onComplete={handleTaskComplete}
+            onError={handleTaskError}
+          />
+        </Paper>
+      )}
     </Box>
   );
 }

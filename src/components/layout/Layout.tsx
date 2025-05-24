@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import Navbar from './Navbar';
 import HelpButton from '../common/HelpButton';
 import HelpCenterModal from '../common/HelpCenterModal';
+import TaskStatusMonitor from '../common/TaskStatusMonitor';
 
 const navItems = [
   { icon: IconHome2, label: 'Home', path: '/' },
@@ -24,6 +25,7 @@ function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [helpOpen, setHelpOpen] = React.useState(false);
+  const [currentTaskId, setCurrentTaskId] = React.useState<string | null>(null);
 
   const handleLogout = () => {
     logout();
@@ -56,6 +58,31 @@ function Layout() {
             </Group>
           )}
         </Group>
+        {currentTaskId && (
+          <Box style={{ 
+            position: 'absolute', 
+            top: '60px', 
+            left: 0, 
+            right: 0, 
+            background: 'white', 
+            padding: '12px 16px', 
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            borderBottom: '1px solid #eee',
+            zIndex: 1000
+          }}>
+            <Group position="apart" align="center">
+              <Text size="sm" fw={500}>Procesando tarea en segundo plano...</Text>
+              <TaskStatusMonitor
+                taskId={currentTaskId}
+                onComplete={() => setCurrentTaskId(null)}
+                onError={() => setCurrentTaskId(null)}
+                pollingInterval={2000}
+                showProgress={true}
+                showTotal={true}
+              />
+            </Group>
+          </Box>
+        )}
       </AppShell.Header>
 
       <AppShell.Navbar p={0}>

@@ -13,7 +13,7 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={
         "check_same_thread": False,  # Necesario para SQLite con FastAPI/async
-        "timeout": 30  # Aumentar timeout para operaciones largas
+        "timeout": 60  # Aumentado a 60 segundos para operaciones largas
     },
     poolclass=NullPool,
     # Aumentar el pool_size para permitir más conexiones concurrentes (ya no aplica con NullPool)
@@ -29,8 +29,8 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     # Mejora el rendimiento al reducir las operaciones de I/O
     cursor.execute("PRAGMA journal_mode=WAL")
-    # Permite a SQLite usar más memoria para operaciones
-    cursor.execute("PRAGMA cache_size=-50000")  # 50MB de cache
+    # Permite a SQLite usar más memoria para operaciones (250MB)
+    cursor.execute("PRAGMA cache_size=-250000")  # 250MB de cache
     # Asegura la integridad de los datos
     cursor.execute("PRAGMA foreign_keys=ON")
     # Mantiene los índices en memoria para mejorar consultas

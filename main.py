@@ -59,6 +59,14 @@ class UploadTaskStatus(BaseModel):
     total: Optional[int] = None # total records to process
     result: Optional[schemas.UploadResponse] = None # To hold the final response on completion
 
+class TaskStatus(BaseModel):
+    status: str
+    message: str
+    progress: float
+    total: Optional[int] = None
+    result: Optional[Dict] = None
+    stage: Optional[str] = None  # Añadido para mensajes detallados
+
 # --- Helper functions for data parsing --- START
 def get_optional_float(value: Any) -> Optional[float]:
     """Convierte un valor a float si es posible, retorna None si no."""
@@ -799,12 +807,13 @@ async def upload_excel_submission(
     finally:
         excel_file.file.close() 
     
-    # Initial task status
+    # Inicializar estado de la tarea
     task_statuses[task_id] = {
         "status": "pending",
         "message": "Upload accepted, pending processing.",
         "progress": 0,
-        "total": None
+        "total": None,
+        "stage": "reading_file"
     }
 
     # Enqueue the background task
@@ -2273,7 +2282,7 @@ def process_file_in_background(
 ):
     db: Session = SessionLocal() # Create a new session for the background task
     logger.info(f"[Task {task_id}] Background processing started for {original_filename} (Caso: {caso_id}, Tipo: {tipo_archivo})")
-    task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "processing", "message": "Procesando archivo...", "progress": 0}
+    task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "processing", "message": "Leyendo archivo...", "progress": 0, "stage": "reading_file"}
 
     try:
         logger.info(f"[Task {task_id}] Leyendo archivo: {temp_file_path}")
@@ -2284,7 +2293,6 @@ def process_file_in_background(
                 logger.info(f"[Task {task_id}] Archivo Excel leído. Filas: {df.shape[0]}")
             except Exception as e_xls:
                 logger.warning(f"[Task {task_id}] No es Excel, intentando como CSV: {e_xls}")
-                # Detectar delimitador automáticamente
                 import csv
                 with open(temp_file_path, 'r', encoding='utf-8') as f:
                     sample = f.read(4096)
@@ -2295,6 +2303,9 @@ def process_file_in_background(
                     logger.info(f"[Task {task_id}] Delimitador CSV detectado: '{delimiter}'")
                     df = pd.read_csv(temp_file_path, delimiter=delimiter, encoding='utf-8')
                 logger.info(f"[Task {task_id}] Archivo CSV leído. Filas: {df.shape[0]}")
+            # Actualizar a siguiente etapa
+            task_statuses[task_id]["stage"] = "parsing_mapping"
+            task_statuses[task_id]["message"] = "Procesando mapeo de columnas..."
         except Exception as e:
             logger.error(f"[Task {task_id}] Fallo al leer archivo {temp_file_path}: {e}", exc_info=True)
             raise ValueError(f"Error al leer el archivo Excel o CSV: {e}")
@@ -2303,60 +2314,64 @@ def process_file_in_background(
         try:
             map_cliente_a_interno = json.loads(column_mapping_str)
             map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
-            
+            # Actualizar a siguiente etapa
+            task_statuses[task_id]["stage"] = "preparing_data"
+            task_statuses[task_id]["message"] = "Creando estructura de datos..."
+            # --- PROGRESO PREPARACIÓN DE DATOS ---
+            total_rows = 0
+            if 'Fecha' in map_cliente_a_interno and 'Hora' in map_cliente_a_interno:
+                total_rows = 0 if df.empty else len(df)
+            else:
+                total_rows = 0 if df.empty else len(df)
             # Verificar si fecha y hora están combinadas
             fecha_hora_combinada = map_cliente_a_interno.get('Fecha') == map_cliente_a_interno.get('Hora')
             formato_fecha_hora = map_cliente_a_interno.get('formato_fecha_hora', 'DD/MM/YYYY HH:mm:ss')
-            
             if fecha_hora_combinada:
                 logger.info(f"[Task {task_id}] Fecha y hora combinadas detectadas. Formato: {formato_fecha_hora}")
-                # Convertir el formato de fecha/hora a formato pandas
                 pandas_format = formato_fecha_hora.replace('DD', '%d').replace('MM', '%m').replace('YYYY', '%Y').replace('HH', '%H').replace('mm', '%M').replace('ss', '%S')
-                
-                # Convertir la columna combinada a datetime
                 columna_fecha_hora = map_cliente_a_interno['Fecha']
-                
-                # Función para limpiar y convertir la fecha/hora
                 def clean_datetime(dt_str):
                     if pd.isna(dt_str):
                         return None
                     try:
-                        # Primero intentar con el formato especificado
                         return pd.to_datetime(dt_str, format=pandas_format)
                     except:
                         try:
-                            # Si falla, intentar parsear automáticamente
                             dt = pd.to_datetime(dt_str)
-                            # Si tiene milisegundos, truncar a segundos
                             if dt.microsecond > 0:
                                 dt = dt.replace(microsecond=0)
                             return dt
                         except:
                             logger.warning(f"[Task {task_id}] No se pudo parsear la fecha/hora: {dt_str}")
                             return None
-
-                # Aplicar la limpieza a la columna
-                df['Fecha'] = df[columna_fecha_hora].apply(lambda x: clean_datetime(x).date() if clean_datetime(x) else None)
-                df['Hora'] = df[columna_fecha_hora].apply(lambda x: clean_datetime(x).time() if clean_datetime(x) else None)
-                
-                # Eliminar la columna original combinada
+                # --- PROGRESO POR LOTES EN PREPARACIÓN DE DATOS ---
+                PREP_BATCH_SIZE = 1000
+                for i in range(0, len(df), PREP_BATCH_SIZE):
+                    batch = df.iloc[i:i+PREP_BATCH_SIZE]
+                    df.loc[batch.index, 'Fecha'] = batch[columna_fecha_hora].apply(lambda x: clean_datetime(x).date() if clean_datetime(x) else None)
+                    df.loc[batch.index, 'Hora'] = batch[columna_fecha_hora].apply(lambda x: clean_datetime(x).time() if clean_datetime(x) else None)
+                    # Actualizar progreso
+                    task_statuses[task_id]["progress"] = ((i + PREP_BATCH_SIZE) / len(df)) * 100 if len(df) else 100
+                    task_statuses[task_id]["stage"] = "preparing_data"
+                    task_statuses[task_id]["message"] = "Creando estructura de datos..."
                 df = df.drop(columns=[columna_fecha_hora])
-                
-                # Actualizar el mapeo para reflejar las nuevas columnas
                 del map_cliente_a_interno['formato_fecha_hora']
                 map_interno_a_cliente = {v: k for k, v in map_cliente_a_interno.items()}
-            
+            # Si no hay fecha/hora combinadas, no hay bucle, pero igual actualizamos progreso a 100%
+            else:
+                task_statuses[task_id]["progress"] = 100
+                task_statuses[task_id]["stage"] = "preparing_data"
+                task_statuses[task_id]["message"] = "Creando estructura de datos..."
+            # --- FIN PROGRESO PREPARACIÓN DE DATOS ---
         except json.JSONDecodeError as e:
             logger.error(f"[Task {task_id}] JSON inválido en mapeo: {e}", exc_info=True)
             raise ValueError(f"El mapeo de columnas no es un JSON válido: {e}")
-
         try:
             columnas_a_renombrar = {k: v for k, v in map_interno_a_cliente.items() if k in df.columns}
             df.rename(columns=columnas_a_renombrar, inplace=True)
         except Exception as e:
             logger.error(f"[Task {task_id}] Error aplicando mapeo: {e}", exc_info=True)
             raise ValueError(f"Error al aplicar mapeo de columnas: {e}")
-
         logger.info(f"[Task {task_id}] Validando columnas obligatorias para tipo: {tipo_archivo}")
         if tipo_archivo == 'LPR':
             columnas_obligatorias = ['Matricula', 'Fecha', 'Hora', 'ID_Lector']
@@ -2364,19 +2379,16 @@ def process_file_in_background(
             columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
         else:
             columnas_obligatorias = ['Matricula', 'Fecha', 'Hora']
-        
         columnas_faltantes_detalle = []
         for campo in columnas_obligatorias:
             if campo not in df.columns:
                 col_excel = map_cliente_a_interno.get(campo)
                 columnas_faltantes_detalle.append(f"{campo} (mapeada desde '{col_excel}')" if col_excel else f"{campo} (no mapeada)")
-        
         if columnas_faltantes_detalle:
             error_msg = f"Faltan columnas obligatorias o mapeos: {', '.join(columnas_faltantes_detalle)}"
             logger.error(f"[Task {task_id}] {error_msg}")
             raise ValueError(error_msg)
         logger.info(f"[Task {task_id}] Columnas obligatorias validadas.")
-
         logger.info(f"[Task {task_id}] Creando registro ArchivoExcel para {original_filename}")
         db_archivo = models.ArchivoExcel(
             ID_Caso=caso_id, Nombre_del_Archivo=original_filename,
@@ -2385,7 +2397,6 @@ def process_file_in_background(
         db.add(db_archivo); db.flush(); db.refresh(db_archivo)
         id_archivo_db = db_archivo.ID_Archivo
         logger.info(f"[Task {task_id}] ArchivoExcel ID: {id_archivo_db} creado.")
-
         logger.info(f"[Task {task_id}] Procesando {len(df)} filas para lecturas.")
         lecturas_insertadas_count = 0
         errores_filas = []
@@ -2394,7 +2405,9 @@ def process_file_in_background(
         duplicados_omitidos_bg = set()
         task_statuses[task_id]["total"] = len(df)
         BATCH_SIZE = 500
-
+        # Actualizar a siguiente etapa
+        task_statuses[task_id]["stage"] = "processing"
+        task_statuses[task_id]["message"] = "Procesando registros..."
         for i in range(0, len(df), BATCH_SIZE):
             batch_df = df[i:i+BATCH_SIZE]
             batch_lecturas_obj = []
@@ -2464,13 +2477,14 @@ def process_file_in_background(
                 lecturas_insertadas_count += len(batch_lecturas_obj)
             db.commit() # Commit por lote (lecturas y nuevos lectores del lote)
             task_statuses[task_id]["progress"] = (min(i + BATCH_SIZE, len(df)) / len(df)) * 100
+            # Mantener stage y message en cada lote
+            task_statuses[task_id]["stage"] = "processing"
+            task_statuses[task_id]["message"] = "Procesando registros..."
             logger.info(f"[Task {task_id}] Lote procesado. Total insertado: {lecturas_insertadas_count}. Progreso: {task_statuses[task_id]['progress']:.2f}%")
-
         final_msg = f"Procesado. {lecturas_insertadas_count} lecturas importadas."
         if errores_filas: final_msg += f" {len(errores_filas)} filas con errores."
         if duplicados_omitidos_bg: final_msg += f" {len(duplicados_omitidos_bg)} duplicados omitidos."
         logger.info(f"[Task {task_id}] {final_msg}")
-        
         result_data = schemas.UploadResponse(
             archivo=schemas.ArchivoExcel.model_validate(db_archivo, from_attributes=True),
             total_registros=lecturas_insertadas_count,
@@ -2481,17 +2495,17 @@ def process_file_in_background(
         )
         task_statuses[task_id] = {
             **task_statuses.get(task_id, {}), "status": "completed", "message": final_msg,
-            "progress": 100, "result": result_data.model_dump()
+            "progress": 100, "result": result_data.model_dump(), "stage": None
         }
     except ValueError as ve_proc:
         logger.error(f"[Task {task_id}] Error de validación: {ve_proc}", exc_info=True)
-        task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "failed", "message": str(ve_proc)}
+        task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "failed", "message": str(ve_proc), "stage": None}
         if 'id_archivo_db' in locals() and id_archivo_db:
             try: db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo_db).delete(); db.commit()
             except: db.rollback()
     except Exception as e_critico:
         logger.error(f"[Task {task_id}] Error CRÍTICO: {e_critico}", exc_info=True)
-        task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "failed", "message": f"Error interno: {e_critico}"}
+        task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "failed", "message": f"Error interno: {e_critico}", "stage": None}
         if 'id_archivo_db' in locals() and id_archivo_db:
             try: db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo_db).delete(); db.commit()
             except: db.rollback()
@@ -2500,7 +2514,7 @@ def process_file_in_background(
             try: os.remove(temp_file_path); logger.info(f"[Task {task_id}] Archivo temporal {temp_file_path} eliminado.")
             except Exception as e_rm_temp: logger.error(f"[Task {task_id}] Fallo al eliminar {temp_file_path}: {e_rm_temp}")
         db.close()
-        logger.info(f"[Task {task_id}] Procesamiento en segundo plano finalizado para {original_filename}.")
+    logger.info(f"[Task {task_id}] Procesamiento en segundo plano finalizado para {original_filename}.")
 
 # --- END Background File Processing Function ---
 
@@ -3530,3 +3544,37 @@ def get_caso_size(caso_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error al obtener el tamaño del caso {caso_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+@app.get("/api/tasks/{task_id}/status", response_model=TaskStatus)
+async def get_task_status(task_id: str):
+    """
+    Obtiene el estado actual de una tarea en segundo plano.
+    """
+    status_info = task_statuses.get(task_id)
+    if not status_info:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró información para la tarea {task_id}"
+        )
+    return TaskStatus(**status_info)
+
+# Mejorar el logging de tareas
+def update_task_status(task_id: str, status: str, message: str, progress: float = None, total: int = None, result: Dict = None):
+    """
+    Actualiza el estado de una tarea con logging mejorado.
+    """
+    current_status = task_statuses.get(task_id, {})
+    new_status = {
+        **current_status,
+        "status": status,
+        "message": message,
+    }
+    if progress is not None:
+        new_status["progress"] = progress
+    if total is not None:
+        new_status["total"] = total
+    if result is not None:
+        new_status["result"] = result
+    
+    task_statuses[task_id] = new_status
+    logger.info(f"[Task {task_id}] Status updated: {status} - {message} - Progress: {progress}%")
