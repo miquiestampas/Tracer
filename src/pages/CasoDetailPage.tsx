@@ -12,6 +12,7 @@ import apiClient from '../services/api';
 import dayjs from 'dayjs';
 import _ from 'lodash';
 import appEventEmitter from '../utils/eventEmitter';
+import { MapHighlightProvider } from '../context/MapHighlightContext';
 
 // Importar componentes
 import 'leaflet/dist/leaflet.css';
@@ -608,6 +609,7 @@ const handleDeleteArchivo = async (archivoId: number) => {
   if (!caso) return <Alert color="orange">Caso no encontrado.</Alert>;
 
   return (
+    <MapHighlightProvider>
       <Container fluid style={{ paddingLeft: 32, paddingRight: 32 }}>
           <Text size="xl" fw={700} mt="md" mb="lg">Panel de Investigación: {caso.Nombre_del_Caso} ({caso.Año})</Text>
 
@@ -804,6 +806,7 @@ const handleDeleteArchivo = async (archivoId: number) => {
           />
 
       </Container>
+    </MapHighlightProvider>
 );
 }
 

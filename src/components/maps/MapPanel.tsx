@@ -12,6 +12,7 @@ import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, I
 import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
 import { TimeInput } from '@mantine/dates';
+import { useMapHighlight } from '../../context/MapHighlightContext';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -316,6 +317,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
   const [selectedLectura, setSelectedLectura] = useState<Lectura | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+
+  const { highlightedLecturas } = useMapHighlight();
 
   // Manejar la tecla Escape
   useHotkeys([['Escape', () => fullscreenMap && setFullscreenMap(false)]]);
@@ -1093,6 +1096,17 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     console.log('Lectura seleccionada actualizada:', lectura);
   }, []);
 
+  // Efecto para centrar y resaltar lecturas seleccionadas desde el contexto
+  useEffect(() => {
+    if (highlightedLecturas && highlightedLecturas.length > 0 && mapRef.current) {
+      // Centrar el mapa en la primera lectura
+      const l = highlightedLecturas[0];
+      if (l.Coordenada_Y && l.Coordenada_X) {
+        mapRef.current.setView([l.Coordenada_Y, l.Coordenada_X], 16, { animate: true });
+      }
+    }
+  }, [highlightedLecturas]);
+
   // Componente del mapa para reutilizar
   const MapComponent = ({ isFullscreen = false }) => (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
@@ -1208,6 +1222,19 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
          renderResultadosFiltro()}
         {capas.map(renderCapaMarkers)}
         {renderCoincidencias()}
+        {highlightedLecturas && highlightedLecturas.length > 0 && highlightedLecturas.map((l, i) => (
+          l.Coordenada_Y && l.Coordenada_X && (
+            <Marker
+              key={`highlighted-${i}`}
+              position={[l.Coordenada_Y, l.Coordenada_X]}
+              icon={L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style="width:28px;height:28px;background:#ffd700;border-radius:50%;border:3px solid #228be6;box-shadow:0 0 12px #ffd700;"></div>`
+              })}
+              zIndexOffset={999}
+            />
+          )
+        ))}
       </MapContainer>
     </div>
   );

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Title, Text, Paper, Group, Button, TextInput, NumberInput, Select, Table, Badge, LoadingOverlay, Alert, Collapse } from '@mantine/core';
-import { IconSearch, IconAlertTriangle, IconBookmark, IconCar } from '@tabler/icons-react';
+import { Box, Title, Text, Paper, Group, Button, TextInput, NumberInput, Select, Table, Badge, LoadingOverlay, Alert, Collapse, Card, Stack, ActionIcon, Menu } from '@mantine/core';
+import { IconSearch, IconAlertTriangle, IconBookmark, IconCar, IconMapPin, IconSortAscending, IconSortDescending } from '@tabler/icons-react';
 import apiClient from '../../services/api';
 import { notifications } from '@mantine/notifications';
 import { Checkbox } from '@mantine/core';
 import MatriculasExtranjerasPanel from '../analisis/MatriculasExtranjerasPanel';
+import { useMapHighlight } from '../../context/MapHighlightContext';
 
 interface PatronesPanelProps {
     casoId: number;
@@ -73,6 +74,9 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
     const [lanzaderaDetalles, setLanzaderaDetalles] = useState<any[]>([]);
     const [selectedRows, setSelectedRows] = useState<any[]>([]);
     const [busquedaRealizada, setBusquedaRealizada] = useState(false);
+    const { setHighlightedLecturas } = useMapHighlight();
+    const [ordenCoincidencias, setOrdenCoincidencias] = useState<'fecha'|'matricula'|'tipo'>('fecha');
+    const [ordenAsc, setOrdenAsc] = useState(true);
 
     const limpiarFiltros = () => {
         setFiltros({
@@ -415,13 +419,13 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
             if (response.data.vehiculos_lanzadera.length === 0) {
                 notifications.show({
                     title: 'Sin resultados',
-                    message: 'No se han detectado vehículos lanzadera para los criterios especificados',
+                    message: 'No se han detectado vehículos acompañante para los criterios especificados',
                     color: 'blue'
                 });
             } else {
                 notifications.show({
                     title: 'Búsqueda completada',
-                    message: `Se han detectado ${response.data.vehiculos_lanzadera.length} vehículos lanzadera`,
+                    message: `Se han detectado ${response.data.vehiculos_lanzadera.length} vehículos acompañante`,
                     color: 'green'
                 });
             }
@@ -436,6 +440,32 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
             setLanzaderaLoading(false);
         }
     };
+
+    // --- NUEVA AGRUPACIÓN AVANZADA DE COINCIDENCIAS ---
+    const matriculaObjetivo = lanzaderaParams.matricula?.trim().toUpperCase();
+
+    // Construir un mapa: {matriculaAcompañante: [ { objetivo: {...}, acompanante: {...} } ]}
+    const agrupacionAcompanantes = useMemo(() => {
+        if (!matriculaObjetivo || !lanzaderaDetalles || lanzaderaDetalles.length === 0) return {};
+        // Filtrar solo lecturas válidas
+        const lecturas = lanzaderaDetalles.filter(l => l.matricula && l.fecha && l.hora && l.lector);
+        // Separar lecturas objetivo y acompañantes
+        const lecturasObjetivo = lecturas.filter(l => l.matricula === matriculaObjetivo);
+        const lecturasAcompanantes = lecturas.filter(l => l.matricula !== matriculaObjetivo);
+        // Para cada acompañante, buscar coincidencias con el objetivo
+        const mapa: Record<string, { objetivo: any, acompanante: any }[]> = {};
+        lecturasAcompanantes.forEach(acom => {
+            // Buscar lecturas objetivo cercanas en fecha/hora/lector (puedes ajustar la lógica si tienes un campo de agrupación real)
+            // Aquí asumimos que lanzaderaDetalles ya trae las coincidencias intercaladas
+            // Buscamos la lectura objetivo más próxima anterior o posterior
+            const posibles = lecturasObjetivo.filter(obj => obj.fecha === acom.fecha && obj.lector === acom.lector);
+            posibles.forEach(obj => {
+                if (!mapa[acom.matricula]) mapa[acom.matricula] = [];
+                mapa[acom.matricula].push({ objetivo: obj, acompanante: acom });
+            });
+        });
+        return mapa;
+    }, [lanzaderaDetalles, matriculaObjetivo]);
 
     // Helpers para identificar filas únicas
     const getVelocidadRowId = (vehiculo: VehiculoRapido) => `velocidad-${vehiculo.matricula}-${vehiculo.fechaHoraInicio}-${vehiculo.fechaHoraFin}`;
@@ -522,6 +552,9 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
         notifications.show({ title: 'Éxito', message: `Vehículos guardados.`, color: 'green' });
         setSelectedRows([]);
     };
+
+    // Calcular el número de acompañantes que cumplen el filtro de mínimo de coincidencias
+    const numAcompanantesFiltrados = Object.values(agrupacionAcompanantes).filter(coincidencias => coincidencias.length >= (lanzaderaParams.minCoincidencias || 2)).length;
 
     return (
         <Box>
@@ -738,55 +771,54 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                     </Group>
                 </Group>
                 <Title order={5} mt="md" mb="xs">Lecturas Intercaladas (Objetivo y Acompañante)</Title>
-                <Table striped highlightOnHover withColumnBorders>
-                    <thead>
-                        <tr>
-                            <th><Checkbox checked={allLanzaderaSelected} onChange={e => handleSelectAllLanzadera(e.currentTarget.checked)} /></th>
-                            <th style={{ minWidth: 120, textAlign: 'center' }}>Matrícula</th>
-                            <th style={{ minWidth: 100, textAlign: 'center' }}>Tipo</th>
-                            <th style={{ minWidth: 120, textAlign: 'center' }}>Fecha</th>
-                            <th style={{ minWidth: 80, textAlign: 'center' }}>Hora</th>
-                            <th style={{ minWidth: 200, textAlign: 'center' }}>Lector</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {lanzaderaDetalles && lanzaderaDetalles.length > 0 ? (
-                            [...lanzaderaDetalles]
-                                .filter(d =>
-                                    d.tipo === 'Objetivo' || lanzaderaResultados.includes(d.matricula)
-                                )
-                                .sort((a, b) => {
-                                    // Ordenar por fecha y hora
-                                    const dateA = new Date(`${a.fecha}T${a.hora}`);
-                                    const dateB = new Date(`${b.fecha}T${b.hora}`);
-                                    return dateA.getTime() - dateB.getTime();
-                                })
-                                .map((d, i) => (
-                                    <tr
-                                        key={i}
-                                        style={{
-                                            backgroundColor: d.tipo === 'Objetivo' ? '#e8f4fd' : '#fffbe6'
-                                        }}
-                                    >
-                                        <td><Checkbox checked={isLanzaderaRowSelected(d)} onChange={e => handleSelectLanzaderaRow(d, e.currentTarget.checked)} /></td>
-                                        <td style={{ fontWeight: 'bold', textAlign: 'center' }}>{d.matricula}</td>
-                                        <td style={{ textAlign: 'center' }}>{d.tipo}</td>
-                                        <td style={{ textAlign: 'center' }}>{d.fecha}</td>
-                                        <td style={{ textAlign: 'center' }}>{d.hora.length === 5 ? d.hora + ':00' : d.hora}</td>
-                                        <td style={{ textAlign: 'center' }}>{d.lector}</td>
-                                    </tr>
-                                ))
-                        ) : (
-                            busquedaRealizada && (
-                                <tr>
-                                    <td colSpan={6} style={{ textAlign: 'center', color: '#888' }}>
-                                        No se han detectado lecturas relevantes.
-                                    </td>
-                                </tr>
-                            )
-                        )}
-                    </tbody>
-                </Table>
+                <Group align="center" mb="xs">
+                    <Text fw={500}>Coincidencias encontradas: {numAcompanantesFiltrados}</Text>
+                    <Menu shadow="md" width={180}>
+                        <Menu.Target>
+                            <ActionIcon variant="light" color="blue"><IconSortAscending size={18} /></ActionIcon>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                            <Menu.Item onClick={() => { setOrdenCoincidencias('fecha'); setOrdenAsc(true); }}>Fecha ascendente</Menu.Item>
+                            <Menu.Item onClick={() => { setOrdenCoincidencias('fecha'); setOrdenAsc(false); }}>Fecha descendente</Menu.Item>
+                            <Menu.Item onClick={() => { setOrdenCoincidencias('matricula'); setOrdenAsc(true); }}>Matrícula ascendente</Menu.Item>
+                            <Menu.Item onClick={() => { setOrdenCoincidencias('matricula'); setOrdenAsc(false); }}>Matrícula descendente</Menu.Item>
+                        </Menu.Dropdown>
+                    </Menu>
+                </Group>
+                <Stack>
+                    {numAcompanantesFiltrados === 0 && (
+                        <Text c="dimmed" ta="center" my="md">No se han encontrado vehículos acompañantes</Text>
+                    )}
+                    {Object.entries(agrupacionAcompanantes)
+                        .filter(([_, coincidencias]) => coincidencias.length >= (lanzaderaParams.minCoincidencias || 2))
+                        .sort((a, b) => b[1].length - a[1].length)
+                        .map(([matricula, coincidencias], idx) => (
+                            <Card key={matricula} shadow="sm" p="md" radius="md" withBorder mb="sm">
+                                <Group justify="space-between" mb="xs">
+                                    <Text fw={700}>
+                                        {matricula} <Badge color="gray" ml="sm">Coincidencias: {coincidencias.length}</Badge>
+                                    </Text>
+                                    <Button size="xs" onClick={() => setHighlightedLecturas(coincidencias.flatMap(c => [c.objetivo, c.acompanante]))} leftSection={<IconMapPin size={16} />}>
+                                        Ver en mapa
+                                    </Button>
+                                </Group>
+                                <Stack gap={4}>
+                                    {coincidencias.map((c, i) => (
+                                        <Group key={i} spacing="md">
+                                            <Badge color="blue">OBJETIVO</Badge>
+                                            <Text fw={700}>{c.objetivo.matricula}</Text>
+                                            <Text>{c.objetivo.fecha} {c.objetivo.hora.length === 5 ? c.objetivo.hora + ':00' : c.objetivo.hora}</Text>
+                                            <Text size="sm" color="dimmed">{c.objetivo.lector}</Text>
+                                            <Badge color="gray">ACOMPAÑANTE</Badge>
+                                            <Text fw={400}>{c.acompanante.matricula}</Text>
+                                            <Text>{c.acompanante.fecha} {c.acompanante.hora.length === 5 ? c.acompanante.hora + ':00' : c.acompanante.hora}</Text>
+                                            <Text size="sm" color="dimmed">{c.acompanante.lector}</Text>
+                                        </Group>
+                                    ))}
+                                </Stack>
+                            </Card>
+                        ))}
+                </Stack>
             </Paper>
 
             {/* Submódulo: Búsqueda de Matrículas Extranjeras */}
