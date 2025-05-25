@@ -27,4 +27,39 @@ yarn-error.log*
 .vscode
 
 # Vite
-.vite 
+.vite
+
+# Database files
+*.db
+*.db.backup
+*.sqlite
+*.sqlite3
+
+# Backup directories
+backups/
+backup/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node
+node_modules/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db 
