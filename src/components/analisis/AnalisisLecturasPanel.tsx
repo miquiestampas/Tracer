@@ -184,7 +184,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
     const [selectedSearches, setSelectedSearches] = useState<number[]>([]);
     const [showSavedSearches, setShowSavedSearches] = useState(false);
-    const [overlayVisible, setOverlayVisible] = useState(false);
     const [overlayMessage, setOverlayMessage] = useState('');
     const [overlayProgress, setOverlayProgress] = useState(0);
     
@@ -484,7 +483,17 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
     // --- Modificar handleSearch para enviar cada matrícula como parámetro separado ---
     const handleSearch = async () => {
-        setOverlayVisible(true);
+        // Mostrar notificación de carga en la esquina inferior derecha
+        notifications.show({
+            id: 'analisis-loading',
+            title: 'Procesando búsqueda de lecturas...',
+            message: 'Por favor, espera mientras se procesan los resultados.',
+            color: 'blue',
+            autoClose: false,
+            withCloseButton: false,
+            position: 'bottom-right',
+            style: { minWidth: 350 }
+        });
         setOverlayMessage('Procesando búsqueda de lecturas...');
         setOverlayProgress(0);
         setLoading(true);
@@ -578,7 +587,9 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
             clearInterval(progressInterval);
             setOverlayProgress(100);
-            setTimeout(() => setOverlayVisible(false), 400);
+            setTimeout(() => setOverlayMessage(''), 400);
+            // Ocultar notificación de carga
+            notifications.hide('analisis-loading');
         } catch (error) {
             console.error('[AnalisisLecturasPanel] Error:', error);
             notifications.show({
@@ -587,7 +598,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 color: 'red'
             });
             setResults([]);
-            setOverlayVisible(false);
+            // Ocultar notificación de carga
+            notifications.hide('analisis-loading');
         } finally {
             setLoading(false);
         }
@@ -1212,7 +1224,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             <Box>
                 <Grid>
                      <ProgressOverlay 
-                        visible={initialLoading && !overlayVisible} 
+                        visible={initialLoading} 
                         progress={initialLoading ? 100 : 0} 
                         label="Cargando datos iniciales..."
                         zIndex={1000}
@@ -1539,7 +1551,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     onSelectedRecordsChange={handleSelectionChange}
                                     noRecordsText={loading ? 'Cargando...' : (results.length === 0 ? 'No se encontraron resultados con los filtros aplicados' : '')}
                                     noRecordsIcon={<></>}
-                                    fetching={loading && !overlayVisible}
+                                    fetching={loading}
                                     sortStatus={sortStatus}
                                     onSortStatusChange={handleSortStatusChange}
                                     style={{ tableLayout: 'fixed' }}
@@ -1559,34 +1571,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                          </Paper>
                      </Grid.Col>
                 </Grid>
-                {overlayVisible && (
-                    <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        background: 'rgba(0,0,0,0.35)',
-                        zIndex: 9999,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                    }}>
-                        <Loader size={64} color="blue" />
-                        <div style={{
-                            marginTop: 32,
-                            fontSize: 32,
-                            color: '#fff',
-                            fontWeight: 600,
-                            textShadow: '0 2px 8px rgba(0,0,0,0.4)'
-                        }}>
-                            {overlayMessage}
-                        </div>
-                        <Progress value={overlayProgress} size="xl" w={400} mt={32} color="blue" />
-                        <div style={{ color: '#fff', marginTop: 8, fontSize: 18 }}>{Math.round(overlayProgress)}%</div>
-                    </div>
-                )}
             </Box>
         </Box>
     );

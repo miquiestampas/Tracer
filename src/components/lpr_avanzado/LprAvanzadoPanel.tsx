@@ -387,6 +387,18 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
         setExpandedRecordIds([]);
         setPage(1);
 
+        // Mostrar notificación de carga en la esquina inferior derecha
+        notifications.show({
+            id: 'lpr-loading',
+            title: 'Procesando búsqueda de lecturas...',
+            message: 'Por favor, espera mientras se procesan los resultados.',
+            color: 'blue',
+            autoClose: false,
+            withCloseButton: false,
+            position: 'bottom-right',
+            style: { minWidth: 350 }
+        });
+
         const params = new URLSearchParams();
         // Parámetros básicos de paginación/límite
         params.append('limit', '20000'); // Límite alto para obtener todo
@@ -462,6 +474,8 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
             setDisplayedResults([]);
         } finally {
             setLoading(false);
+            // Ocultar notificación de carga
+            notifications.hide('lpr-loading');
         }
     };
 
@@ -1165,7 +1179,6 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                 <Stack gap="lg">
                     {/* --- Búsquedas Guardadas (Ahora primero) --- */}
                     <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
-                        <LoadingOverlay visible={savedSearchesLoading || loading} />
                         <Group justify="space-between" mb="md">
                             <Title order={4}>Búsquedas Guardadas ({savedSearches.length})</Title>
                             <Group gap="xs">
@@ -1206,7 +1219,6 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                     {/* --- Resultados (Ahora después) --- */}
                     {displayedResults.length > 0 && (
                         <Paper shadow="sm" p="md" withBorder style={{ position: 'relative' }}>
-                            <LoadingOverlay visible={resultsLoading || loading} />
                             <Group justify="space-between" mb="md">
                                 <Title order={4}>Resultados ({displayedResults.length})</Title>
                                 <Group gap="xs">
