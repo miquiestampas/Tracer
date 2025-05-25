@@ -6,7 +6,7 @@ export type EstadoCaso =
   | "Esperando Archivos"
   | "En Análisis"
   | "Pendiente Informe"
-  | "Cerrado";
+  | "Cerrada";
 
 // Interfaz para los datos de un Caso (respuesta de GET)
 export interface Caso {

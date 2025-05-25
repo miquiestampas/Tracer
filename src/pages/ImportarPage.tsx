@@ -730,7 +730,7 @@ function ImportarPage() {
             <Group>
               <Button
                 variant={fileType === 'LPR' ? 'filled' : 'outline'}
-                color="green"
+                color="#2bd39e"
                 onClick={() => setFileType('LPR')}
                 disabled={isUploading || isReadingHeaders}
                 leftSection={<IconFileSpreadsheet size={18} />}
@@ -739,7 +739,7 @@ function ImportarPage() {
               </Button>
               <Button
                 variant={fileType === 'GPS' ? 'filled' : 'outline'}
-                color="green"
+                color="#2bd39e"
                 onClick={() => setFileType('GPS')}
                 disabled={isUploading || isReadingHeaders}
                 leftSection={<IconFileSpreadsheet size={18} />}
@@ -748,7 +748,7 @@ function ImportarPage() {
               </Button>
               <Button
                 variant={fileType === 'GPX_KML' ? 'filled' : 'outline'}
-                color="orange"
+                color="#FF204E"
                 onClick={() => setFileType('GPX_KML')}
                 disabled={isUploading || isReadingHeaders}
                 leftSection={<IconFileSpreadsheet size={18} />}

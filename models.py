@@ -13,7 +13,7 @@ class EstadoCasoEnum(enum.Enum):
     ESPERANDO_ARCHIVOS = "Esperando Archivos"
     EN_ANALISIS = "En Análisis"
     PENDIENTE_INFORME = "Pendiente Informe"
-    CERRADO = "Cerrado"
+    CERRADA = "Cerrada"
 
 class Grupo(Base):
     __tablename__ = "Grupos"

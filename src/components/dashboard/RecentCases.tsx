@@ -10,11 +10,11 @@ interface RecentCasesProps {
 
 // Asignar color según estado
 const estadoColor: Record<string, string> = {
-  'Nuevo': 'green',
-  'Esperando Archivos': 'blue',
-  'En Análisis': 'orange',
-  'Pendiente Informe': 'red',
-  'Cerrado': 'gray',
+  'Nuevo': '#2bd39e',
+  'Esperando Archivos': '#6528F7',
+  'En Análisis': '#211951',
+  'Pendiente Informe': '#FF204E',
+  'Cerrada': '#F0F3FF',
 };
 
 const estadoPrioridad: Record<string, number> = {
@@ -22,12 +22,12 @@ const estadoPrioridad: Record<string, number> = {
   'Pendiente Informe': 2,
   'En Análisis': 3,
   'Esperando Archivos': 4,
-  'Cerrado': 99,
+  'Cerrada': 99,
 };
 
 export function RecentCases({ cases }: RecentCasesProps) {
   // Filtrar y ordenar por prioridad y fecha
-  const filtered = cases.filter(c => c.Estado !== 'Cerrado');
+  const filtered = cases.filter(c => c.Estado !== 'Cerrada');
   const sorted = [...filtered]
     .sort((a, b) => {
       const pa = estadoPrioridad[a.Estado] || 99;
@@ -46,14 +46,16 @@ export function RecentCases({ cases }: RecentCasesProps) {
             <Card.Section>
               <Box p="md" style={{ backgroundColor: '#f8f9fa' }}>
                 <Group>
-                  <Avatar color={estadoColor[caso.Estado] || 'gray'} radius="xl">
+                  <Avatar color={estadoColor[caso.Estado] || 'gray'} radius="xl" style={{ background: estadoColor[caso.Estado] || 'gray' }}>
                     <IconFolder size={24} />
                   </Avatar>
                   <div style={{ flex: 1 }}>
                     <Text fw={500} size="lg" truncate>{caso.Nombre_del_Caso}</Text>
                     <Text size="sm" c="dimmed">Año: {caso.Año}</Text>
                   </div>
-                  <Badge color={estadoColor[caso.Estado] || 'gray'}>{caso.Estado}</Badge>
+                  <Badge style={{ background: estadoColor[caso.Estado] || 'gray', color: caso.Estado === 'En Análisis' ? 'white' : undefined }}>
+                    {caso.Estado}
+                  </Badge>
                 </Group>
               </Box>
             </Card.Section>
@@ -61,7 +63,7 @@ export function RecentCases({ cases }: RecentCasesProps) {
               {caso.Descripcion && <Text size="sm" c="dimmed" lineClamp={2}>{caso.Descripcion}</Text>}
               <Button
                 variant="outline"
-                color={estadoColor[caso.Estado] || 'blue'}
+                style={{ borderColor: estadoColor[caso.Estado] || 'blue', color: estadoColor[caso.Estado] || 'blue' }}
                 fullWidth
                 mt="md"
                 radius="sm"
