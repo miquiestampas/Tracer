@@ -15,6 +15,7 @@
     "@changey/react-leaflet-markercluster": "^4.0.0-rc1",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
+    "@hello-pangea/dnd": "^18.0.1",
     "@mantine/core": "^7.17.7",
     "@mantine/dates": "^7.17.7",
     "@mantine/dropzone": "^7.17.7",

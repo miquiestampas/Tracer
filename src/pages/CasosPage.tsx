@@ -417,11 +417,11 @@ function CasosPage() {
       {/* --- Barra de Filtro, Selector de Vista y Botón Crear --- */}
       <Group justify="space-between" mb="lg">
           <Group>
-              <TextInput
-                  placeholder="Buscar por nombre, año, NIV, descripción..."
-                  leftSection={<IconSearch size={14} />}
-                  value={filterText}
-                  onChange={(event) => setFilterText(event.currentTarget.value)}
+          <TextInput
+              placeholder="Buscar por nombre, año, NIV, descripción..."
+              leftSection={<IconSearch size={14} />}
+              value={filterText}
+              onChange={(event) => setFilterText(event.currentTarget.value)}
                   style={{ width: '400px' }}
               />
               <SegmentedControl
@@ -437,7 +437,7 @@ function CasosPage() {
               {viewMode === 'grid' && (
                   <Menu shadow="md" width={200}>
                       <Menu.Target>
-                          <Button 
+                        <Button 
                               variant="light" 
                               leftSection={
                                   sortStatus.columnAccessor === 'Nombre_del_Caso' ? (
@@ -454,7 +454,7 @@ function CasosPage() {
                               }
                           >
                               Ordenar por
-                          </Button>
+                         </Button>
                       </Menu.Target>
                       <Menu.Dropdown>
                           <Menu.Item
@@ -539,8 +539,8 @@ function CasosPage() {
                   leftSection={<IconPlus size={14} />} 
                   onClick={openCreateModal}
               >
-                  Crear Nuevo Caso
-              </Button>
+                    Crear Nuevo Caso
+                </Button>
           </Group>
       </Group>
 
@@ -685,13 +685,13 @@ function CasosPage() {
               ) : (
                 <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
                   {filteredAndSortedCasos.active.map((caso) => (
-                    <Card 
-                      key={caso.ID_Caso}
-                      shadow="sm" 
-                      padding="lg" 
-                      radius="md" 
-                      withBorder
-                      style={{
+                      <Card 
+                          key={caso.ID_Caso} 
+                          shadow="sm" 
+                          padding="lg" 
+                          radius="md" 
+                          withBorder 
+                          style={{
                         borderLeft: `6px solid ${getStatusColor(caso.Estado)}`,
                         background: 'var(--mantine-color-gray-0)',
                       }}
@@ -704,22 +704,22 @@ function CasosPage() {
                           <Text size="lg" fw={700} style={{ lineHeight: 1.1 }}>{caso.Nombre_del_Caso}</Text>
                           <Text size="sm" c="dimmed" mt={2}>
                             Año: <b>{caso.Año}</b> &nbsp;|&nbsp; NIV: <b>{caso.NIV || '-'}</b>
-                          </Text>
+                                          </Text>
                           <Text size="sm" mt={4}>
                             Fecha: {new Date(caso.Fecha_de_Creacion).toLocaleDateString()}
                           </Text>
                           <Tooltip label={caso.Descripcion || 'Sin descripción'} multiline w={300}>
                             <Text size="sm" lineClamp={2} mt={4}>
-                              {caso.Descripcion || 'Sin descripción'}
-                            </Text>
+                                  {caso.Descripcion || 'Sin descripción'}
+                              </Text>
                           </Tooltip>
                           <Group mt="md" gap="xs">
-                            <Select
-                              size="xs"
-                              data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
-                              value={caso.Estado}
+                                <Select
+                                    size="xs"
+                                    data={CASE_STATUSES.map(status => ({ value: status, label: status }))}
+                                    value={caso.Estado}
                               onChange={(value) => handleEstadoChange(caso.ID_Caso, value)}
-                              disabled={updatingEstadoCasoId === caso.ID_Caso}
+                                    disabled={updatingEstadoCasoId === caso.ID_Caso}
                               styles={{
                                 input: {
                                   borderColor: getStatusColor(caso.Estado),
@@ -740,7 +740,7 @@ function CasosPage() {
                                   <IconEye size={20} />
                                 </ActionIcon>
                               </Tooltip>
-                              <Tooltip label="Editar Caso">
+                                  <Tooltip label="Editar Caso">
                                 <ActionIcon 
                                   variant="light" 
                                   color="gray" 
@@ -748,26 +748,26 @@ function CasosPage() {
                                   size="lg"
                                 >
                                   <IconPencil size={20} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Eliminar Caso">
-                                <ActionIcon 
-                                  variant="light" 
-                                  color="red" 
+                                      </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Eliminar Caso">
+                                      <ActionIcon 
+                                          variant="light" 
+                                          color="red" 
                                   onClick={() => handleDeleteCaso(caso.ID_Caso)}
-                                  loading={deletingCasoId === caso.ID_Caso}
+                                          loading={deletingCasoId === caso.ID_Caso}
                                   size="lg"
-                                >
+                                      >
                                   <IconTrash size={20} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </Group>
+                                      </ActionIcon>
+                                  </Tooltip>
+                              </Group>
                           </Group>
                         </Box>
-                      </Group>
-                    </Card>
+                          </Group>
+                      </Card>
                   ))}
-                </SimpleGrid>
+              </SimpleGrid>
               )}
 
               {/* Separador y Casos Cerrados */}
@@ -895,13 +895,13 @@ function CasosPage() {
                       ) : (
                         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
                           {filteredAndSortedCasos.closed.map((caso) => (
-                            <Card 
-                              key={caso.ID_Caso}
-                              shadow="sm" 
-                              padding="lg" 
-                              radius="md" 
-                              withBorder
-                              style={{
+                              <Card 
+                                  key={caso.ID_Caso} 
+                                  shadow="sm" 
+                                  padding="lg" 
+                                  radius="md" 
+                                  withBorder 
+                                  style={{
                                 borderLeft: `6px solid ${getStatusColor(caso.Estado)}`,
                                 background: 'var(--mantine-color-gray-0)',
                               }}
@@ -914,27 +914,27 @@ function CasosPage() {
                                   <Text size="lg" fw={700} style={{ lineHeight: 1.1 }}>{caso.Nombre_del_Caso}</Text>
                                   <Text size="sm" c="dimmed" mt={2}>
                                     Año: <b>{caso.Año}</b> &nbsp;|&nbsp; NIV: <b>{caso.NIV || '-'}</b>
-                                  </Text>
+                                                  </Text>
                                   <Text size="sm" mt={4}>
                                     Fecha: {new Date(caso.Fecha_de_Creacion).toLocaleDateString()}
                                   </Text>
                                   <Tooltip label={caso.Descripcion || 'Sin descripción'} multiline w={300}>
                                     <Text size="sm" lineClamp={2} mt={4}>
-                                      {caso.Descripcion || 'Sin descripción'}
-                                    </Text>
+                                          {caso.Descripcion || 'Sin descripción'}
+                                      </Text>
                                   </Tooltip>
                                   <Group mt="md" gap="xs">
                                     <Group gap="xs" ml="auto">
                                       <Tooltip label="Reactivar Caso">
-                                        <ActionIcon 
-                                          variant="light" 
-                                          color="green" 
-                                          onClick={() => handleReactivateCaso(caso.ID_Caso)}
-                                          loading={reactivatingCasoId === caso.ID_Caso}
+                                          <ActionIcon 
+                                              variant="light" 
+                                              color="green" 
+                                              onClick={() => handleReactivateCaso(caso.ID_Caso)} 
+                                              loading={reactivatingCasoId === caso.ID_Caso}
                                           size="lg"
-                                        >
+                                          >
                                           <IconRefresh size={20} />
-                                        </ActionIcon>
+                                          </ActionIcon>
                                       </Tooltip>
                                       <Tooltip label="Ver Detalles">
                                         <ActionIcon 
@@ -944,26 +944,26 @@ function CasosPage() {
                                           size="lg"
                                         >
                                           <IconEye size={20} />
-                                        </ActionIcon>
+                                          </ActionIcon>
                                       </Tooltip>
                                       <Tooltip label="Eliminar Caso">
-                                        <ActionIcon 
-                                          variant="light" 
-                                          color="red" 
+                                          <ActionIcon 
+                                              variant="light" 
+                                              color="red" 
                                           onClick={() => handleDeleteCaso(caso.ID_Caso)}
-                                          loading={deletingCasoId === caso.ID_Caso}
+                                              loading={deletingCasoId === caso.ID_Caso}
                                           size="lg"
-                                        >
+                                          >
                                           <IconTrash size={20} />
-                                        </ActionIcon>
+                                          </ActionIcon>
                                       </Tooltip>
                                     </Group>
                                   </Group>
                                 </Box>
-                              </Group>
-                            </Card>
+                                  </Group>
+                              </Card>
                           ))}
-                        </SimpleGrid>
+                      </SimpleGrid>
                       )}
                   </>
               )}

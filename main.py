@@ -3526,15 +3526,10 @@ def get_caso_size(caso_id: int, db: Session = Depends(get_db)):
         # Calcular el tamaño total
         total_size = 0
         for archivo in archivos:
-            ruta = archivo.Ruta_Archivo
-            if not ruta or not os.path.exists(ruta):
-                # Si no hay ruta, buscar por nombre en uploads
-                if archivo.Nombre_del_Archivo:
-                    posible_ruta = os.path.join(uploads_dir, archivo.Nombre_del_Archivo)
-                    if os.path.exists(posible_ruta):
-                        ruta = posible_ruta
-            if ruta and os.path.exists(ruta):
-                total_size += os.path.getsize(ruta)
+            if archivo.Nombre_del_Archivo:
+                ruta = os.path.join(uploads_dir, archivo.Nombre_del_Archivo)
+                if os.path.exists(ruta):
+                    total_size += os.path.getsize(ruta)
         
         # Formatear el tamaño a MB con 2 decimales
         size_mb = round(total_size / (1024 * 1024), 2)
