@@ -78,6 +78,29 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
     }
   };
 
+  // Nueva función para aplicar la lógica de GPS
+  const handleFiltrarConLogicaGps = () => {
+    let fechaInicio = filters.fechaInicio || '';
+    let horaInicio = filters.horaInicio || '';
+    let fechaFin = filters.fechaFin || '';
+    let horaFin = filters.horaFin || '';
+    // Si hay fecha inicio pero no hora, usar 00:00
+    if (fechaInicio && !horaInicio) horaInicio = '00:00';
+    // Si hay fecha fin pero no hora, usar 23:59
+    if (fechaFin && !horaFin) horaFin = '23:59';
+    // Si la fecha es igual y la hora fin < hora inicio, sumar un día a la fecha fin
+    if (fechaInicio && fechaFin && fechaInicio === fechaFin && horaInicio && horaFin && horaFin < horaInicio) {
+      const d = new Date(fechaFin);
+      d.setDate(d.getDate() + 1);
+      fechaFin = d.toISOString().slice(0, 10);
+    }
+    // Si no hay fecha, no enviar hora
+    if (!fechaInicio) horaInicio = '';
+    if (!fechaFin) horaFin = '';
+    handleChange({ fechaInicio, horaInicio, fechaFin, horaFin });
+    onFiltrar();
+  };
+
   return (
     <Stack gap="md">
       <Group grow>
@@ -95,29 +118,30 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
       <Group grow>
         <TextInput
           label="Fecha Inicio"
-          placeholder="DD/MM/YYYY"
-          value={formatDateForInput(filters.fechaInicio)}
-          onChange={handleDateChange('fechaInicio')}
-          maxLength={10}
+          type="date"
+          value={filters.fechaInicio}
+          onChange={(e) => handleChange({ fechaInicio: e.target.value })}
         />
         <TextInput
           label="Hora Inicio"
           type="time"
           value={filters.horaInicio}
-          onChange={e => handleChange({ horaInicio: e.target.value })}
+          onChange={(e) => handleChange({ horaInicio: e.target.value })}
         />
+      </Group>
+
+      <Group grow>
         <TextInput
           label="Fecha Fin"
-          placeholder="DD/MM/YYYY"
-          value={formatDateForInput(filters.fechaFin)}
-          onChange={handleDateChange('fechaFin')}
-          maxLength={10}
+          type="date"
+          value={filters.fechaFin}
+          onChange={(e) => handleChange({ fechaFin: e.target.value })}
         />
         <TextInput
           label="Hora Fin"
           type="time"
           value={filters.horaFin}
-          onChange={e => handleChange({ horaFin: e.target.value })}
+          onChange={(e) => handleChange({ horaFin: e.target.value })}
         />
       </Group>
 
@@ -132,7 +156,7 @@ const LecturaFilters: React.FC<LecturaFiltersProps> = ({
         </Button>
         <Button
           leftSection={<IconSearch size={16} />}
-          onClick={onFiltrar}
+          onClick={handleFiltrarConLogicaGps}
           loading={loading}
         >
           Aplicar Filtros

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal, Alert, Card, Table, ScrollArea } from '@mantine/core';
+import { Box, Stack, Paper, Title, Text, Select, Group, Badge, Grid, ActionIcon, ColorInput, Button, Collapse, TextInput, Switch, Tooltip, Divider, Modal, Alert, Card, Table, ScrollArea, Loader } from '@mantine/core';
 import { MapContainer, TileLayer, Marker, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -278,6 +278,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const [lecturas, setLecturas] = useState<Lectura[]>([]);
   const [loading, setLoading] = useState(false);
   const [vehiculosInteres, setVehiculosInteres] = useState<Vehiculo[]>([]);
+  const [loadingVehiculos, setLoadingVehiculos] = useState(false);
+  const [errorVehiculos, setErrorVehiculos] = useState<string | null>(null);
   const [selectedMatricula, setSelectedMatricula] = useState<string | null>(null);
   const [lectorSuggestions, setLectorSuggestions] = useState<string[]>([]);
   const [capas, setCapas] = useState<Capa[]>([]);
@@ -342,11 +344,18 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   // Cargar vehículos de interés
   useEffect(() => {
     const fetchVehiculosInteres = async () => {
+      setLoadingVehiculos(true);
+      setErrorVehiculos(null);
       try {
+        console.log('Cargando vehículos para caso:', casoId);
         const response = await apiClient.get<Vehiculo[]>(`/casos/${casoId}/vehiculos`);
+        console.log('Vehículos cargados:', response.data);
         setVehiculosInteres(response.data);
       } catch (error) {
         console.error('Error al obtener vehículos de interés:', error);
+        setErrorVehiculos('No se pudieron cargar los vehículos');
+      } finally {
+        setLoadingVehiculos(false);
       }
     };
 
@@ -383,13 +392,36 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
         })
       ]);
 
+      console.log('Respuesta de lecturas:', lecturasResponse.data);
+      console.log('Total lecturas recibidas:', lecturasResponse.data.length);
+
       const lectoresData = lectoresResponse.data.filter(l => l.Coordenada_X != null && l.Coordenada_Y != null);
-      const lecturasData = lecturasResponse.data.filter(l => l.Coordenada_X != null && l.Coordenada_Y != null);
+      
+      // Crear un mapa de lectores para búsqueda rápida
+      const lectoresMap = new Map(lectoresData.map(l => [String(l.ID_Lector), l]));
+      
+      // Añadir coordenadas a las lecturas usando el ID del lector
+      const lecturasData = lecturasResponse.data.map(lectura => {
+        const lector = lectoresMap.get(String(lectura.ID_Lector));
+        if (lector) {
+          return {
+            ...lectura,
+            Coordenada_X: lector.Coordenada_X,
+            Coordenada_Y: lector.Coordenada_Y
+          };
+        }
+        return lectura;
+      }).filter(l => l.Coordenada_X != null && l.Coordenada_Y != null);
+      
+      console.log('Lecturas con coordenadas:', lecturasData.length);
+      console.log('Muestra de lecturas con coordenadas:', lecturasData.slice(0, 3));
       
       // Filtrar lectores que tienen lecturas relacionadas con la matrícula filtrada
       const lectoresFiltrados = lectoresData.filter(lector => 
-        lecturasData.some(lectura => lectura.ID_Lector === lector.ID_Lector)
+        lecturasData.some(lectura => String(lectura.ID_Lector) === String(lector.ID_Lector))
       );
+      
+      console.log('Lectores filtrados:', lectoresFiltrados.length);
       
       setLectores(lectoresData);
       setLecturas(lecturasData);
@@ -456,11 +488,14 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   const zoomInicial = lectores.length > 0 ? 13 : 6;
 
   // Preparar datos para el Select de vehículos
-  const vehiculosOptions = useMemo(() => 
-    vehiculosInteres.map(v => ({
+  const vehiculosOptions = useMemo(() => {
+    console.log('Preparando opciones de vehículos. Total vehículos:', vehiculosInteres.length);
+    console.log('Vehículos disponibles:', vehiculosInteres);
+    return vehiculosInteres.map(v => ({
       value: v.Matricula,
       label: `${v.Matricula}${v.Marca ? ` - ${v.Marca}` : ''}${v.Modelo ? ` ${v.Modelo}` : ''}`
-    })), [vehiculosInteres]);
+    }));
+  }, [vehiculosInteres]);
 
   // Función para agrupar lecturas por lector
   const lecturasPorLector = useMemo(() => {
@@ -651,6 +686,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     // Filtrar solo lecturas LPR
     const lecturasLPR = resultadosFiltro.lecturas.filter(l => l.Tipo_Fuente !== 'GPS');
     console.log('Renderizando resultados. Total lecturas LPR:', lecturasLPR.length);
+    console.log('Muestra de lecturas LPR:', lecturasLPR.slice(0, 3));
+    console.log('Tipos de fuente en lecturas:', [...new Set(resultadosFiltro.lecturas.map(l => l.Tipo_Fuente))]);
     console.log('Lectores en resultados:', resultadosFiltro.lectores.length);
 
     if (lecturasLPR.length === 0) return null;
@@ -1394,17 +1431,26 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             <Paper shadow="xs" p="md">
               <Title order={4} mb="md">Filtros</Title>
               <Stack gap="md">
-                <Select
-                  label="Vehículo"
-                  placeholder="Selecciona un vehículo"
-                  value={selectedMatricula}
-                  onChange={(value) => {
-                    setSelectedMatricula(value);
-                  }}
-                  data={vehiculosOptions}
-                  searchable
-                  clearable
-                />
+                <Box>
+                  <Select
+                    label="Vehículo"
+                    placeholder="Selecciona un vehículo"
+                    value={selectedMatricula}
+                    onChange={(value) => {
+                      setSelectedMatricula(value);
+                    }}
+                    data={vehiculosOptions}
+                    searchable
+                    clearable
+                    error={errorVehiculos}
+                    disabled={loadingVehiculos}
+                  />
+                  {loadingVehiculos && (
+                    <Text size="xs" c="dimmed" mt={4}>
+                      Cargando vehículos...
+                    </Text>
+                  )}
+                </Box>
                 <LecturaFilters
                   filters={filters}
                   onFilterChange={handleFilterChange}
@@ -1413,34 +1459,6 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                   loading={loading}
                   lectorSuggestions={lectorSuggestions}
                 />
-                <Group grow>
-                  <TextInput
-                    label="Fecha Inicio"
-                    type="date"
-                    value={filters.fechaInicio}
-                    onChange={(e) => handleFilterChange({ fechaInicio: e.target.value })}
-                  />
-                  <TimeInput 
-                    label="Hora Inicio" 
-                    value={filters.horaInicio} 
-                    onChange={(event) => handleFilterChange({ horaInicio: event.currentTarget.value })} 
-                    leftSection={<IconClock style={markerIconStyle} />} 
-                  />
-                </Group>
-                <Group grow>
-                  <TextInput
-                    label="Fecha Fin"
-                    type="date"
-                    value={filters.fechaFin}
-                    onChange={(e) => handleFilterChange({ fechaFin: e.target.value })}
-                  />
-                  <TimeInput 
-                    label="Hora Fin" 
-                    value={filters.horaFin} 
-                    onChange={(event) => handleFilterChange({ horaFin: event.currentTarget.value })} 
-                    leftSection={<IconClock style={markerIconStyle} />} 
-                  />
-                </Group>
               </Stack>
             </Paper>
 
