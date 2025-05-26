@@ -16,6 +16,7 @@ import type { SavedSearch, SavedSearchUpdatePayload } from '../../types/data';
 import apiClient from '../../services/api';
 import appEventEmitter from '../../utils/eventEmitter';
 import { getLectorSugerencias } from '../../services/lectoresApi';
+import SaveSearchModal from '../modals/SaveSearchModal';
 
 // Definir logger (usando console)
 const logger = console;
@@ -60,8 +61,8 @@ interface ActiveSearch {
 
 // --- Tipado para los Filtros Actuales (Importante: Normalizar fechas antes de guardar/ejecutar) ---
 interface CurrentLprFilters {
-    fechaInicio: Date | null; 
-    fechaFin: Date | null;
+    fechaInicio: string;
+    fechaFin: string;
     timeFrom: string;
     timeTo: string;
     selectedLectores: string[];
@@ -144,8 +145,8 @@ function formatFiltersSummary(filtros: any): string {
 
 // Estado inicial para los filtros (para poder resetear)
 const initialFiltersState: CurrentLprFilters = {
-    fechaInicio: null,
-    fechaFin: null,
+    fechaInicio: '',
+    fechaFin: '',
     timeFrom: '',
     timeTo: '',
     selectedLectores: [],
@@ -253,6 +254,9 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
     const [provinciasList, setProvinciasList] = useState<SelectOption[]>([]);
     const [selectedOrganismos, setSelectedOrganismos] = useState<string[]>([]);
     const [selectedProvincias, setSelectedProvincias] = useState<string[]>([]);
+
+    const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
+    const [savingSearch, setSavingSearch] = useState(false);
 
     // --- Cargar datos iniciales (Ahora usa el nuevo endpoint) ---
     useEffect(() => {
@@ -486,17 +490,17 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
     };
 
     // --- Handler para el botón "Guardar Búsqueda" ---
-    const handleSaveSearch = async () => {
-        const nombreBusqueda = prompt("Introduce un nombre para esta búsqueda:");
-        if (!nombreBusqueda || !nombreBusqueda.trim()) {
+    const handleSaveSearch = async (searchName: string) => {
+        if (!searchName || !searchName.trim()) {
             notifications.show({ title: 'Cancelado', message: 'No se guardó la búsqueda.', color: 'gray' });
             return;
         }
 
+        setSavingSearch(true);
         const apiFilters = getCurrentApiFilters();
         
         const payload = {
-            name: nombreBusqueda.trim(),
+            name: searchName.trim(),
             caso_id: casoId,
             filters: apiFilters,
             results: displayedResults.map(result => ({
@@ -508,7 +512,6 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
             }))
         };
         
-        setLoading(true);
         console.log("Guardando búsqueda:", payload);
         try {
             const response = await fetch(`http://localhost:8000/casos/${casoId}/saved_searches`, {
@@ -525,13 +528,14 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
             notifications.show({ title: 'Búsqueda Guardada', message: `Búsqueda "${savedSearchData.name}" guardada con éxito.`, color: 'green' });
             
             // --- Recargar lista de búsquedas guardadas --- 
-            fetchSavedSearches(); 
+            fetchSavedSearches();
+            setShowSaveSearchModal(false);
 
         } catch (error) {
             console.error("Error guardando búsqueda:", error);
             notifications.show({ title: 'Error al Guardar', message: `${error instanceof Error ? error.message : String(error)}`, color: 'red' });
         } finally {
-            setLoading(false);
+            setSavingSearch(false);
         }
     };
 
@@ -1068,79 +1072,89 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                             <TextInput
                                 label="Fecha Inicio"
                                 type="date"
-                                value={currentFilters.fechaInicio ? dayjs(currentFilters.fechaInicio).format('YYYY-MM-DD') : ''}
-                                onChange={e => handleFilterChange('fechaInicio', e.target.value ? new Date(e.target.value) : null)}
+                                value={currentFilters.fechaInicio}
+                                onChange={e => handleFilterChange('fechaInicio', e.target.value)}
                             />
                             <TextInput
                                 label="Fecha Fin"
                                 type="date"
-                                value={currentFilters.fechaFin ? dayjs(currentFilters.fechaFin).format('YYYY-MM-DD') : ''}
-                                onChange={e => handleFilterChange('fechaFin', e.target.value ? new Date(e.target.value) : null)}
+                                value={currentFilters.fechaFin}
+                                onChange={e => handleFilterChange('fechaFin', e.target.value)}
                             />
                         </Group>
                         <Group grow>
-                             <TimeInput label="Desde Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeFrom} onChange={(e) => handleFilterChange('timeFrom', e.currentTarget.value)}/>
-                             <TimeInput label="Hasta Hora" placeholder="HH:MM" leftSection={<IconClock size={16} />} value={currentFilters.timeTo} onChange={(e) => handleFilterChange('timeTo', e.currentTarget.value)} />
-                         </Group>
-                         <MultiSelect label="Lectores" placeholder="Todos" data={lectoresList} value={currentFilters.selectedLectores} onChange={(v) => handleFilterChange('selectedLectores', v)} leftSection={<IconDeviceCctv size={16} />} searchable clearable disabled={initialLoading} />
-                         <Group grow>
-                           <MultiSelect
-                             label="Organismo"
-                             data={organismosList}
-                             value={selectedOrganismos}
-                             onChange={setSelectedOrganismos}
-                             searchable
-                             clearable
-                             leftSection={<IconBuildingCommunity style={iconStyle} />}
-                           />
-                           <MultiSelect
-                             label="Provincia"
-                             data={provinciasList}
-                             value={selectedProvincias}
-                             onChange={setSelectedProvincias}
-                             searchable
-                             clearable
-                             leftSection={<IconDeviceCctv size={16} />}
-                           />
-                         </Group>
-                         <Group grow>
-                         <MultiSelect label="Carretera" placeholder="Todas" data={carreterasList} value={currentFilters.selectedCarreteras} onChange={(v) => handleFilterChange('selectedCarreteras', v)} leftSection={<IconRoad size={16} />} searchable clearable disabled={initialLoading} />
-                         <MultiSelect
-                             label="Sentido"
-                             placeholder="Ambos"
-                             data={sentidoOptions}
-                             value={currentFilters.selectedSentidos || []}
-                             onChange={(value) => handleFilterChange('selectedSentidos', value)}
-                             leftSection={<IconArrowsUpDown size={16} />}
-                             searchable={false}
-                             clearable
-                             style={{ flex: 1, minWidth: 100 }}
-                         />
-                         </Group>
-                         <TextInput label="Matrícula (parcial)" placeholder="Ej: ?98?C*" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
-                         <Group grow>
-                             <NumberInput
-                                label="Mín. Pasos"
-                                placeholder="Cualquiera"
-                                value={currentFilters.minPasos ?? ''}
-                                onChange={(value) => handleFilterChange('minPasos', typeof value === 'number' ? value : null)}
-                                min={1}
-                                step={1}
-                                allowNegative={false}
-                                allowDecimal={false}
-                             />
-                             <NumberInput
-                                label="Máx. Pasos"
-                                placeholder="Cualquiera"
-                                value={currentFilters.maxPasos ?? ''}
-                                onChange={(value) => handleFilterChange('maxPasos', typeof value === 'number' ? value : null)}
-                                min={1}
-                                step={1}
-                                allowNegative={false}
-                                allowDecimal={false}
-                             />
-                         </Group>
-                        
+                            <TextInput
+                                label="Hora Inicio"
+                                type="time"
+                                value={currentFilters.timeFrom}
+                                onChange={e => handleFilterChange('timeFrom', e.target.value)}
+                            />
+                            <TextInput
+                                label="Hora Fin"
+                                type="time"
+                                value={currentFilters.timeTo}
+                                onChange={e => handleFilterChange('timeTo', e.target.value)}
+                            />
+                        </Group>
+                        <MultiSelect label="Lectores" placeholder="Todos" data={lectoresList} value={currentFilters.selectedLectores} onChange={(v) => handleFilterChange('selectedLectores', v)} leftSection={<IconDeviceCctv size={16} />} searchable clearable disabled={initialLoading} />
+                        <Group grow>
+                          <MultiSelect
+                            label="Organismo"
+                            data={organismosList}
+                            value={selectedOrganismos}
+                            onChange={setSelectedOrganismos}
+                            searchable
+                            clearable
+                            leftSection={<IconBuildingCommunity style={iconStyle} />}
+                          />
+                          <MultiSelect
+                            label="Provincia"
+                            data={provinciasList}
+                            value={selectedProvincias}
+                            onChange={setSelectedProvincias}
+                            searchable
+                            clearable
+                            leftSection={<IconDeviceCctv size={16} />}
+                          />
+                        </Group>
+                        <Group grow>
+                        <MultiSelect label="Carretera" placeholder="Todas" data={carreterasList} value={currentFilters.selectedCarreteras} onChange={(v) => handleFilterChange('selectedCarreteras', v)} leftSection={<IconRoad size={16} />} searchable clearable disabled={initialLoading} />
+                        <MultiSelect
+                            label="Sentido"
+                            placeholder="Ambos"
+                            data={sentidoOptions}
+                            value={currentFilters.selectedSentidos || []}
+                            onChange={(value) => handleFilterChange('selectedSentidos', value)}
+                            leftSection={<IconArrowsUpDown size={16} />}
+                            searchable={false}
+                            clearable
+                            style={{ flex: 1, minWidth: 100 }}
+                        />
+                        </Group>
+                        <TextInput label="Matrícula (parcial)" placeholder="Ej: ?98?C*" value={currentFilters.matricula} onChange={(e) => handleFilterChange('matricula', e.currentTarget.value)} leftSection={<IconLicense size={16} />} />
+                        <Group grow>
+                            <NumberInput
+                               label="Mín. Pasos"
+                               placeholder="Cualquiera"
+                               value={currentFilters.minPasos ?? ''}
+                               onChange={(value) => handleFilterChange('minPasos', typeof value === 'number' ? value : null)}
+                               min={1}
+                               step={1}
+                               allowNegative={false}
+                               allowDecimal={false}
+                            />
+                            <NumberInput
+                               label="Máx. Pasos"
+                               placeholder="Cualquiera"
+                               value={currentFilters.maxPasos ?? ''}
+                               onChange={(value) => handleFilterChange('maxPasos', typeof value === 'number' ? value : null)}
+                               min={1}
+                               step={1}
+                               allowNegative={false}
+                               allowDecimal={false}
+                            />
+                        </Group>
+                       
                         <Button 
                             leftSection={<IconSearch size={16} />} 
                             onClick={handleExecuteFilter} 
@@ -1162,12 +1176,11 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                             Limpiar Filtros Actuales
                         </Button>
                         <Button 
+                            size="xs" 
                             variant="outline" 
-                            leftSection={<IconDeviceFloppy size={16} />} 
-                            onClick={handleSaveSearch} 
-                            loading={loading} // ¿Quizás loading diferente para guardar?
-                            size="sm"
-                            fullWidth
+                            color="blue" 
+                            leftSection={<IconSearch size={16} />}
+                            onClick={() => setShowSaveSearchModal(true)}
                         >
                             Guardar Búsqueda
                         </Button>
@@ -1367,6 +1380,13 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
                     </Stack>
                 </form>
             </Modal>
+
+            <SaveSearchModal
+                opened={showSaveSearchModal}
+                onClose={() => setShowSaveSearchModal(false)}
+                onSave={handleSaveSearch}
+                loading={savingSearch}
+            />
         </Grid>
     );
 }

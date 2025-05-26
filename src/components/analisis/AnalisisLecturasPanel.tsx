@@ -19,6 +19,7 @@ import apiClient from '../../services/api';
 import type { GpsLectura } from '../../types/data';
 import { getLecturasGps } from '../../services/gpsApi';
 import appEventEmitter from '../../utils/eventEmitter';
+import SaveSearchModal from '../modals/SaveSearchModal';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -145,8 +146,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const theme = useMantineTheme();
 
     // --- Estados ---
-    const [fechaInicio, setFechaInicio] = useState<Date | null>(null);
-    const [fechaFin, setFechaFin] = useState<Date | null>(null);
+    const [fechaInicio, setFechaInicio] = useState('');
+    const [fechaFin, setFechaFin] = useState('');
     const [timeFrom, setTimeFrom] = useState('');
     const [timeTo, setTimeTo] = useState('');
     const [selectedLectores, setSelectedLectores] = useState<string[]>([]);
@@ -186,6 +187,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [showSavedSearches, setShowSavedSearches] = useState(false);
     const [overlayMessage, setOverlayMessage] = useState('');
     const [overlayProgress, setOverlayProgress] = useState(0);
+    const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
+    const [savingSearch, setSavingSearch] = useState(false);
     
     // --- Procesar datos ---
     const getLectorBaseId = (nombreLector: string): string => {
@@ -425,8 +428,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
     // --- NUEVA: Función para Limpiar Filtros ---
     const handleClearFilters = useCallback(() => {
-        setFechaInicio(null);
-        setFechaFin(null);
+        setFechaInicio('');
+        setFechaFin('');
         setTimeFrom('');
         setTimeTo('');
         setSelectedLectores([]);
@@ -513,8 +516,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             const params = new URLSearchParams();
             
             // Añadir parámetros básicos
-            if (fechaInicio) params.append('fecha_inicio', dayjs(fechaInicio).format('YYYY-MM-DD'));
-            if (fechaFin) params.append('fecha_fin', dayjs(fechaFin).format('YYYY-MM-DD'));
+            if (fechaInicio) params.append('fecha_inicio', fechaInicio);
+            if (fechaFin) params.append('fecha_fin', fechaFin);
             if (timeFrom) params.append('hora_inicio', timeFrom);
             if (timeTo) params.append('hora_fin', timeTo);
             selectedLectores.forEach(id => params.append('lector_ids', id));
@@ -1076,7 +1079,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     }, [casoIdFijo]);
 
     // Función para guardar la búsqueda actual
-    const handleSaveSearch = useCallback(async () => {
+    const handleSaveSearch = useCallback(async (searchName: string) => {
         if (!casoIdFijo) {
             notifications.show({
                 title: 'Error',
@@ -1086,9 +1089,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             return;
         }
 
-        const searchName = window.prompt('Nombre para esta búsqueda:');
-        if (!searchName) return;
-
+        setSavingSearch(true);
         const newSearch = {
             name: searchName,
             caso_id: casoIdFijo,
@@ -1126,6 +1127,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 message: `Se ha guardado la búsqueda "${searchName}"`,
                 color: 'green'
             });
+            setShowSaveSearchModal(false);
         } catch (error) {
             console.error('Error guardando búsqueda:', error);
             notifications.show({
@@ -1133,6 +1135,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                 message: 'No se pudo guardar la búsqueda',
                 color: 'red'
             });
+        } finally {
+            setSavingSearch(false);
         }
     }, [casoIdFijo, fechaInicio, fechaFin, timeFrom, timeTo, selectedLectores, selectedCarreteras, selectedSentidos, matricula, minPasos, maxPasos, results]);
 
@@ -1250,28 +1254,28 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     <TextInput
                                         label="Fecha Inicio"
                                         type="date"
-                                        value={fechaInicio ? dayjs(fechaInicio).format('YYYY-MM-DD') : ''}
-                                        onChange={(e) => setFechaInicio(e.target.value ? new Date(e.target.value) : null)}
+                                        value={fechaInicio}
+                                        onChange={e => setFechaInicio(e.target.value)}
                                     />
-                                    <TimeInput 
-                                        label="Hora Inicio" 
-                                        value={timeFrom} 
-                                        onChange={(event) => setTimeFrom(event.currentTarget.value)} 
-                                        leftSection={<IconClock style={iconStyle} />} 
+                                    <TextInput
+                                        label="Hora Inicio"
+                                        type="time"
+                                        value={timeFrom}
+                                        onChange={e => setTimeFrom(e.target.value)}
                                     />
                                 </Group>
                                 <Group grow>
                                     <TextInput
                                         label="Fecha Fin"
                                         type="date"
-                                        value={fechaFin ? dayjs(fechaFin).format('YYYY-MM-DD') : ''}
-                                        onChange={(e) => setFechaFin(e.target.value ? new Date(e.target.value) : null)}
+                                        value={fechaFin}
+                                        onChange={e => setFechaFin(e.target.value)}
                                     />
-                                    <TimeInput 
-                                        label="Hora Fin" 
-                                        value={timeTo} 
-                                        onChange={(event) => setTimeTo(event.currentTarget.value)} 
-                                        leftSection={<IconClock style={iconStyle} />} 
+                                    <TextInput
+                                        label="Hora Fin"
+                                        type="time"
+                                        value={timeTo}
+                                        onChange={e => setTimeTo(e.target.value)}
                                     />
                                 </Group>
                                 <MultiSelect
@@ -1461,9 +1465,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                         size="xs" 
                                         variant="outline" 
                                         color="blue" 
-                                        leftSection={<IconPlus size={16} />}
-                                        onClick={handleSaveSearch}
-                                        disabled={loading}
+                                        leftSection={<IconSearch size={16} />}
+                                        onClick={() => setShowSaveSearchModal(true)}
                                     >
                                         Guardar Búsqueda
                                     </Button>
@@ -1572,6 +1575,12 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                      </Grid.Col>
                 </Grid>
             </Box>
+            <SaveSearchModal
+                opened={showSaveSearchModal}
+                onClose={() => setShowSaveSearchModal(false)}
+                onSave={handleSaveSearch}
+                loading={savingSearch}
+            />
         </Box>
     );
   }
