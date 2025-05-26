@@ -45,6 +45,7 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
         flexDirection: 'column',
         justifyContent: 'space-between',
         padding: 16,
+        transition: 'all 0.3s ease-in-out'
       }}
     >
       <Stack gap={32} style={{ height: '100%' }}>
@@ -57,25 +58,44 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: collapsed ? 'center' : 'flex-start',
-                gap: collapsed ? 0 : 12,
+                gap: 12,
                 fontSize: 18,
                 fontWeight: 500,
                 color: location.pathname === item.path ? '#000' : '#fff',
                 background: location.pathname === item.path ? '#fff' : 'transparent',
                 borderRadius: 8,
-                padding: collapsed ? '12px 0' : '12px 10px',
-                transition: 'background 0.2s, color 0.2s',
+                padding: '12px 10px',
+                transition: 'all 0.3s ease-in-out',
                 width: '100%',
                 marginBottom: 2,
+                position: 'relative',
+                overflow: 'hidden'
               }}
             >
-              <item.icon size="1.3rem" stroke={1.5} style={{ color: location.pathname === item.path ? '#000' : '#fff', margin: collapsed ? '0 auto' : undefined }} />
-              {!collapsed && <span>{item.label}</span>}
+              <item.icon 
+                size="1.3rem" 
+                stroke={1.5} 
+                style={{ 
+                  color: location.pathname === item.path ? '#000' : '#fff',
+                  transition: 'all 0.3s ease-in-out',
+                  position: 'relative',
+                  zIndex: 2
+                }} 
+              />
+              <span style={{
+                opacity: collapsed ? 0 : 1,
+                visibility: collapsed ? 'hidden' : 'visible',
+                transition: 'opacity 0.3s ease-in-out',
+                position: 'absolute',
+                left: '40px',
+                whiteSpace: 'nowrap'
+              }}>
+                {item.label}
+              </span>
             </UnstyledButton>
           ))}
         </Stack>
         <Stack gap={4} align="center" mb={8}>
-          {!collapsed && <Text size="md" style={{ color: '#fff' }}>Administrador</Text>}
           {user?.Rol === 'superadmin' && (
             <UnstyledButton
               onClick={() => navigate('/admin')}
@@ -87,20 +107,31 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
                 fontWeight: 500,
                 fontSize: 16,
                 background: location.pathname === '/admin' ? 'rgba(255, 255, 255, 0.1)' : 'none',
-                transition: 'background 0.2s, color 0.2s',
+                transition: 'background 0.2s, color 0.2s, opacity 0.3s ease-in-out',
                 width: '100%',
                 textAlign: 'center',
+                opacity: collapsed ? 0 : 1,
+                pointerEvents: collapsed ? 'none' : 'auto',
+                height: '40px',
+                overflow: 'hidden',
               }}
             >
               {!collapsed && <Text size="md" style={{ color: '#fff' }}>Panel de Administración</Text>}
               {collapsed && <IconSettings size={20} color="#fff" />}
             </UnstyledButton>
           )}
-          {!collapsed && (
-            <Text size="sm" style={{ color: '#fff', background: 'rgba(128, 128, 128, 0.5)', padding: '8px 16px', borderRadius: theme.radius.sm, textAlign: 'center' }}>
-              {footerText}
-            </Text>
-          )}
+          <Text size="sm" style={{ 
+            color: '#fff', 
+            background: 'rgba(128, 128, 128, 0.5)', 
+            padding: '14px 16px',
+            borderRadius: theme.radius.sm, 
+            textAlign: 'center',
+            opacity: collapsed ? 0 : 1,
+            transition: 'opacity 0.3s ease-in-out',
+            marginTop: 8
+          }}>
+            {footerText}
+          </Text>
         </Stack>
       </Stack>
     </div>

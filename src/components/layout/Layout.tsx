@@ -21,7 +21,7 @@ function Layout() {
   const location = useLocation();
   const theme = useMantineTheme();
   const [opened, { toggle }] = useDisclosure(true);
-  const [collapsed, setCollapsed] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(true);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [helpOpen, setHelpOpen] = React.useState(false);
@@ -86,9 +86,20 @@ function Layout() {
       </AppShell.Header>
 
       <AppShell.Navbar p={0}>
-        <Box style={{ width: collapsed ? 70 : 260, height: '100%', position: 'relative' }}>
+        <Box style={{ 
+          width: collapsed ? 70 : 260, 
+          height: '100%', 
+          position: 'relative',
+          transition: 'width 0.3s ease-in-out'
+        }}>
           <Navbar collapsed={collapsed} />
-          <Box style={{ position: 'absolute', top: 12, right: collapsed ? -28 : -18, zIndex: 10 }}>
+          <Box style={{ 
+            position: 'absolute', 
+            top: 12, 
+            right: collapsed ? -28 : -18, 
+            zIndex: 10,
+            transition: 'right 0.3s ease-in-out'
+          }}>
             <ActionIcon
               variant="filled"
               color="gray"

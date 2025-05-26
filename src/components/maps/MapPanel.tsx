@@ -131,118 +131,59 @@ const InfoBanner = ({ info, onClose }: {
   return (
     <div style={{
       position: 'absolute',
-      bottom: 0,
       left: 0,
+      bottom: 0,
       width: '100%',
-      zIndex: 2001,
-      background: 'rgba(33, 37, 41, 0.7)',
+      zIndex: 1000,
+      background: 'rgba(60,60,60,0.65)',
       boxShadow: '0 -2px 12px rgba(0,0,0,0.15)',
       borderTop: '2px solid #228be6',
       animation: 'slideUp 0.3s',
       fontFamily: 'inherit',
+      color: 'white',
+      padding: 0,
+      backdropFilter: 'blur(4px)'
     }}>
       <Card shadow="sm" padding="md" radius="md" withBorder style={{ 
         width: '100%', 
         boxSizing: 'border-box', 
-        position: 'relative',
-        background: 'rgba(33, 37, 41, 0.7)',
-        borderColor: '#228be6'
+        position: 'relative', 
+        background: 'transparent', 
+        border: 'none', 
+        color: 'white', 
+        boxShadow: 'none' 
       }}>
         <ActionIcon
           variant="subtle"
           color="gray"
-          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10 }}
+          style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, color: 'white' }}
           onClick={onClose}
           aria-label="Cerrar info"
+          size="sm"
         >
-          <IconX size={20} />
+          <IconX size={18} />
         </ActionIcon>
-        <Card.Section withBorder inheritPadding py="sm" style={{ borderColor: '#228be6', padding: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'stretch', minWidth: 0, width: '100%' }}>
-            {/* Columna izquierda: Título */}
-            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', padding: '0 16px', height: '48px' }}>
-              <Text fw={700} size="sm" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'white' }}>
-                {info.tipo === 'lector' ? 'Lector LPR' : 'Lectura LPR'}
-              </Text>
+        <Group justify="space-between" align="center" style={{ minWidth: 0, width: '100%' }}>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <Text fw={700} size="lg" style={{ color: 'white', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 18 }}>
+              {info.tipo === 'lector' ? info.ID_Lector : info.Matricula}
+            </Text>
+            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 500, color: '#fff' }}>
+              {dayjs(info.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}
             </div>
-            {/* Columna derecha: ID de lector o matrícula */}
-            <div style={{ width: '280px', minWidth: '200px', borderLeft: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', padding: '0 16px', height: '48px' }}>
-              <Text fw={700} size="sm" style={{ color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {info.tipo === 'lector' ? info.ID_Lector : info.Matricula}
-              </Text>
+            <div style={{ marginTop: 4 }}>
+              {info.tipo !== 'lector' && (
+                <span style={{ marginLeft: 16, fontSize: 13, color: '#eee' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
+              )}
+              <span style={{ marginLeft: 16, fontSize: 13, color: '#eee' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
             </div>
+            {info.tipo === 'lector' && info.lecturas && info.lecturas.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <span style={{ fontSize: 13, color: '#eee' }}><b>Pasos registrados:</b> {info.lecturas.length}</span>
+              </div>
+            )}
           </div>
-        </Card.Section>
-        <div style={{ width: '100%', marginTop: 8 }}>
-          {info.tipo === 'lector' ? (
-            <div style={{ display: 'flex', gap: '0' }}>
-              {/* Columna izquierda - Lecturas */}
-              <div style={{ flex: 1, padding: '0 16px' }}>
-                {info.lecturas && info.lecturas.length > 0 && (
-                  <>
-                    <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'white' }}>Pasos registrados:</div>
-                    <ul style={{ margin: 0, paddingLeft: 16 }}>
-                      {info.lecturas.map((lectura: any, idx: number) => (
-                        <li key={idx} style={{ fontSize: 14, color: 'white', marginBottom: 8 }}>
-                          {dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')} - {lectura.Matricula} {lectura.Velocidad ? `(${lectura.Velocidad} km/h)` : ''}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
-
-              {/* Columna derecha - Información del lector */}
-              <div style={{ 
-                width: '280px', 
-                minWidth: '200px',
-                paddingLeft: 0,
-                borderLeft: '1px solid rgba(255, 255, 255, 0.2)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                padding: '0 16px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: 4 }}>
-                  <IconMapPin size={16} style={{ color: '#228be6' }} />
-                  <div style={{ fontSize: 14, color: 'white' }}>
-                    <span style={{ fontWeight: 600 }}>Coords:</span> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}
-                  </div>
-                </div>
-                {info.Nombre && (
-                  <div style={{ fontSize: 14, color: 'white' }}>
-                    <span style={{ fontWeight: 600 }}>Nombre:</span> {info.Nombre}
-                  </div>
-                )}
-                {info.Provincia && (
-                  <div style={{ fontSize: 14, color: 'white' }}>
-                    <span style={{ fontWeight: 600 }}>Provincia:</span> {info.Provincia}
-                  </div>
-                )}
-                {info.Organismo_Regulador && (
-                  <div style={{ fontSize: 14, color: 'white' }}>
-                    <span style={{ fontWeight: 600 }}>Organismo:</span> {info.Organismo_Regulador}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconClock size={14} style={{ color: '#228be6' }} /></span>
-                <span style={{ fontSize: 13, color: 'white', wordBreak: 'break-word' }}>{dayjs(info.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconGauge size={14} style={{ color: '#228be6' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word', color: 'white' }}><b>Velocidad:</b> {typeof info.Velocidad === 'number' && !isNaN(info.Velocidad) ? info.Velocidad.toFixed(1) : '?'} km/h</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
-                <span style={{ width: 22, display: 'flex', justifyContent: 'center' }}><IconMapPin size={14} style={{ color: '#228be6' }} /></span>
-                <span style={{ fontSize: 13, wordBreak: 'break-word', color: 'white' }}><b>Coords:</b> {info.Coordenada_Y?.toFixed(5)}, {info.Coordenada_X?.toFixed(5)}</span>
-              </div>
-            </>
-          )}
-        </div>
+        </Group>
       </Card>
       <style>{`
         @keyframes slideUp {
