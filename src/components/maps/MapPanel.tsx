@@ -8,7 +8,7 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
 import { TimeInput } from '@mantine/dates';
@@ -1358,19 +1358,48 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           zIndex: 9999,
         }}
       >
-        <MapComponent isFullscreen={true} />
+        <Paper p="md" withBorder style={{ height: '100%' }}>
+          <MapComponent isFullscreen={true} />
+        </Paper>
       </div>
     );
   }
 
   return (
-    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Grid style={{ flex: 1, margin: 0 }}>
+    <Box style={{ height: '100%', display: 'flex', flexDirection: 'column', marginBottom: '20px' }}>
+      <Group justify="flex-end" mb="xs">
+        <Button
+          variant="outline"
+          size="xs"
+          color="blue"
+          onClick={() => mapRef.current?.invalidateSize()}
+          leftSection={<IconRefresh size={16} />}
+          style={{
+            backgroundColor: 'white',
+            color: 'var(--mantine-color-blue-6)',
+            border: '1px solid var(--mantine-color-blue-3)',
+            fontWeight: 500,
+            borderRadius: 8,
+            paddingLeft: 14,
+            paddingRight: 14,
+            height: 32,
+            boxShadow: 'none',
+            fontSize: 15,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            minWidth: 0
+          }}
+        >
+          Actualizar
+        </Button>
+      </Group>
+      <Grid style={{ flex: 1, margin: 0, height: 'calc(100vh - 303px)', gap: '1rem' }}>
         {/* Panel de filtros a la izquierda */}
         <Grid.Col span={3} style={{ padding: '16px', borderRight: '1px solid #eee' }}>
           <Stack gap="md">
-            <Paper shadow="xs" p="md">
-              <Title order={4} mb="md">Filtros</Title>
+            <Paper p="md" withBorder>
+              <Title order={3} mb="md" style={{ fontSize: 22, fontWeight: 700 }}>Mapa LPR</Title>
               <Stack gap="md">
                 <Box>
                   <Select
@@ -1403,7 +1432,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               </Stack>
             </Paper>
 
-            <Paper shadow="xs" p="md">
+            <Paper p="md" withBorder>
               <Group justify="space-between" mb="md">
                 <Title order={4}>Capas</Title>
                 <Button
@@ -1452,7 +1481,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               </Stack>
             </Paper>
 
-            <Paper shadow="xs" p="md">
+            <Paper p="md" withBorder>
               <Title order={4} mb="md">Controles</Title>
               <Stack gap="xs">
                 <Select
@@ -1487,14 +1516,16 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
         {/* Mapa en el centro */}
         <Grid.Col span={6} style={{ padding: 0 }}>
-          <MapComponent />
+          <Paper withBorder style={{ height: '100%' }}>
+            <MapComponent />
+          </Paper>
         </Grid.Col>
 
         {/* Panel de lecturas a la derecha */}
         <Grid.Col span={3} style={{ padding: '16px', borderLeft: '1px solid #eee' }}>
-          <Paper shadow="xs" p="md" style={{ height: '100%' }}>
+          <Paper p="md" withBorder style={{ height: '100%' }}>
             <Title order={4} mb="md">Lecturas</Title>
-            <ScrollArea style={{ height: 'calc(12 * 80px)' }}> {/* Altura fija para 12 lecturas (80px por lectura) */}
+            <ScrollArea style={{ height: 'calc(10 * 80px)' }}> {/* Altura fija para 10 lecturas (80px por lectura) */}
               <Stack gap="xs">
                 {resultadosFiltro.lecturas
                   .filter(lectura => lectura.Tipo_Fuente !== 'GPS')
