@@ -874,7 +874,15 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     try {
       const capaActualizada = await updateGpsCapa(casoId, id, capaCompleta);
       setCapas(prev => prev.map(c => c.id === id ? { ...c, activa: capaActualizada.activa } : c));
-    } catch (e) {}
+      // Si la capa que se está desactivando es la que está en reproducción, detener la reproducción
+      if (selectedLayerForPlayback === id && !capaActualizada.activa) {
+        setIsPlaying(false);
+        setSelectedLayerForPlayback(null);
+        setCurrentIndex(0);
+      }
+    } catch (e) {
+      console.error('Error al actualizar el estado de la capa:', e);
+    }
   };
 
   const handleEliminarCapa = async (id: number) => {

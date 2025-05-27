@@ -739,6 +739,78 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
     return null;
   };
 
+  // Componente interno para renderizar las capas activas
+  const ActiveLayersInternal = () => {
+    const map = useMap();
+    
+    useEffect(() => {
+      if (!map || !Array.isArray(capas)) return;
+
+      const layers: L.Layer[] = [];
+
+      capas.filter(capa => capa.activa).forEach(capa => {
+        // Crear polilínea para la capa
+        const points = capa.lecturas
+          .filter(l => typeof l.Coordenada_Y === 'number' && typeof l.Coordenada_X === 'number' && !isNaN(l.Coordenada_Y) && !isNaN(l.Coordenada_X))
+          .map(l => [l.Coordenada_Y, l.Coordenada_X] as [number, number]);
+
+        if (points.length > 0) {
+          const polyline = L.polyline(points, {
+            color: capa.color || '#228be6',
+            weight: 3,
+            opacity: 0.7
+          });
+
+          // Añadir marcadores para los puntos
+          const markers = capa.lecturas.map(lectura => {
+            const marker = L.marker([lectura.Coordenada_Y, lectura.Coordenada_X], {
+              icon: L.divIcon({
+                className: 'custom-marker',
+                html: `
+                  <div style="
+                    background-color: ${capa.color || '#228be6'};
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    border: 2px solid white;
+                    box-shadow: 0 0 4px rgba(0,0,0,0.3);
+                    transform: translate(-50%, -50%);
+                  "></div>
+                `,
+                iconSize: [8, 8],
+                iconAnchor: [4, 4],
+              })
+            });
+
+            marker.on('click', () => {
+              setSelectedInfo({ 
+                info: { 
+                  ...lectura, 
+                  onGuardarLocalizacion: () => onGuardarLocalizacion(lectura) 
+                }, 
+                isLocalizacion: false 
+              });
+            });
+
+            return marker;
+          });
+
+          layers.push(polyline);
+          layers.push(...markers);
+        }
+      });
+
+      // Añadir todas las capas al mapa
+      layers.forEach(layer => map.addLayer(layer));
+
+      return () => {
+        layers.forEach(layer => map.removeLayer(layer));
+      };
+    }, [map, capas, onGuardarLocalizacion]);
+
+    return null;
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
@@ -749,215 +821,56 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
         ref={internalMapRef as any}
         whenReady={() => {
           if (internalMapRef.current) {
-            internalMapRef.current.on('zoomend', () => {
-              debouncedZoom(internalMapRef.current?.getZoom() || initialZoom);
-            });
+            internalMapRef.current.invalidateSize();
           }
         }}
       >
-        <MapAutoResize />
         <TileLayer
-          attribution={tileLayerAttribution}
           url={tileLayerUrl}
+          attribution={tileLayerAttribution}
         />
-        
-        {/* Renderizar puntos del recorrido */}
-        {playbackLayer && currentPlaybackIndex !== undefined && (
-          <Polyline
-            positions={playbackLayer.lecturas.map(lectura => [lectura.Coordenada_Y, lectura.Coordenada_X])}
-            color={playbackLayer.color}
-            weight={2}
+        <MapAutoResize />
+        <ClusteredMarkersInternal />
+        <ActiveLayersInternal />
+        {mapControls.showHeatmap && (
+          <HeatmapLayer
+            points={heatmapPoints}
+            radius={15}
+            blur={10}
+            maxZoom={18}
           />
         )}
-        
-        {/* Renderizar punto actual del reproductor */}
-        {animatedPosition && playbackLayer && (
+        {playbackLayer && currentPlaybackIndex != null && currentPlaybackIndex >= 0 && animatedPosition && (
           <Marker
             position={animatedPosition}
             icon={L.divIcon({
-              className: 'custom-div-icon',
-              html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
-                <div style="position: absolute; width: 44px; height: 44px; left: 0; top: 0; border-radius: 50%; background: ${playbackLayer.color}20; border: 2.5px solid ${playbackLayer.color}40; box-shadow: 0 0 12px ${playbackLayer.color};"></div>
-                <div style="background: ${playbackLayer.color}; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${playbackLayer.color}; outline: 3px solid ${playbackLayer.color};"></div>
-              </div>`,
-              iconSize: [44, 44],
-              iconAnchor: [22, 22]
+              className: 'playback-marker',
+              html: `
+                <div style="
+                  background-color: #228be6;
+                  width: 16px;
+                  height: 16px;
+                  border-radius: 50%;
+                  border: 3px solid white;
+                  box-shadow: 0 0 8px rgba(0,0,0,0.4);
+                  transform: translate(-50%, -50%);
+                "></div>
+              `,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8],
             })}
-          />
-        )}
-
-        {/* Renderizar heatmap si está activado */}
-        {mapControls.showHeatmap && heatmapPoints.length > 0 && (
-          <HeatmapLayer 
-            points={heatmapPoints}
-          />
-        )}
-
-        {/* Renderizar puntos con clustering */}
-        {mapControls.showPoints && <ClusteredMarkersInternal />}
-
-        {/* Renderizar localizaciones de interés */}
-        {mostrarLocalizaciones && localizaciones.map((loc, idx) => {
-          const Icon = ICONOS.find(i => i.name === loc.icono)?.icon || IconMapPin;
-          const isSelected = selectedInfo && selectedInfo.isLocalizacion && selectedInfo.info?.id_lectura === loc.id_lectura;
-          const svgIcon = ReactDOMServer.renderToStaticMarkup(
-            <div style={{
-              background: isSelected ? '#fff' : 'transparent',
-              borderRadius: '50%',
-              border: isSelected ? `2.5px solid ${loc.color}` : 'none',
-              boxShadow: isSelected ? `0 0 16px ${loc.color}` : 'none',
-              padding: isSelected ? 2 : 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: isSelected ? 36 : 22,
-              height: isSelected ? 36 : 22,
-              transition: 'all 0.15s cubic-bezier(.4,2,.6,1)',
-              transform: isSelected ? 'scale(1.12)' : 'scale(1)'
-            }}>
-              {React.createElement(Icon, { size: isSelected ? 28 : 22, color: loc.color, stroke: 2 })}
-            </div>
-          );
-          return (
-            <Marker
-              key={loc.id_lectura + '-' + idx}
-              position={[
-                typeof loc.coordenada_y === 'number' && !isNaN(loc.coordenada_y) ? loc.coordenada_y : 0,
-                typeof loc.coordenada_x === 'number' && !isNaN(loc.coordenada_x) ? loc.coordenada_x : 0
-              ]}
-              icon={L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div style="display: flex; flex-direction: column; align-items: center;">
-                  <div style="
-                    position: relative;
-                    width: ${isSelected ? 56 : 40}px;
-                    height: ${isSelected ? 56 : 40}px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background: ${isSelected ? '#fff' : 'transparent'};
-                    border-radius: 50%;
-                    border: ${isSelected ? '4px solid ' + loc.color : '2px solid ' + loc.color + '40'};
-                    box-shadow: 0 0 20px ${isSelected ? loc.color : 'rgba(0,0,0,0.2)'};
-                    transition: all 0.15s cubic-bezier(.4,2,.6,1);
-                    transform: ${isSelected ? 'scale(1.12)' : 'scale(1)'};
-                  ">
-                    <div style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background-color: ${loc.color}20;"></div>
-                    <div style="position: relative; color: ${loc.color}; font-size: ${isSelected ? 28 : 22}px; width: ${isSelected ? 36 : 22}px; height: ${isSelected ? 36 : 22}px; display: flex; align-items: center; justify-content: center;">
-                      ${svgIcon}
-                    </div>
-                  </div>
-                  ${loc.titulo ? `<span style='background: white; color: black; font-size: 11px; border-radius: 3px; padding: 0 2px; margin-top: 2px;'>${loc.titulo}</span>` : ''}
-                </div>`
-              })}
-              eventHandlers={{
-                click: () => setSelectedInfo({ info: loc, isLocalizacion: true })
-              }}
-            />
-          );
-        })}
-
-        {/* Renderizar el punto seleccionado explícitamente si no está en allLecturas y es un punto GPS */}
-        {mapControls.showPoints &&
-          selectedInfo &&
-          !selectedInfo.isLocalizacion &&
-          selectedInfo.info &&
-          typeof selectedInfo.info.Coordenada_Y === 'number' &&
-          typeof selectedInfo.info.Coordenada_X === 'number' &&
-          !isNaN(selectedInfo.info.Coordenada_Y) &&
-          !isNaN(selectedInfo.info.Coordenada_X) &&
-          !allLecturas.some(l => l.ID_Lectura === selectedInfo.info.ID_Lectura) && (
-            (() => {
-              const lecturaSeleccionada = selectedInfo.info as GpsLectura;
-              const color = '#007bff'; // Un color azul distintivo para el punto seleccionado directamente
-              const isSelectedStyle = true; 
-              const clusterSizeDisplay = (lecturaSeleccionada as any).clusterSize && (lecturaSeleccionada as any).clusterSize > 1 ? (lecturaSeleccionada as any).clusterSize : null;
-
-              const customIcon = L.divIcon({
-                className: 'custom-div-icon-selected-explicitly',
-                html: `<div style="position: relative; display: flex; align-items: center; justify-content: center;">
-                  <div style='position: absolute; width: 44px; height: 44px; left: 0; top: 0; border-radius: 50%; background: ${color}20; border: 2.5px solid ${color}40; box-shadow: 0 0 12px ${color};'></div>
-                  <div style="background: ${color}; width: 24px; height: 24px; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 0 12px ${color}; outline: 3px solid ${color};">
-                    ${clusterSizeDisplay ? `<span style="position: absolute; top: -8px; right: -8px; background: white; color: ${color}; font-size: 10px; padding: 2px 4px; border-radius: 8px; border: 1px solid ${color};">${clusterSizeDisplay}</span>` : ''}
-                  </div>
-                </div>`,
-                iconSize: [44, 44],
-                iconAnchor: [22, 22]
-              });
-
-              return (
-                <Marker
-                  key={`selected-explicit-${lecturaSeleccionada.ID_Lectura}`}
-                  position={[lecturaSeleccionada.Coordenada_Y, lecturaSeleccionada.Coordenada_X]}
-                  icon={customIcon}
-                  zIndexOffset={1000}
-                  eventHandlers={{
-                    click: () => {
-                      setSelectedInfo({
-                        info: {
-                          ...lecturaSeleccionada,
-                          onGuardarLocalizacion: () => onGuardarLocalizacion(lecturaSeleccionada),
-                        },
-                        isLocalizacion: false
-                      });
-                    }
-                  }}
-                />
-              );
-            })()
-        )}
-        {/* Resalta el punto seleccionado (GPS o localización de interés) */}
-        {selectedInfo && selectedInfo.info && (
-          <Marker
-            key={`highlight-selected-${selectedInfo.isLocalizacion ? 'loc' : 'gps'}-${selectedInfo.info.ID_Lectura || selectedInfo.info.id_lectura}`}
-            position={selectedInfo.isLocalizacion
-              ? [selectedInfo.info.coordenada_y, selectedInfo.info.coordenada_x]
-              : [selectedInfo.info.Coordenada_Y, selectedInfo.info.Coordenada_X]}
-            icon={L.divIcon({
-              className: 'custom-div-icon-highlight',
-              html: `<div style="display: flex; align-items: center; justify-content: center; width: 54px; height: 54px;">
-                <div style='position: absolute; width: 54px; height: 54px; border-radius: 50%; background: #228be640; border: 3px solid #228be6; box-shadow: 0 0 16px #228be6;'></div>
-                <div style="position: relative; background: #228be6; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 12px #228be6;"></div>
-              </div>`,
-              iconSize: [54, 54],
-              iconAnchor: [27, 27]
-            })}
-            zIndexOffset={2000}
           />
         )}
       </MapContainer>
-      <InfoBanner
-        info={selectedInfo?.info}
-        isLocalizacion={selectedInfo?.isLocalizacion}
-        onClose={() => setSelectedInfo(null)}
-        onEditLocalizacion={selectedInfo?.isLocalizacion ? () => onGuardarLocalizacion(selectedInfo.info) : undefined}
-        onNavigate={handleNavigate}
-      />
-      <style>
-        {`
-          .leaflet-container {
-            z-index: ${fullscreenMap ? 10000 : 1} !important;
-          }
-          .leaflet-control-container {
-            z-index: 10000 !important;
-          }
-          .leaflet-div-icon {
-            background: transparent !important;
-            border: none !important;
-          }
-          .custom-div-icon {
-            background: transparent !important;
-            border: none !important;
-          }
-          .lectura-popup {
-            max-height: ${fullscreenMap ? '400px' : '200px'};
-            overflow-y: auto;
-          }
-          canvas {
-            will-read-frequently: true;
-          }
-        `}
-      </style>
+      {selectedInfo && (
+        <InfoBanner
+          info={selectedInfo.info}
+          onClose={() => setSelectedInfo(null)}
+          onEditLocalizacion={selectedInfo.isLocalizacion ? () => onGuardarLocalizacion(selectedInfo.info) : undefined}
+          isLocalizacion={selectedInfo.isLocalizacion}
+          onNavigate={!selectedInfo.isLocalizacion ? handleNavigate : undefined}
+        />
+      )}
     </div>
   );
 }));
