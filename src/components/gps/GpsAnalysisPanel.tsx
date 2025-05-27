@@ -507,6 +507,10 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
   const [editandoCapa, setEditandoCapa] = useState<number | null>(null);
   const [mostrarLocalizaciones, setMostrarLocalizaciones] = useState(true);
   const [lecturaSeleccionada, setLecturaSeleccionada] = useState<GpsLectura | null>(null);
+  // Nuevos estados para el modal de advertencia
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [pendingData, setPendingData] = useState<GpsLectura[] | null>(null);
+  const [shouldProceed, setShouldProceed] = useState(false);
 
   // Estados para filtros
   const [filters, setFilters] = useState({
@@ -678,7 +682,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     setLecturas([]);
   }, [casoId]);
 
-  // Modificar handleFiltrar para que construya y envíe fecha-hora completas
+  // Modificar handleFiltrar para incluir la verificación de tamaño
   const handleFiltrar = useCallback(async () => {
     if (!vehiculoObjetivo) return;
     setLoading(true);
@@ -704,7 +708,12 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
       const cacheKey = `${casoId}_${vehiculoObjetivo}_${fechaInicio}_${horaInicio}_${fechaFin}_${horaFin}_${filters.velocidadMin}_${filters.velocidadMax}_${filters.duracionParada}_${JSON.stringify(filters.zonaSeleccionada)}`;
       const cachedData = gpsCache.getLecturas(casoId, cacheKey);
       if (cachedData) {
-        setLecturas(cachedData);
+        if (cachedData.length > 2000) {
+          setPendingData(cachedData);
+          setShowWarningModal(true);
+        } else {
+          setLecturas(cachedData);
+        }
         setLoading(false);
         return;
       }
@@ -719,8 +728,14 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
         zona_seleccionada: filters.zonaSeleccionada || undefined,
         matricula: vehiculoObjetivo
       });
-      setLecturas(data);
-      gpsCache.setLecturas(casoId, cacheKey, data);
+      
+      if (data.length > 2000) {
+        setPendingData(data);
+        setShowWarningModal(true);
+      } else {
+        setLecturas(data);
+        gpsCache.setLecturas(casoId, cacheKey, data);
+      }
     } catch (error) {
       console.error('Error al filtrar lecturas GPS:', error);
     } finally {
@@ -1030,6 +1045,59 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
 
   return (
     <Box>
+      {/* Modal de advertencia para grandes conjuntos de datos */}
+      <Modal
+        opened={showWarningModal}
+        onClose={() => {
+          setShowWarningModal(false);
+          setPendingData(null);
+        }}
+        title="Advertencia: Gran cantidad de datos"
+        centered
+      >
+        <Stack>
+          <Text>
+            La búsqueda ha encontrado {pendingData?.length} puntos, lo que puede ralentizar significativamente el sistema.
+          </Text>
+          <Text size="sm" c="dimmed">
+            Recomendaciones:
+            <ul>
+              <li>Acota el rango de fechas o horas</li>
+              <li>Utiliza el mapa de calor para visualizar grandes conjuntos de datos</li>
+              <li>Considera aplicar filtros adicionales (velocidad, zona, etc.)</li>
+              <li>Activa "Agrupar puntos cercanos" en los controles del mapa</li>
+              <li>Habilita "Optimizar puntos" para reducir la densidad de puntos</li>
+            </ul>
+          </Text>
+          <Group justify="flex-end" mt="md">
+            <Button
+              variant="light"
+              color="gray"
+              onClick={() => {
+                if (pendingData) {
+                  setLecturas(pendingData);
+                  const cacheKey = `${casoId}_${vehiculoObjetivo}_${filters.fechaInicio}_${filters.horaInicio}_${filters.fechaFin}_${filters.horaFin}_${filters.velocidadMin}_${filters.velocidadMax}_${filters.duracionParada}_${JSON.stringify(filters.zonaSeleccionada)}`;
+                  gpsCache.setLecturas(casoId, cacheKey, pendingData);
+                }
+                setShowWarningModal(false);
+                setPendingData(null);
+              }}
+            >
+              Continuar de todos modos
+            </Button>
+            <Button
+              color="blue"
+              onClick={() => {
+                setShowWarningModal(false);
+                setPendingData(null);
+              }}
+            >
+              Cancelar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Group justify="flex-end" mb="xs">
         <Button
           variant="outline"
