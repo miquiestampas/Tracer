@@ -1430,7 +1430,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
               <IconMaximize size={16} color="#234be7" />
             </ActionIcon>
           </div>
-          <Paper withBorder style={{ height: 'calc(100vh - 263px)', minHeight: 400, width: '100%' }}>
+          <Paper withBorder style={{ height: 'calc(100vh - 283px)', minHeight: 400, width: '100%' }}>
             <GpsMapStandalone
               ref={mapRef}
               lecturas={lecturas}
