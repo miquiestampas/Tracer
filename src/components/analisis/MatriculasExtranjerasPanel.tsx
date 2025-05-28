@@ -140,26 +140,44 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
 
   const handleBuscar = () => {
     setSearching(true);
+    const notificationId = 'matriculas-extranjeras-busqueda';
+    notifications.show({
+        id: notificationId,
+        title: 'Buscando matrículas extranjeras...',
+        message: 'Procesando búsqueda de matrículas extranjeras.',
+        color: 'blue',
+        autoClose: false,
+        withCloseButton: false,
+        loading: true,
+    });
     setTimeout(() => {
-      let filtradas = lecturas.filter(l => {
-        // Primero verificar que no sea una matrícula española
-        const pais = getCountryForPlate(l.Matricula);
-        if (!pais || pais.code === 'ES') return false;
-        
-        if (matricula && !l.Matricula.includes(matricula.toUpperCase())) return false;
-        if (fechaInicio && new Date(l.Fecha_y_Hora) < fechaInicio) return false;
-        if (fechaFin && new Date(l.Fecha_y_Hora) > fechaFin) return false;
-        if (selectedCountries.length > 0 && !selectedCountries.includes(pais.code)) return false;
-        return true;
-      });
-      setResultados(filtradas.map(l => ({
-        ...l,
-        pais: getCountryForPlate(l.Matricula)
-      })));
-      setSearching(false);
-      // Elimina cache tras cada búsqueda
-      const cacheKey = `lecturas_caso_${idCaso}`;
-      sessionStorage.removeItem(cacheKey);
+        let filtradas = lecturas.filter(l => {
+            // Primero verificar que no sea una matrícula española
+            const pais = getCountryForPlate(l.Matricula);
+            if (!pais || pais.code === 'ES') return false;
+            
+            if (matricula && !l.Matricula.includes(matricula.toUpperCase())) return false;
+            if (fechaInicio && new Date(l.Fecha_y_Hora) < fechaInicio) return false;
+            if (fechaFin && new Date(l.Fecha_y_Hora) > fechaFin) return false;
+            if (selectedCountries.length > 0 && !selectedCountries.includes(pais.code)) return false;
+            return true;
+        });
+        setResultados(filtradas.map(l => ({
+            ...l,
+            pais: getCountryForPlate(l.Matricula)
+        })));
+        setSearching(false);
+        notifications.update({
+            id: notificationId,
+            title: 'Búsqueda completada',
+            message: `Se encontraron ${filtradas.length} matrículas extranjeras.`,
+            color: 'green',
+            autoClose: 2000,
+            loading: false,
+        });
+        // Elimina cache tras cada búsqueda
+        const cacheKey = `lecturas_caso_${idCaso}`;
+        sessionStorage.removeItem(cacheKey);
     }, 200);
   };
 

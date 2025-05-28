@@ -12,6 +12,7 @@ import ReactDOMServer from 'react-dom/server';
 import GpsMapStandalone from './GpsMapStandalone';
 import html2canvas from 'html2canvas';
 import { gpsCache } from '../../services/gpsCache';
+import { notifications } from '@mantine/notifications';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -686,6 +687,16 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
   const handleFiltrar = useCallback(async () => {
     if (!vehiculoObjetivo) return;
     setLoading(true);
+    const notificationId = 'gps-loading';
+    notifications.show({
+        id: notificationId,
+        title: 'Cargando datos GPS...',
+        message: 'Obteniendo lecturas GPS para el mapa.',
+        color: 'blue',
+        autoClose: false,
+        withCloseButton: false,
+        loading: true,
+    });
     try {
       // Construir fechas y horas correctas
       let fechaInicio = filters.fechaInicio || undefined;
@@ -714,7 +725,14 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
         } else {
           setLecturas(cachedData);
         }
-        setLoading(false);
+        notifications.update({
+            id: notificationId,
+            title: 'Datos GPS cargados',
+            message: `Se han cargado ${cachedData.length} lecturas GPS.`,
+            color: 'green',
+            autoClose: 2000,
+            loading: false,
+        });
         return;
       }
       const data = await getLecturasGps(casoId, {
@@ -735,9 +753,25 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
       } else {
         setLecturas(data);
         gpsCache.setLecturas(casoId, cacheKey, data);
+        notifications.update({
+            id: notificationId,
+            title: 'Datos GPS cargados',
+            message: `Se han cargado ${data.length} lecturas GPS.`,
+            color: 'green',
+            autoClose: 2000,
+            loading: false,
+        });
       }
     } catch (error) {
       console.error('Error al filtrar lecturas GPS:', error);
+      notifications.update({
+            id: notificationId,
+            title: 'Error',
+            message: 'No se pudieron cargar los datos GPS.',
+            color: 'red',
+            autoClose: 4000,
+            loading: false,
+        });
     } finally {
       setLoading(false);
     }

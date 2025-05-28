@@ -85,6 +85,16 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId, onVerEnMapa }) =>
     // Cargar datos GPS
     const fetchGpsData = useCallback(async () => {
         setLoading(true);
+        const notificationId = 'datos-gps-loading';
+        notifications.show({
+            id: notificationId,
+            title: 'Cargando datos GPS...',
+            message: 'Obteniendo lecturas GPS para la tabla.',
+            color: 'blue',
+            autoClose: false,
+            withCloseButton: false,
+            loading: true,
+        });
         try {
             const data = await getLecturasGps(casoId, {
                 matricula: filters.matricula || undefined,
@@ -108,12 +118,23 @@ const DatosGpsPanel: React.FC<DatosGpsPanelProps> = ({ casoId, onVerEnMapa }) =>
             const end = start + pageSize;
             setGpsData(data.slice(start, end));
             setTotalRecords(data.length);
+            notifications.update({
+                id: notificationId,
+                title: 'Datos GPS cargados',
+                message: `Se han cargado ${data.length} lecturas GPS.`,
+                color: 'green',
+                autoClose: 2000,
+                loading: false,
+            });
         } catch (error) {
             console.error('Error fetching GPS data:', error);
-            notifications.show({
+            notifications.update({
+                id: notificationId,
                 title: 'Error',
-                message: 'No se pudieron cargar los datos GPS',
+                message: 'No se pudieron cargar los datos GPS.',
                 color: 'red',
+                autoClose: 4000,
+                loading: false,
             });
         } finally {
             setLoading(false);

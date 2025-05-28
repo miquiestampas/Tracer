@@ -206,6 +206,16 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
     const buscarVehiculosRapidos = async () => {
         setLoading(true);
         setError(null);
+        const notificationId = 'vehiculos-rapidos-loading';
+        notifications.show({
+            id: notificationId,
+            title: 'Buscando vehículos rápidos...',
+            message: 'Procesando búsqueda de vehículos rápidos.',
+            color: 'blue',
+            autoClose: false,
+            withCloseButton: false,
+            loading: true,
+        });
         try {
             const params: any = {
                 tipo_fuente: 'LPR',
@@ -312,20 +322,26 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                     color: 'blue'
                 });
             } else {
-                notifications.show({
+                notifications.update({
+                    id: notificationId,
                     title: 'Búsqueda completada',
                     message: `Se encontraron ${resultados.length} vehículos con velocidad superior a ${filtros.velocidadMinima} km/h`,
-                    color: 'green'
+                    color: 'green',
+                    autoClose: 2000,
+                    loading: false,
                 });
             }
 
         } catch (err) {
             console.error('Error al buscar vehículos rápidos:', err);
             setError('Error al procesar los datos de vehículos rápidos');
-            notifications.show({
+            notifications.update({
+                id: notificationId,
                 title: 'Error',
                 message: 'Ocurrió un error al buscar vehículos rápidos',
-                color: 'red'
+                color: 'red',
+                autoClose: 4000,
+                loading: false,
             });
         } finally {
             setLoading(false);
@@ -403,6 +419,16 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
         }
         setLanzaderaLoading(true);
         setBusquedaRealizada(true);
+        const notificationId = 'lanzadera-loading';
+        notifications.show({
+            id: notificationId,
+            title: 'Buscando vehículo acompañante...',
+            message: 'Procesando búsqueda de vehículo acompañante.',
+            color: 'blue',
+            autoClose: false,
+            withCloseButton: false,
+            loading: true,
+        });
         try {
             const response = await apiClient.post(`/casos/${casoId}/detectar-lanzaderas`, {
                 matricula: lanzaderaParams.matricula,
@@ -423,18 +449,24 @@ function AnalisisAvanzadoPanel({ casoId }: PatronesPanelProps) {
                     color: 'blue'
                 });
             } else {
-                notifications.show({
+                notifications.update({
+                    id: notificationId,
                     title: 'Búsqueda completada',
                     message: `Se han detectado ${response.data.vehiculos_lanzadera.length} vehículos acompañante`,
-                    color: 'green'
+                    color: 'green',
+                    autoClose: 2000,
+                    loading: false,
                 });
             }
         } catch (error) {
             console.error('Error al buscar vehículos lanzadera:', error);
-            notifications.show({
+            notifications.update({
+                id: notificationId,
                 title: 'Error',
                 message: 'Ocurrió un error al buscar vehículos lanzadera',
-                color: 'red'
+                color: 'red',
+                autoClose: 4000,
+                loading: false,
             });
         } finally {
             setLanzaderaLoading(false);

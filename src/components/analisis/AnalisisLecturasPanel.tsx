@@ -986,21 +986,41 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     useEffect(() => {
         const fetchSavedSearches = async () => {
             if (!casoIdFijo) return;
+            const notificationId = 'saved-searches-loading';
+            notifications.show({
+                id: notificationId,
+                title: 'Cargando búsquedas guardadas...',
+                message: 'Obteniendo búsquedas guardadas del caso.',
+                color: 'blue',
+                autoClose: false,
+                withCloseButton: false,
+                loading: true,
+            });
             try {
                 const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/saved_searches`);
                 if (!response.ok) throw new Error('Error al cargar búsquedas guardadas');
                 const data = await response.json();
                 setSavedSearches(data);
+                notifications.update({
+                    id: notificationId,
+                    title: 'Búsquedas guardadas cargadas',
+                    message: `Se han cargado ${data.length} búsquedas guardadas.`,
+                    color: 'green',
+                    autoClose: 2000,
+                    loading: false,
+                });
             } catch (error) {
                 console.error('Error cargando búsquedas guardadas:', error);
-                notifications.show({
+                notifications.update({
+                    id: notificationId,
                     title: 'Error',
                     message: 'No se pudieron cargar las búsquedas guardadas',
-                    color: 'red'
+                    color: 'red',
+                    autoClose: 4000,
+                    loading: false,
                 });
             }
         };
-
         fetchSavedSearches();
     }, [casoIdFijo]);
 

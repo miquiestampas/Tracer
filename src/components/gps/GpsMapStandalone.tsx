@@ -830,36 +830,42 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
           attribution={tileLayerAttribution}
         />
         <MapAutoResize />
-        <ClusteredMarkersInternal />
-        <ActiveLayersInternal />
+        {mapControls.showPoints && <ClusteredMarkersInternal />}
+        {mapControls.showPoints && <ActiveLayersInternal />}
         {mapControls.showHeatmap && (
           <HeatmapLayer
             points={heatmapPoints}
-            radius={15}
-            blur={10}
-            maxZoom={18}
+            options={{ radius: 15, blur: 10, maxZoom: 18 } as any}
           />
         )}
         {playbackLayer && currentPlaybackIndex != null && currentPlaybackIndex >= 0 && animatedPosition && (
-          <Marker
-            position={animatedPosition}
-            icon={L.divIcon({
-              className: 'playback-marker',
-              html: `
-                <div style="
-                  background-color: #228be6;
-                  width: 16px;
-                  height: 16px;
-                  border-radius: 50%;
-                  border: 3px solid white;
-                  box-shadow: 0 0 8px rgba(0,0,0,0.4);
-                  transform: translate(-50%, -50%);
-                "></div>
-              `,
-              iconSize: [16, 16],
-              iconAnchor: [8, 8],
-            })}
-          />
+          <>
+            {/* Polilínea del recorrido hasta el punto actual */}
+            <Polyline
+              positions={playbackLayer.lecturas.slice(0, currentPlaybackIndex + 1).map(l => [l.Coordenada_Y, l.Coordenada_X])}
+              pathOptions={{ color: playbackLayer.color || '#228be6', weight: 4, opacity: 0.85 }}
+            />
+            {/* Punto activo destacado */}
+            <Marker
+              position={animatedPosition}
+              icon={L.divIcon({
+                className: 'playback-marker',
+                html: `
+                  <div style="
+                    background-color: ${playbackLayer.color || '#228be6'};
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 50%;
+                    border: 4px solid white;
+                    box-shadow: 0 0 12px rgba(0,0,0,0.4);
+                    transform: translate(-50%, -50%);
+                  "></div>
+                `,
+                iconSize: [22, 22],
+                iconAnchor: [11, 11],
+              })}
+            />
+          </>
         )}
       </MapContainer>
       {selectedInfo && (
