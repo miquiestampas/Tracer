@@ -1449,6 +1449,26 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 >
                                     Limpiar Filtros Actuales
                                 </Button>
+                                <Button
+                                    variant="outline"
+                                    color="gray"
+                                    leftSection={<IconFilterOff size={16} />}
+                                    onClick={() => {
+                                        setResults([]);
+                                        setSelectedRecords([]);
+                                        notifications.show({
+                                            title: 'Tabla Limpiada',
+                                            message: 'Se han eliminado todos los resultados de la tabla.',
+                                            color: 'blue'
+                                        });
+                                    }}
+                                    size="xs"
+                                    fullWidth
+                                    mt="xs"
+                                    disabled={loading || initialLoading}
+                                >
+                                    Limpiar Tabla de Resultados
+                                </Button>
                              </Stack>
                          </Paper>
                      </Grid.Col>
