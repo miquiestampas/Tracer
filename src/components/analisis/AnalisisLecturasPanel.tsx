@@ -20,6 +20,7 @@ import type { GpsLectura } from '../../types/data';
 import { getLecturasGps } from '../../services/gpsApi';
 import appEventEmitter from '../../utils/eventEmitter';
 import SaveSearchModal from '../modals/SaveSearchModal';
+import SavedSearchesModal from '../modals/SavedSearchesModal';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -759,62 +760,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         }
     };
 
-    const handleDesmarcarRelevante = async () => {
-        const lecturasParaDesmarcar = selectedRecords.map(id => results.find(r => r.ID_Lectura === id));
-        if (lecturasParaDesmarcar.length === 0) {
-            notifications.show({ title: 'Nada que hacer', message: 'Ninguna de las lecturas seleccionadas está marcada como relevante.', color: 'blue' });
-            setSelectedRecords([]);
-            return;
-        }
-        setLoading(true);
-        const idsToUnmark = lecturasParaDesmarcar.map(r => r!.ID_Lectura);
-        console.log("Desmarcando como relevante IDs:", idsToUnmark);
-        
-        let successCount = 0;
-        let errorCount = 0;
-
-        for (const id of idsToUnmark) {
-            try {
-                await apiClient.delete(`/lecturas/${id}/desmarcar_relevante`);
-                successCount++;
-            } catch (error: any) {
-                errorCount++;
-                console.error(`Error desmarcando lectura ${id}:`, error);
-                notifications.show({
-                    title: 'Error al Desmarcar',
-                    message: `No se pudo desmarcar ID ${id}: ${error.response?.data?.detail || error.message}`,
-                    color: 'red'
-                });
-            }
-        }
-
-        if (successCount > 0) {
-            notifications.show({
-                title: 'Éxito',
-                message: `${successCount} de ${idsToUnmark.length} lecturas desmarcadas.`,
-                color: 'green'
-            });
-            // Actualizar el estado local para reflejar los cambios
-            setResults(prevResults => 
-                prevResults.map(r => 
-                    idsToUnmark.includes(r.ID_Lectura as number) 
-                        ? { ...r, es_relevante: false }
-                        : r
-                )
-            );
-        }
-        if (errorCount > 0) {
-            notifications.show({
-                title: 'Error Parcial',
-                message: `${errorCount} lecturas no se pudieron desmarcar.`,
-                color: 'orange'
-            });
-        }
-        
-        setSelectedRecords([]); // Limpiar selección
-        setLoading(false);
-    };
-
     const handleGuardarVehiculos = async () => {
         if (selectedRecords.length === 0) return;
         setLoading(true);
@@ -1056,38 +1001,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             const comparison = aValue < bValue ? -1 : 1;
             return sortDirection === 'asc' ? comparison : -comparison;
         });
-    };
-
-    // Función para marcar/desmarcar lectura como relevante
-    const handleToggleRelevante = async (idLectura: number) => {
-        try {
-            const lectura = results.find(r => r.ID_Lectura === idLectura);
-            if (!lectura) return;
-
-            if (lectura.es_relevante) {
-                await fetch(`${API_BASE_URL}/lecturas/${idLectura}/desmarcar_relevante`, { method: 'DELETE' });
-            } else {
-                await fetch(`${API_BASE_URL}/lecturas/${idLectura}/marcar_relevante`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ caso_id: casoIdFijo })
-                });
-            }
-
-            // Actualizar el estado local
-            setResults(results.map(r => 
-                r.ID_Lectura === idLectura 
-                    ? { ...r, es_relevante: !r.es_relevante }
-                    : r
-            ));
-        } catch (error) {
-            console.error('Error al marcar/desmarcar lectura como relevante:', error);
-            showNotification({
-                title: 'Error',
-                message: 'No se pudo marcar/desmarcar la lectura como relevante',
-                color: 'red'
-            });
-        }
     };
 
     // Cargar búsquedas guardadas al iniciar
@@ -1456,6 +1369,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     onClick={() => {
                                         setResults([]);
                                         setSelectedRecords([]);
+                                        setInitialLoading(false);
                                         notifications.show({
                                             title: 'Tabla Limpiada',
                                             message: 'Se han eliminado todos los resultados de la tabla.',
@@ -1498,16 +1412,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     <Button 
                                         size="xs" 
                                         variant="outline" 
-                                        color="orange" 
-                                        leftSection={<IconBookmarkOff size={16} />}
-                                        onClick={handleDesmarcarRelevante} 
-                                        disabled={selectedRecords.length === 0 || loading}
-                                    >
-                                        Desmarcar Relevante ({selectedRecords.length})
-                                    </Button>
-                                    <Button 
-                                        size="xs" 
-                                        variant="outline" 
                                         color="green" 
                                         leftSection={<IconCar size={16} />}
                                         onClick={handleGuardarVehiculos} 
@@ -1536,58 +1440,15 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 </Group>
                             </Group>
 
-                            {showSavedSearches && (
-                                <Paper shadow="sm" p="md" mb="md" withBorder>
-                                    <Group justify="space-between" mb="sm">
-                                        <Title order={5}>Búsquedas Guardadas</Title>
-                                        <Button 
-                                            size="xs" 
-                                            variant="light" 
-                                            color="blue"
-                                            onClick={handleCrossSearch}
-                                            disabled={selectedSearches.length < 2}
-                                        >
-                                            Realizar Cruce ({selectedSearches.length} seleccionadas)
-                                        </Button>
-                                    </Group>
-                                    <Stack>
-                                        {savedSearches.map(search => (
-                                            <Group key={search.id} justify="space-between">
-                                                <Checkbox
-                                                    label={
-                                                        <Text size="sm">
-                                                            {search.name} ({search.results.length} lecturas)
-                                                            <Text size="xs" color="dimmed" mt={2}>
-                                                                Creada: {dayjs(search.created_at).format('DD/MM/YYYY HH:mm')}
-                                                            </Text>
-                                                        </Text>
-                                                    }
-                                                    checked={selectedSearches.includes(search.id)}
-                                                    onChange={(e) => {
-                                                        if (e.currentTarget.checked) {
-                                                            setSelectedSearches(prev => [...prev, search.id]);
-                                                        } else {
-                                                            setSelectedSearches(prev => prev.filter(id => id !== search.id));
-                                                        }
-                                                    }}
-                                                />
-                                                <ActionIcon 
-                                                    color="red" 
-                                                    variant="subtle"
-                                                    onClick={() => handleDeleteSavedSearch(search.id)}
-                                                >
-                                                    <IconX size={16} />
-                                                </ActionIcon>
-                                            </Group>
-                                        ))}
-                                        {savedSearches.length === 0 && (
-                                            <Text color="dimmed" size="sm" ta="center">
-                                                No hay búsquedas guardadas
-                                            </Text>
-                                        )}
-                                    </Stack>
-                                </Paper>
-                            )}
+                            <SavedSearchesModal
+                                opened={showSavedSearches}
+                                onClose={() => setShowSavedSearches(false)}
+                                savedSearches={savedSearches}
+                                selectedSearches={selectedSearches}
+                                setSelectedSearches={setSelectedSearches}
+                                handleCrossSearch={handleCrossSearch}
+                                handleDeleteSavedSearch={handleDeleteSavedSearch}
+                            />
 
                             <Box style={{ maxHeight: 'calc(100vh - 400px)', overflow: 'auto' }}>
                                 <DataTable<ExtendedLectura>
