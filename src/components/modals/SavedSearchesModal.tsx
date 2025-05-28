@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Modal, Button, Group, Table, Text, ActionIcon, Title, ScrollArea, Stack, Box } from '@mantine/core';
-import { IconX, IconArrowsSort, IconSearch } from '@tabler/icons-react';
+import { IconX, IconArrowsSort, IconSearch, IconFileExport } from '@tabler/icons-react';
 import dayjs from 'dayjs';
+import * as XLSX from 'xlsx';
 
 interface SavedSearch {
     id: number;
@@ -78,6 +79,65 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
         handleCrossSearch();
     };
 
+    // Exportar resultados de una búsqueda guardada
+    const handleExportSearch = (search: SavedSearch) => {
+        if (!search.results || search.results.length === 0) return;
+        const dataToExport = search.results.map((l: any) => ({
+            'Matrícula': l.Matricula,
+            'Fecha y Hora': l.Fecha_y_Hora,
+            'Lector': l.lector?.Nombre || '',
+            'Carretera': l.lector?.Carretera || '',
+            'Sentido': l.lector?.Sentido || '',
+            'ID Lectura': l.ID_Lectura,
+            'ID Archivo': l.ID_Archivo,
+            'Tipo Fuente': l.Tipo_Fuente,
+            'Pasos': l.pasos,
+            'Relevante': l.es_relevante ? 'Sí' : 'No',
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Lecturas');
+        const fileName = `${search.name.replace(/[^a-zA-Z0-9_\-]/g, '_')}_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+        XLSX.writeFile(workbook, fileName);
+    };
+
+    // Exportar resultados de un cruce realizado
+    const handleExportCross = (cr: CrossResult) => {
+        // Buscar las búsquedas cruzadas
+        const selected = savedSearches.filter(s => cr.ids.includes(s.id));
+        // Cruce: intersección de matrículas
+        const matriculasPorBusqueda = selected.map(s => new Set(s.results.map((r: any) => r.Matricula)));
+        const commonMatriculas = matriculasPorBusqueda.reduce((common, current) => {
+            return new Set([...common].filter(x => current.has(x)));
+        });
+        // Para cada búsqueda, filtrar solo las lecturas de las matrículas comunes
+        let dataToExport: any[] = [];
+        selected.forEach(s => {
+            s.results.forEach((l: any) => {
+                if (commonMatriculas.has(l.Matricula)) {
+                    dataToExport.push({
+                        'Búsqueda': s.name,
+                        'Matrícula': l.Matricula,
+                        'Fecha y Hora': l.Fecha_y_Hora,
+                        'Lector': l.lector?.Nombre || '',
+                        'Carretera': l.lector?.Carretera || '',
+                        'Sentido': l.lector?.Sentido || '',
+                        'ID Lectura': l.ID_Lectura,
+                        'ID Archivo': l.ID_Archivo,
+                        'Tipo Fuente': l.Tipo_Fuente,
+                        'Pasos': l.pasos,
+                        'Relevante': l.es_relevante ? 'Sí' : 'No',
+                    });
+                }
+            });
+        });
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Cruce');
+        const fileName = `Cruce_${cr.names.map(n => n.replace(/[^a-zA-Z0-9_\-]/g, '_')).join('_')}_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
+        XLSX.writeFile(workbook, fileName);
+    };
+
     // Render
     return (
         <Modal
@@ -149,9 +209,18 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                         </Table.Td>
                                         <Table.Td>
                                             <ActionIcon
+                                                color="teal"
+                                                variant="subtle"
+                                                onClick={() => handleExportSearch(search)}
+                                                title="Exportar a Excel"
+                                            >
+                                                <IconFileExport size={18} />
+                                            </ActionIcon>
+                                            <ActionIcon
                                                 color="red"
                                                 variant="subtle"
                                                 onClick={() => handleDeleteSavedSearch(search.id)}
+                                                title="Eliminar búsqueda"
                                             >
                                                 <IconX size={16} />
                                             </ActionIcon>
@@ -192,6 +261,7 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                     <Table.Th>Búsquedas cruzadas</Table.Th>
                                     <Table.Th>Fecha</Table.Th>
                                     <Table.Th>Nº vehículos encontrados</Table.Th>
+                                    <Table.Th>Acciones</Table.Th>
                                 </Table.Tr>
                             </Table.Thead>
                             <Table.Tbody>
@@ -200,6 +270,16 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                         <Table.Td>{cr.names.join(' + ')}</Table.Td>
                                         <Table.Td>{cr.date}</Table.Td>
                                         <Table.Td>{cr.count}</Table.Td>
+                                        <Table.Td>
+                                            <ActionIcon
+                                                color="teal"
+                                                variant="subtle"
+                                                onClick={() => handleExportCross(cr)}
+                                                title="Exportar cruce a Excel"
+                                            >
+                                                <IconFileExport size={18} />
+                                            </ActionIcon>
+                                        </Table.Td>
                                     </Table.Tr>
                                 )) : (
                                     <Table.Tr>
