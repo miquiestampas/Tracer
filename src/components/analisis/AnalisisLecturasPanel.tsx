@@ -1168,6 +1168,18 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setPage(1); // Resetear a la primera página al cambiar el tamaño
     }, []);
 
+    // --- Handler para limpiar la tabla de resultados ---
+    const handleClearResults = useCallback(() => {
+        setResults([]);
+        setSelectedRecords([]);
+        setInitialLoading(false);
+        notifications.show({
+            title: 'Tabla Limpiada',
+            message: 'Se han eliminado todos los resultados de la tabla.',
+            color: 'blue'
+        });
+    }, []);
+
     // --- Renderizado ---
     return (
         <Box style={{ position: 'relative' }}>
@@ -1366,16 +1378,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     variant="outline"
                                     color="gray"
                                     leftSection={<IconFilterOff size={16} />}
-                                    onClick={() => {
-                                        setResults([]);
-                                        setSelectedRecords([]);
-                                        setInitialLoading(false);
-                                        notifications.show({
-                                            title: 'Tabla Limpiada',
-                                            message: 'Se han eliminado todos los resultados de la tabla.',
-                                            color: 'blue'
-                                        });
-                                    }}
+                                    onClick={handleClearResults}
                                     size="xs"
                                     fullWidth
                                     mt="xs"
@@ -1448,6 +1451,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 setSelectedSearches={setSelectedSearches}
                                 handleCrossSearch={handleCrossSearch}
                                 handleDeleteSavedSearch={handleDeleteSavedSearch}
+                                onClearResults={handleClearResults}
                             />
 
                             <Box style={{ maxHeight: 'calc(100vh - 400px)', overflow: 'auto' }}>

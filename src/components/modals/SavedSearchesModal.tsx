@@ -26,6 +26,7 @@ interface SavedSearchesModalProps {
     setSelectedSearches: (ids: number[]) => void;
     handleCrossSearch: () => void;
     handleDeleteSavedSearch: (id: number) => void;
+    onClearResults?: () => void;
 }
 
 const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
@@ -35,7 +36,8 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
     selectedSearches,
     setSelectedSearches,
     handleCrossSearch,
-    handleDeleteSavedSearch
+    handleDeleteSavedSearch,
+    onClearResults
 }) => {
     // Ordenación local
     const [sortBy, setSortBy] = useState<'name' | 'created_at' | 'results'>('created_at');
@@ -59,6 +61,7 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
     // Handler para cruce (simula resultado y lo añade a la lista local)
     const handleCrossAndStore = () => {
         if (selectedSearches.length < 2) return;
+        if (onClearResults) onClearResults();
         // Obtener nombres y resultados
         const selected = savedSearches.filter(s => selectedSearches.includes(s.id));
         const names = selected.map(s => s.name);
@@ -77,6 +80,14 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
             ...prev
         ]);
         handleCrossSearch();
+        onClose();
+    };
+
+    // Nueva función: solo ejecutar el cruce y cerrar el modal, sin guardar duplicado
+    const handleCrossOnly = (cr: CrossResult) => {
+        setSelectedSearches(cr.ids);
+        handleCrossSearch();
+        onClose();
     };
 
     // Exportar resultados de una búsqueda guardada
@@ -136,6 +147,14 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Cruce');
         const fileName = `Cruce_${cr.names.map(n => n.replace(/[^a-zA-Z0-9_\-]/g, '_')).join('_')}_${dayjs().format('YYYYMMDD_HHmmss')}.xlsx`;
         XLSX.writeFile(workbook, fileName);
+    };
+
+    // Añadir función para volver a ejecutar un cruce
+    const handleReRunCross = (cr: CrossResult) => {
+        // Seleccionar los ids de las búsquedas cruzadas
+        setSelectedSearches(cr.ids);
+        // Ejecutar el cruce
+        handleCrossAndStore();
     };
 
     // Render
@@ -271,6 +290,14 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                         <Table.Td>{cr.date}</Table.Td>
                                         <Table.Td>{cr.count}</Table.Td>
                                         <Table.Td>
+                                            <ActionIcon
+                                                color="blue"
+                                                variant="subtle"
+                                                onClick={() => handleCrossOnly(cr)}
+                                                title="Ver cruce en resultados"
+                                            >
+                                                <IconSearch size={18} />
+                                            </ActionIcon>
                                             <ActionIcon
                                                 color="teal"
                                                 variant="subtle"
