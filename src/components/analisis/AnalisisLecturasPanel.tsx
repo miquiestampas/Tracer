@@ -29,6 +29,12 @@ const customStyles = `
   .highlighted-row:hover {
     background-color: var(--mantine-color-blue-1) !important; /* Un azul ligeramente más oscuro */
   }
+  .session-selected-row {
+    background-color: var(--mantine-color-yellow-0) !important;
+  }
+  .session-selected-row:hover {
+    background-color: var(--mantine-color-yellow-1) !important;
+  }
   /* Forzar label encima del input para DatePicker en este panel */
   .analisis-datepicker-wrapper .mantine-InputWrapper-label {
       display: block;
@@ -189,6 +195,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [overlayProgress, setOverlayProgress] = useState(0);
     const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
     const [savingSearch, setSavingSearch] = useState(false);
+    const [sessionSelectedRecords, setSessionSelectedRecords] = useState<Set<number | string>>(new Set());
     
     // --- Procesar datos ---
     const getLectorBaseId = (nombreLector: string): string => {
@@ -612,6 +619,14 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const handleSelectionChange = useCallback((selectedRecords: ExtendedLectura[]) => {
         const ids = selectedRecords.map(record => record.ID_Lectura);
         setSelectedRecords(ids);
+        
+        // Actualizar el conjunto de selecciones de la sesión
+        setSessionSelectedRecords(prev => {
+            const newSet = new Set(prev);
+            ids.forEach(id => newSet.add(id));
+            return newSet;
+        });
+
         const matriculas = selectedRecords.map(record => record.Matricula);
         if (matriculas.length > 0) {
             addInteractedMatricula(matriculas);
@@ -698,9 +713,14 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                         caso_id: casoIdFijo
                     });
                     successCount++;
-                } catch (error) {
+                } catch (error: any) {
                     errorCount++;
                     console.error(`Error marcando lectura ${id}:`, error);
+                    notifications.show({
+                        title: 'Error al Marcar',
+                        message: `No se pudo marcar ID ${id}: ${error.response?.data?.detail || error.message}`,
+                        color: 'red'
+                    });
                 }
             }
 
@@ -749,34 +769,48 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setLoading(true);
         const idsToUnmark = lecturasParaDesmarcar.map(r => r!.ID_Lectura);
         console.log("Desmarcando como relevante IDs:", idsToUnmark);
-        const results = await Promise.allSettled(
-            idsToUnmark.map(id => 
-                fetch(`${API_BASE_URL}/lecturas/${id}/desmarcar_relevante`, { method: 'DELETE' })
-                    .then(response => {
-                        if (!response.ok) {
-                             return response.json().catch(() => null).then(errorData => {
-                                const detail = errorData?.detail || `HTTP ${response.status}`;
-                                throw new Error(`Error desmarcando ${id}: ${detail}`);
-                            });
-                        }
-                        return id; // Devolver el ID en caso de éxito
-                    })
-            )
-        );
+        
         let successCount = 0;
-        results.forEach((result, index) => {
-            const id = idsToUnmark[index];
-            if (result.status === 'fulfilled') {
+        let errorCount = 0;
+
+        for (const id of idsToUnmark) {
+            try {
+                await apiClient.delete(`/lecturas/${id}/desmarcar_relevante`);
                 successCount++;
-                console.log(`Lectura ${id} desmarcada como relevante.`);
-            } else {
-                console.error(`Error desmarcando lectura ${id}:`, result.reason);
-                notifications.show({ title: 'Error Parcial', message: `No se pudo desmarcar la lectura ID ${id}: ${result.reason.message}`, color: 'red' });
+            } catch (error: any) {
+                errorCount++;
+                console.error(`Error desmarcando lectura ${id}:`, error);
+                notifications.show({
+                    title: 'Error al Desmarcar',
+                    message: `No se pudo desmarcar ID ${id}: ${error.response?.data?.detail || error.message}`,
+                    color: 'red'
+                });
             }
-        });
-        if (successCount > 0) {
-             notifications.show({ title: 'Éxito', message: `${successCount} de ${idsToUnmark.length} lecturas desmarcadas.`, color: 'green' });
         }
+
+        if (successCount > 0) {
+            notifications.show({
+                title: 'Éxito',
+                message: `${successCount} de ${idsToUnmark.length} lecturas desmarcadas.`,
+                color: 'green'
+            });
+            // Actualizar el estado local para reflejar los cambios
+            setResults(prevResults => 
+                prevResults.map(r => 
+                    idsToUnmark.includes(r.ID_Lectura as number) 
+                        ? { ...r, es_relevante: false }
+                        : r
+                )
+            );
+        }
+        if (errorCount > 0) {
+            notifications.show({
+                title: 'Error Parcial',
+                message: `${errorCount} lecturas no se pudieron desmarcar.`,
+                color: 'orange'
+            });
+        }
+        
         setSelectedRecords([]); // Limpiar selección
         setLoading(false);
     };
@@ -1558,6 +1592,12 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     sortStatus={sortStatus}
                                     onSortStatusChange={handleSortStatusChange}
                                     style={{ tableLayout: 'fixed' }}
+                                    rowClassName={(record) => {
+                                        if (sessionSelectedRecords.has(record.ID_Lectura)) {
+                                            return 'session-selected-row';
+                                        }
+                                        return '';
+                                    }}
                                 />
                                 <Group justify="space-between" mt="md">
                                     <Select
