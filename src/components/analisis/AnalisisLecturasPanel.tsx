@@ -495,8 +495,9 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     // --- Modificar handleSearch para enviar cada matrícula como parámetro separado ---
     const handleSearch = async () => {
         // Mostrar notificación de carga en la esquina inferior derecha
+        const notificationId = 'analisis-loading';
         notifications.show({
-            id: 'analisis-loading',
+            id: notificationId,
             title: 'Procesando búsqueda de lecturas...',
             message: 'Por favor, espera mientras se procesan los resultados.',
             color: 'blue',
@@ -509,13 +510,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         setOverlayProgress(0);
         setLoading(true);
         try {
-            // Simulación de progreso para la demo
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                progress += Math.random() * 20;
-                setOverlayProgress(Math.min(progress, 95));
-            }, 200);
-
             if (!validateFilters()) return;
             
             setResults([]);
@@ -575,44 +569,29 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             }
             
             console.log(`[AnalisisLecturasPanel] Resultados: ${data.length} lecturas`);
-            if (minPasos !== null || maxPasos !== null) {
-                console.log('[AnalisisLecturasPanel] Muestra de resultados:', 
-                    data.slice(0, 3).map(d => ({
-                        matricula: d.Matricula,
-                        pasos: d.pasos,
-                        fecha: d.Fecha_y_Hora
-                    }))
-                );
-            }
-            
-            console.log('Lecturas recibidas:', data);
             setResults(data);
-            notifications.show({
-                title: 'Búsqueda Completada',
+            notifications.update({
+                id: notificationId,
+                title: 'Búsqueda completada',
                 message: `Se encontraron ${data.length} lecturas.`,
-                color: 'green'
+                color: 'green',
+                autoClose: 2000,
+                loading: false,
             });
-
-            // Simula el tiempo de búsqueda
-            await new Promise(res => setTimeout(res, 1800));
-
-            clearInterval(progressInterval);
-            setOverlayProgress(100);
-            setTimeout(() => setOverlayMessage(''), 400);
-            // Ocultar notificación de carga
-            notifications.hide('analisis-loading');
         } catch (error) {
-            console.error('[AnalisisLecturasPanel] Error:', error);
-            notifications.show({
-                title: 'Error en la Búsqueda',
+            console.error('Error en la búsqueda:', error);
+            notifications.update({
+                id: notificationId,
+                title: 'Error en la búsqueda',
                 message: error instanceof Error ? error.message : 'Error desconocido',
-                color: 'red'
+                color: 'red',
+                autoClose: 4000,
+                loading: false,
             });
-            setResults([]);
-            // Ocultar notificación de carga
-            notifications.hide('analisis-loading');
         } finally {
             setLoading(false);
+            setOverlayMessage('');
+            setOverlayProgress(0);
         }
     };
 
@@ -1186,12 +1165,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             <style>{customStyles}</style>
             <Box>
                 <Grid>
-                     <ProgressOverlay 
-                        visible={initialLoading} 
-                        progress={initialLoading ? 100 : 0} 
-                        label="Cargando datos iniciales..."
-                        zIndex={1000}
-                     />
                      <Grid.Col span={{ base: 12, md: 3 }} style={{ minWidth: 300 }}>
                          <Paper shadow="sm" p="md" withBorder>
                              <Stack gap="sm">

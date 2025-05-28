@@ -260,50 +260,95 @@ function LprAvanzadoPanel({ casoId, interactedMatriculas, addInteractedMatricula
 
     // --- Cargar datos iniciales (Ahora usa el nuevo endpoint) ---
     useEffect(() => {
-        const fetchInitialData = async () => {
-             setInitialLoading(true);
-             // Limpiar listas anteriores
-             setLectoresList([]);
-             setCarreterasList([]);
-             try {
-                 // Llamar al nuevo endpoint usando casoId de las props
-                 console.log(`LprAvanzado: Fetching filtros disponibles para caso ${casoId}...`);
-                 const response = await fetch(`http://localhost:8000/casos/${casoId}/filtros_disponibles`);
-                 
-                 if (!response.ok) {
-                     throw new Error(`Filtros: ${response.statusText || response.status}`);
-                 }
-                 
-                 const data = await response.json();
-                 
-                 // Asumiendo que la respuesta tiene el formato { lectores: SelectOption[], carreteras: SelectOption[] }
-                 if (data && data.lectores && data.carreteras) {
-                      setLectoresList(data.lectores);
-                      setCarreterasList(data.carreteras);
-                      console.log(`LprAvanzado: Filtros cargados - ${data.lectores.length} lectores, ${data.carreteras.length} carreteras.`);
-                 } else {
-                      throw new Error("Formato inesperado de respuesta para filtros disponibles");
-                 }
+        let progress = 0;
+        const notificationId = 'lpr-avanzado-loading';
+        let interval: NodeJS.Timeout | null = null;
+        let finished = false;
 
-             } catch (error) {
-                 console.error("LprAvanzado: Error fetching filtros disponibles:", error);
-                 notifications.show({ title: 'Error', message: 'No se pudieron cargar las opciones de filtro para este caso.', color: 'red' });
-             } finally {
-                 setInitialLoading(false);
-             }
+        notifications.show({
+            id: notificationId,
+            title: 'Cargando datos iniciales...',
+            message: 'Preparando filtros y datos para el análisis avanzado.',
+            color: 'blue',
+            autoClose: false,
+            withCloseButton: false,
+            position: 'bottom-right',
+            style: { minWidth: 350 }
+        });
+
+        // Simulación de progreso (puedes adaptar a tu lógica real)
+        interval = setInterval(() => {
+            if (finished) return;
+            progress += Math.random() * 20;
+            notifications.update({
+                id: notificationId,
+                message: `Progreso: ${Math.min(progress, 95).toFixed(0)}%`,
+                color: 'blue'
+            });
+            if (progress >= 95) {
+                clearInterval(interval!);
+            }
+        }, 400);
+
+        const fetchInitialData = async () => {
+            // Limpiar listas anteriores
+            setLectoresList([]);
+            setCarreterasList([]);
+            try {
+                // Llamar al nuevo endpoint usando casoId de las props
+                const response = await fetch(`http://localhost:8000/casos/${casoId}/filtros_disponibles`);
+                if (!response.ok) {
+                    throw new Error(`Filtros: ${response.statusText || response.status}`);
+                }
+                const data = await response.json();
+                if (data && data.lectores && data.carreteras) {
+                    setLectoresList(data.lectores);
+                    setCarreterasList(data.carreteras);
+                } else {
+                    throw new Error("Formato inesperado de respuesta para filtros disponibles");
+                }
+                // Finalizar progreso
+                finished = true;
+                notifications.update({
+                    id: notificationId,
+                    title: 'Carga completada',
+                    message: 'Los datos iniciales están listos.',
+                    color: 'green',
+                    autoClose: 2000
+                });
+            } catch (error) {
+                finished = true;
+                notifications.update({
+                    id: notificationId,
+                    title: 'Error',
+                    message: 'No se pudieron cargar las opciones de filtro para este caso.',
+                    color: 'red',
+                    autoClose: 4000
+                });
+            } finally {
+                if (interval) clearInterval(interval);
+                setInitialLoading(false);
+            }
         };
-        
-        // Ejecutar solo si casoId está definido
+
         if (casoId) {
             fetchInitialData();
         } else {
-           // Manejar caso donde casoId no está disponible (no debería ocurrir aquí)
-            setInitialLoading(false); 
-            console.error("LprAvanzadoPanel: casoId no proporcionado.");
-            notifications.show({ title: 'Error', message: 'ID de caso no disponible para cargar filtros.', color: 'red' });
+            setInitialLoading(false);
+            notifications.update({
+                id: notificationId,
+                title: 'Error',
+                message: 'ID de caso no disponible para cargar filtros.',
+                color: 'red',
+                autoClose: 4000
+            });
+            if (interval) clearInterval(interval);
         }
-        
-     // Depender solo de casoId para recargar si cambia
+
+        return () => {
+            if (interval) clearInterval(interval);
+            notifications.hide(notificationId);
+        };
     }, [casoId]);
 
     useEffect(() => {

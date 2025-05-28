@@ -4,6 +4,7 @@ import { IconSearch, IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/
 import CountryFlag from 'react-country-flag';
 import { platePatterns } from '../../utils/platePatterns';
 import { useParams } from 'react-router-dom';
+import { notifications } from '@mantine/notifications';
 
 interface MatriculaLectura {
   Matricula: string;
@@ -61,6 +62,17 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
   useEffect(() => {
     const fetchLecturas = async () => {
       if (!idCaso) return;
+      // Notificación de progreso
+      const notificationId = 'matriculas-extranjeras-loading';
+      notifications.show({
+        id: notificationId,
+        title: 'Cargando lecturas...',
+        message: 'Indexando lecturas en segundo plano...',
+        color: 'blue',
+        autoClose: false,
+        withCloseButton: false,
+        loading: true,
+      });
       setLoadingLecturas(true);
       // Buscar en sessionStorage
       const cacheKey = `lecturas_caso_${idCaso}`;
@@ -70,28 +82,59 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
           const parsed = JSON.parse(cached);
           setLecturas(parsed);
           setLoadingLecturas(false);
+          notifications.update({
+            id: notificationId,
+            title: 'Lecturas cargadas',
+            message: 'Lecturas indexadas desde caché.',
+            color: 'green',
+            autoClose: 2000,
+            loading: false,
+          });
           return;
-        } catch (e) {
-          // Si hay error en el parseo, continuar con la petición normal
-        }
+        } catch (e) {}
       }
       try {
+        // Simulación de progreso (puedes reemplazar por progreso real si el backend lo soporta)
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress = Math.min(progress + 10, 90);
+          notifications.update({
+            id: notificationId,
+            message: `Indexando lecturas en segundo plano... (${progress}%)`,
+          });
+        }, 300);
         const response = await fetch(`http://localhost:8000/casos/${idCaso}/lecturas`);
         if (!response.ok) throw new Error('Error al cargar lecturas');
         const data = await response.json();
         setLecturas(data);
+        clearInterval(progressInterval);
+        notifications.update({
+          id: notificationId,
+          title: 'Lecturas cargadas',
+          message: `Lecturas indexadas correctamente. (${data.length} registros)`,
+          color: 'green',
+          autoClose: 2000,
+          loading: false,
+        });
       } catch (error) {
-        console.error('Error fetching lecturas:', error);
-        // Aquí podrías mostrar un mensaje de error si lo deseas
+        notifications.update({
+          id: notificationId,
+          title: 'Error al cargar lecturas',
+          message: 'No se pudieron indexar las lecturas.',
+          color: 'red',
+          autoClose: 4000,
+          loading: false,
+        });
+        setLecturas([]);
       } finally {
         setLoadingLecturas(false);
       }
     };
     fetchLecturas();
-    // Limpieza al desmontar: elimina cualquier cache de este panel
     return () => {
       const cacheKey = `lecturas_caso_${idCaso}`;
       sessionStorage.removeItem(cacheKey);
+      notifications.clean();
     };
   }, [idCaso]);
 
@@ -204,32 +247,6 @@ export default function MatriculasExtranjerasPanel({ loading: externalLoading }:
           </Button>
         </Group>
       </Group>
-      {loadingLecturas && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          background: 'rgba(0,0,0,0.35)',
-          zIndex: 9999,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <Loader size={64} color="blue" />
-          <div style={{
-            marginTop: 32,
-            fontSize: 32,
-            color: '#fff',
-            fontWeight: 600,
-            textShadow: '0 2px 8px rgba(0,0,0,0.4)'
-          }}>
-            Indexando lecturas en segundo plano...
-          </div>
-        </div>
-      )}
       <Box style={{ position: 'relative' }}>
         <LoadingOverlay visible={isLoading && !loadingLecturas} />
         <Table striped highlightOnHover withColumnBorders>
