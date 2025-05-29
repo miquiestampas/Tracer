@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Container, Title, Paper, Group, Button, Text, Stack, Select, Alert, Loader, Table, Badge, ActionIcon, Tooltip, Modal, TextInput, Textarea, Grid, PasswordInput, SimpleGrid, Card, Divider, Box, FileInput, NumberInput, Switch } from '@mantine/core';
-import { IconDatabase, IconRefresh, IconTrash, IconDeviceFloppy, IconRestore, IconDownload, IconEdit, IconPlus } from '@tabler/icons-react';
+import { Container, Title, Paper, Group, Button, Text, Stack, Select, Alert, Loader, Table, Badge, ActionIcon, Tooltip, Modal, TextInput, Textarea, Grid, PasswordInput, SimpleGrid, Card, Divider, Box, FileInput, NumberInput, Switch, ThemeIcon } from '@mantine/core';
+import { IconDatabase, IconRefresh, IconTrash, IconDeviceFloppy, IconRestore, IconDownload, IconEdit, IconPlus, IconUsers, IconFolder, IconSettings, IconAlertCircle, IconInfoCircle } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useDisclosure } from '@mantine/hooks';
 import { useAuth } from '../context/AuthContext';
@@ -738,341 +738,412 @@ function AdminPage() {
   };
 
   return (
-    <>
-      <Container fluid style={{ paddingLeft: 32, paddingRight: 32, maxWidth: 1600 }}>
-        <Title order={2} mt="md" mb="lg">Panel de Administración</Title>
-        <Grid gutter="xl" align="flex-start">
-          <Grid.Col span={{ base: 12, md: 5 }}>
-            <Stack gap="lg">
-              {/* Estado de la Base de Datos */}
-              <Paper p="md" withBorder>
-                <Group justify="space-between" mb="md">
-                  <Title order={3}>Estado de la Base de Datos</Title>
-                  <Button
-                    leftSection={<IconRefresh size={16} />}
-                    onClick={() => Promise.all([fetchDbStatus(), fetchBackups()])}
-                    loading={loading}
-                  >
-                    Actualizar
-                  </Button>
+    <Box style={{ paddingLeft: 32, paddingRight: 32, paddingBottom: 32 }}>
+      <Title order={2} mb="xl">Panel de Administración</Title>
+      
+      <Grid gutter="xl">
+        {/* Database Status Card */}
+        <Grid.Col span={{ base: 12, md: 6, lg: 4 }}>
+          <Paper p="md" withBorder radius="md" style={{ height: '100%' }}>
+            <Group justify="space-between" mb="md">
+              <Group>
+                <ThemeIcon size="lg" radius="md" color="blue">
+                  <IconDatabase size={20} />
+                </ThemeIcon>
+                <Title order={3}>Estado de la Base de Datos</Title>
+              </Group>
+              <Button
+                variant="light"
+                leftSection={<IconRefresh size={16} />}
+                onClick={() => Promise.all([fetchDbStatus(), fetchBackups()])}
+                loading={loading}
+              >
+                Actualizar
+              </Button>
+            </Group>
+
+            {dbStatus && (
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Estado:</Text>
+                  <Badge color="green" variant="light">{dbStatus.status}</Badge>
                 </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Tamaño:</Text>
+                  <Text size="sm">{formatBytes(dbStatus.size_bytes)}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Último backup:</Text>
+                  <Text size="sm">{dbStatus.last_backup ? formatDate(dbStatus.last_backup) : 'Nunca'}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Total backups:</Text>
+                  <Text size="sm">{dbStatus.backups_count}</Text>
+                </Group>
+              </Stack>
+            )}
+          </Paper>
+        </Grid.Col>
 
-                {loading ? (
-                  <Loader />
-                ) : dbStatus ? (
-                  <Stack gap="md">
-                    <Group>
-                      <Badge color="green" size="lg">Estado: {dbStatus.status}</Badge>
-                      <Badge color="blue" size="lg">Tamaño: {formatBytes(dbStatus.size_bytes)}</Badge>
-                      <Badge color="violet" size="lg">Backups: {dbStatus.backups_count}</Badge>
-                    </Group>
-                    
-                    <Title order={4} mt="md">Tablas</Title>
-                    <Table>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>Nombre</Table.Th>
-                          <Table.Th>Registros</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {dbStatus.tables.map((table) => (
-                          <Table.Tr key={table.name}>
-                            <Table.Td>{table.name}</Table.Td>
-                            <Table.Td>{table.count}</Table.Td>
-                          </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
-                  </Stack>
-                ) : (
-                  <Alert color="red" title="Error">
-                    No se pudo obtener el estado de la base de datos
-                  </Alert>
-                )}
-              </Paper>
-              {/* Gestión de Base de Datos */}
-              <Paper p="md" withBorder>
-                <Title order={3} mb="md">Gestión de Base de Datos</Title>
-                
-                <Stack gap="md">
-                  <Group>
-                    <Button
-                      leftSection={<IconDeviceFloppy size={16} />}
-                      onClick={handleBackup}
-                      loading={loading}
-                    >
-                      Crear Backup
-                    </Button>
-                    <Button
-                      leftSection={<IconTrash size={16} />}
-                      color="red"
-                      onClick={handleReset}
-                      loading={loading}
-                    >
-                      Resetear Base de Datos
-                    </Button>
-                    <Button
-                      leftSection={<IconRestore size={16} />}
-                      color="green"
-                      loading={uploading}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Restaurar desde archivo
-                    </Button>
-                    <Button
-                      leftSection={<IconTrash size={16} />}
-                      color="pink"
-                      variant="outline"
-                      onClick={handleClearExceptLectores}
-                      loading={clearing}
-                    >
-                      Eliminar todo (excepto lectores)
-                    </Button>
-                    <input
-                      type="file"
-                      accept=".db"
-                      ref={fileInputRef}
-                      style={{ display: 'none' }}
-                      onChange={handleFileRestore}
-                    />
-                  </Group>
+        {/* Database Management Card */}
+        <Grid.Col span={{ base: 12, md: 6, lg: 8 }}>
+          <Paper p="md" withBorder radius="md">
+            <Group justify="space-between" mb="md">
+              <Group>
+                <ThemeIcon size="lg" radius="md" color="blue">
+                  <IconSettings size={20} />
+                </ThemeIcon>
+                <Title order={3}>Gestión de Base de Datos</Title>
+              </Group>
+            </Group>
 
-                  <Title order={4}>Backups Disponibles</Title>
-                  <Table>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Fecha</Table.Th>
-                        <Table.Th>Acciones</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {backups.map((backup) => (
-                        <Table.Tr key={backup.filename}>
-                          <Table.Td>{formatDate(backup.created_at)}</Table.Td>
-                          <Table.Td>
-                            <Group gap="xs">
-                              <Tooltip label="Restaurar">
-                                <ActionIcon
-                                  color="blue"
-                                  variant="light"
-                                  onClick={() => handleRestoreBackup(backup)}
-                                >
-                                  <IconRestore size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Descargar">
-                                <ActionIcon
-                                  color="green"
-                                  variant="light"
-                                  onClick={() => window.open(`/api/admin/database/backups/${backup.filename}/download`)}
-                                >
-                                  <IconDownload size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Eliminar">
-                                <ActionIcon
-                                  color="red"
-                                  variant="light"
-                                  onClick={() => handleDeleteBackup(backup)}
-                                >
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </Group>
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                </Stack>
-              </Paper>
+            <Stack gap="md">
+              <Group>
+                <Button
+                  variant="light"
+                  leftSection={<IconDeviceFloppy size={16} />}
+                  onClick={handleBackup}
+                  loading={loading}
+                >
+                  Crear Backup
+                </Button>
+                <Button
+                  variant="light"
+                  color="red"
+                  leftSection={<IconTrash size={16} />}
+                  onClick={handleReset}
+                  loading={loading}
+                >
+                  Resetear Base de Datos
+                </Button>
+                <Button
+                  variant="light"
+                  color="green"
+                  leftSection={<IconRestore size={16} />}
+                  loading={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Restaurar desde archivo
+                </Button>
+                <Button
+                  variant="light"
+                  color="orange"
+                  leftSection={<IconTrash size={16} />}
+                  onClick={handleClearExceptLectores}
+                  loading={clearing}
+                >
+                  Eliminar todo (excepto lectores)
+                </Button>
+                <input
+                  type="file"
+                  accept=".db"
+                  ref={fileInputRef}
+                  style={{ display: 'none' }}
+                  onChange={handleFileRestore}
+                />
+              </Group>
+
+              <Divider label="Backups Disponibles" labelPosition="center" />
+
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Nombre</Table.Th>
+                    <Table.Th>Fecha</Table.Th>
+                    <Table.Th>Tamaño</Table.Th>
+                    <Table.Th>Acciones</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {backups.map((backup) => (
+                    <Table.Tr key={backup.filename}>
+                      <Table.Td>{backup.filename}</Table.Td>
+                      <Table.Td>{formatDate(backup.created_at)}</Table.Td>
+                      <Table.Td>{formatBytes(backup.size_bytes)}</Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <Tooltip label="Restaurar">
+                            <ActionIcon
+                              color="blue"
+                              variant="light"
+                              onClick={() => handleRestoreBackup(backup)}
+                            >
+                              <IconRestore size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Descargar">
+                            <ActionIcon
+                              color="green"
+                              variant="light"
+                              component="a"
+                              href={`/api/admin/database/backups/${backup.filename}/download`}
+                              download
+                            >
+                              <IconDownload size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Eliminar">
+                            <ActionIcon
+                              color="red"
+                              variant="light"
+                              onClick={() => handleDeleteBackup(backup)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
             </Stack>
-          </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 7 }}>
-            <Stack gap="lg">
-              {/* Panel de Gestión de Grupos */}
-              <Paper p="md" withBorder>
-                <Group justify="space-between" mb="md">
-                  <Title order={3}>Gestión de Grupos</Title>
-                  <Button
-                    leftSection={<IconPlus size={16} />}
-                    onClick={() => setCreateGrupoModalOpen(true)}
-                  >
-                    Crear Grupo
-                  </Button>
-                </Group>
+          </Paper>
+        </Grid.Col>
 
-                {loadingGrupos ? (
-                  <Loader />
-                ) : (
-                  <Table>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Nombre</Table.Th>
-                        <Table.Th>Descripción</Table.Th>
-                        <Table.Th>Casos</Table.Th>
-                        <Table.Th>Acciones</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {grupos.map((grupo) => (
-                        <Table.Tr key={grupo.ID_Grupo}>
-                          <Table.Td>{grupo.Nombre}</Table.Td>
-                          <Table.Td>{grupo.Descripcion || '-'}</Table.Td>
-                          <Table.Td>{grupo.casos}</Table.Td>
-                          <Table.Td>
-                            <Group gap="xs">
-                              <Tooltip label="Editar">
-                                <ActionIcon
-                                  color="blue"
-                                  variant="light"
-                                  onClick={() => openEditGrupoModal(grupo)}
-                                >
-                                  <IconEdit size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Eliminar">
-                                <ActionIcon
-                                  color="red"
-                                  variant="light"
-                                  onClick={() => openDeleteGrupoModal(grupo)}
-                                  disabled={grupo.casos > 0}
-                                >
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </Group>
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                )}
-              </Paper>
-              {/* Panel de Gestión de Usuarios */}
-              <Paper p="md" withBorder>
-                <Group justify="space-between" mb="md">
-                  <Title order={3}>Gestión de Usuarios</Title>
-                  <Button leftSection={<IconPlus size={16} />} onClick={() => setUsuarioModalOpen(true)}>
-                    Crear Usuario
-                  </Button>
-                </Group>
-                {loadingUsuarios ? (
-                  <Loader />
-                ) : usuarios.length === 0 ? (
-                  <Text color="dimmed" ta="center" py="md">No hay usuarios registrados.</Text>
-                ) : (
-                  <Table>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>User</Table.Th>
-                        <Table.Th>Rol</Table.Th>
-                        <Table.Th>Grupo</Table.Th>
-                        <Table.Th>Acciones</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {usuarios.map(u => (
-                        <Table.Tr key={u.User}>
-                          <Table.Td>{u.User}</Table.Td>
-                          <Table.Td>{u.Rol}</Table.Td>
-                          <Table.Td>{u.grupo?.Nombre || u.ID_Grupo}</Table.Td>
-                          <Table.Td>
-                            <Group gap="xs">
-                              <Tooltip label="Editar">
-                                <ActionIcon color="blue" variant="light" onClick={() => {
-                                  setUsuarioToEdit(u);
-                                  setEditRol(u.Rol);
-                                  setEditGrupo(u.ID_Grupo);
-                                  setEditPass('');
-                                  setEditUsuarioModalOpen(true);
-                                }}>
-                                  <IconEdit size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Eliminar">
-                                <ActionIcon color="red" variant="light" onClick={() => {
-                                  setUsuarioToDelete(u);
-                                  setDeleteUsuarioModalOpen(true);
-                                }}>
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </Group>
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                )}
-              </Paper>
-              {/* Panel de Gestión de Casos */}
-              <Paper p="md" withBorder mt="lg">
-                <Group justify="space-between" mb="md">
-                  <Title order={3}>Gestión de Casos</Title>
-                </Group>
-                {casosLoading ? <Loader /> : (
-                  <Table>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>Nombre</Table.Th>
-                        <Table.Th>Grupo</Table.Th>
-                        <Table.Th>Archivos</Table.Th>
-                        <Table.Th>Lecturas</Table.Th>
-                        <Table.Th>Peso (MB)</Table.Th>
-                        <Table.Th>Acciones</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {casos.map((caso) => {
-                        const archivos = archivosPorCaso[caso.ID_Caso] || [];
-                        const numArchivos = archivos.length;
-                        const totalLecturas = archivos.reduce((acc, a) => acc + (a.Total_Registros || 0), 0);
-                        const totalMB = casosSizes[caso.ID_Caso] ? `${casosSizes[caso.ID_Caso]} MB` : '-';
-                        let grupoNombre = '-';
-                        if ('grupo' in caso && (caso as any).grupo?.Nombre) {
-                          grupoNombre = (caso as any).grupo.Nombre;
-                        } else if ('ID_Grupo' in caso) {
-                          grupoNombre = (caso as any).ID_Grupo;
-                        }
-                        return (
-                          <Table.Tr key={caso.ID_Caso}>
-                            <Table.Td>{caso.Nombre_del_Caso}</Table.Td>
-                            <Table.Td>{grupoNombre}</Table.Td>
-                            <Table.Td>{numArchivos}</Table.Td>
-                            <Table.Td>{totalLecturas}</Table.Td>
-                            <Table.Td>{totalMB}</Table.Td>
-                            <Table.Td>
-                              <Group gap="xs">
-                                <Tooltip label="Reasignar grupo">
-                                  <ActionIcon color="blue" variant="light" onClick={() => handleOpenReassign(caso)}>
-                                    <IconEdit size={16} />
-                                  </ActionIcon>
-                                </Tooltip>
-                                <Tooltip label="Eliminar">
-                                  <ActionIcon color="red" variant="light" onClick={() => handleDeleteCaso(caso.ID_Caso)}>
-                                    <IconTrash size={16} />
-                                  </ActionIcon>
-                                </Tooltip>
-                              </Group>
-                            </Table.Td>
-                          </Table.Tr>
-                        );
-                      })}
-                    </Table.Tbody>
-                  </Table>
-                )}
-              </Paper>
-            </Stack>
-          </Grid.Col>
-        </Grid>
+        {/* Groups Management Card */}
+        <Grid.Col span={{ base: 12, md: 6 }}>
+          <Paper p="md" withBorder radius="md">
+            <Group justify="space-between" mb="md">
+              <Group>
+                <ThemeIcon size="lg" radius="md" color="blue">
+                  <IconUsers size={20} />
+                </ThemeIcon>
+                <Title order={3}>Gestión de Grupos</Title>
+              </Group>
+              <Button
+                variant="light"
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setCreateGrupoModalOpen(true)}
+              >
+                Crear Grupo
+              </Button>
+            </Group>
 
-        <Modal opened={resetModalOpen} onClose={() => setResetModalOpen(false)} title="Confirmar Reseteo" centered>
-          <Text fw={700} mb="md" c="black">
-            ¡ATENCIÓN! Esta acción eliminará <b>TODOS</b> los datos de la base de datos y <span style={{ color: '#d97706' }}>no se puede deshacer</span>.<br />
-            Para confirmar, escribe <b>RESETEAR</b> en el campo de abajo.
-          </Text>
+            {loadingGrupos ? (
+              <Loader />
+            ) : (
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Nombre</Table.Th>
+                    <Table.Th>Descripción</Table.Th>
+                    <Table.Th>Acciones</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {grupos.map((grupo) => (
+                    <Table.Tr key={grupo.ID_Grupo}>
+                      <Table.Td>{grupo.Nombre}</Table.Td>
+                      <Table.Td>{grupo.Descripcion || '-'}</Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <Tooltip label="Editar">
+                            <ActionIcon
+                              color="blue"
+                              variant="light"
+                              onClick={() => openEditGrupoModal(grupo)}
+                            >
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Eliminar">
+                            <ActionIcon
+                              color="red"
+                              variant="light"
+                              onClick={() => openDeleteGrupoModal(grupo)}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Paper>
+        </Grid.Col>
+
+        {/* Users Management Card */}
+        <Grid.Col span={{ base: 12, md: 6 }}>
+          <Paper p="md" withBorder radius="md">
+            <Group justify="space-between" mb="md">
+              <Group>
+                <ThemeIcon size="lg" radius="md" color="blue">
+                  <IconUsers size={20} />
+                </ThemeIcon>
+                <Title order={3}>Gestión de Usuarios</Title>
+              </Group>
+              <Button
+                variant="light"
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setUsuarioModalOpen(true)}
+              >
+                Crear Usuario
+              </Button>
+            </Group>
+
+            {loadingUsuarios ? (
+              <Loader />
+            ) : usuarios.length === 0 ? (
+              <Text color="dimmed" ta="center" py="md">No hay usuarios registrados.</Text>
+            ) : (
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Usuario</Table.Th>
+                    <Table.Th>Rol</Table.Th>
+                    <Table.Th>Grupo</Table.Th>
+                    <Table.Th>Acciones</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {usuarios.map(u => (
+                    <Table.Tr key={u.User}>
+                      <Table.Td>{u.User}</Table.Td>
+                      <Table.Td>
+                        <Badge
+                          color={
+                            u.Rol === 'superadmin' ? 'red' :
+                            u.Rol === 'admingrupo' ? 'blue' :
+                            'green'
+                          }
+                          variant="light"
+                        >
+                          {u.Rol}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{u.grupo?.Nombre || u.ID_Grupo || '-'}</Table.Td>
+                      <Table.Td>
+                        <Group gap="xs">
+                          <Tooltip label="Editar">
+                            <ActionIcon
+                              color="blue"
+                              variant="light"
+                              onClick={() => {
+                                setUsuarioToEdit(u);
+                                setEditRol(u.Rol);
+                                setEditGrupo(u.ID_Grupo);
+                                setEditPass('');
+                                setEditUsuarioModalOpen(true);
+                              }}
+                            >
+                              <IconEdit size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Eliminar">
+                            <ActionIcon
+                              color="red"
+                              variant="light"
+                              onClick={() => {
+                                setUsuarioToDelete(u);
+                                setDeleteUsuarioModalOpen(true);
+                              }}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Paper>
+        </Grid.Col>
+
+        {/* Cases Management Card */}
+        <Grid.Col span={12}>
+          <Paper p="md" withBorder radius="md">
+            <Group justify="space-between" mb="md">
+              <Group>
+                <ThemeIcon size="lg" radius="md" color="blue">
+                  <IconFolder size={20} />
+                </ThemeIcon>
+                <Title order={3}>Gestión de Casos</Title>
+              </Group>
+            </Group>
+
+            {casosLoading ? (
+              <Loader />
+            ) : (
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Nombre</Table.Th>
+                    <Table.Th>Grupo</Table.Th>
+                    <Table.Th>Archivos</Table.Th>
+                    <Table.Th>Lecturas</Table.Th>
+                    <Table.Th>Peso (MB)</Table.Th>
+                    <Table.Th>Acciones</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {casos.map((caso) => {
+                    const archivos = archivosPorCaso[caso.ID_Caso] || [];
+                    const numArchivos = archivos.length;
+                    const totalLecturas = archivos.reduce((acc, a) => acc + (a.Total_Registros || 0), 0);
+                    const totalMB = casosSizes[caso.ID_Caso] ? `${casosSizes[caso.ID_Caso]} MB` : '-';
+                    let grupoNombre = '-';
+                    if ('grupo' in caso && (caso as any).grupo?.Nombre) {
+                      grupoNombre = (caso as any).grupo.Nombre;
+                    } else if ('ID_Grupo' in caso) {
+                      grupoNombre = (caso as any).ID_Grupo;
+                    }
+
+                    return (
+                      <Table.Tr key={caso.ID_Caso}>
+                        <Table.Td>{caso.Nombre_del_Caso}</Table.Td>
+                        <Table.Td>{grupoNombre}</Table.Td>
+                        <Table.Td>{numArchivos}</Table.Td>
+                        <Table.Td>{totalLecturas}</Table.Td>
+                        <Table.Td>{totalMB}</Table.Td>
+                        <Table.Td>
+                          <Group gap="xs">
+                            <Tooltip label="Reasignar Grupo">
+                              <ActionIcon
+                                color="blue"
+                                variant="light"
+                                onClick={() => handleOpenReassign(caso)}
+                              >
+                                <IconEdit size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                            <Tooltip label="Eliminar">
+                              <ActionIcon
+                                color="red"
+                                variant="light"
+                                onClick={() => handleDeleteCaso(caso.ID_Caso)}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Paper>
+        </Grid.Col>
+      </Grid>
+
+      <Modal
+        opened={resetModalOpen}
+        onClose={() => setResetModalOpen(false)}
+        title="Confirmar Reseteo"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="red" title="¡ATENCIÓN!" icon={<IconAlertCircle size={16} />}>
+            Esta acción eliminará <b>TODOS</b> los datos de la base de datos y <span style={{ color: '#d97706' }}>no se puede deshacer</span>.
+          </Alert>
           <TextInput
             label="Escribe RESETEAR para confirmar"
             value={resetConfirmText}
@@ -1080,21 +1151,27 @@ function AdminPage() {
             error={resetConfirmText && resetConfirmText !== 'RESETEAR' ? 'Debes escribir RESETEAR exactamente' : undefined}
           />
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setResetModalOpen(false)}>
+            <Button variant="light" onClick={() => setResetModalOpen(false)}>
               Cancelar
             </Button>
             <Button color="red" disabled={resetConfirmText !== 'RESETEAR'} onClick={confirmReset} loading={loading}>
               Resetear Base de Datos
             </Button>
           </Group>
-        </Modal>
+        </Stack>
+      </Modal>
 
-        <Modal opened={clearModalOpen} onClose={() => setClearModalOpen(false)} title="Confirmar Eliminación Masiva" centered>
-          <Text fw={700} mb="md" c="black">
-            Esta acción eliminará <b>TODOS</b> los datos de la base de datos excepto los lectores.<br />
-            <span style={{ color: '#d97706' }}>No se puede deshacer.</span><br />
-            Para confirmar, escribe <b>ELIMINAR</b> en el campo de abajo.
-          </Text>
+      <Modal
+        opened={clearModalOpen}
+        onClose={() => setClearModalOpen(false)}
+        title="Confirmar Eliminación"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="orange" title="¡ATENCIÓN!" icon={<IconAlertCircle size={16} />}>
+            Esta acción eliminará todos los datos excepto los lectores. Esta acción <span style={{ color: '#d97706' }}>no se puede deshacer</span>.
+          </Alert>
           <TextInput
             label="Escribe ELIMINAR para confirmar"
             value={clearConfirmText}
@@ -1102,251 +1179,350 @@ function AdminPage() {
             error={clearConfirmText && clearConfirmText !== 'ELIMINAR' ? 'Debes escribir ELIMINAR exactamente' : undefined}
           />
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setClearModalOpen(false)}>
+            <Button variant="light" onClick={() => setClearModalOpen(false)}>
               Cancelar
             </Button>
-            <Button color="pink" disabled={clearConfirmText !== 'ELIMINAR'} onClick={confirmClearExceptLectores} loading={clearing}>
-              Eliminar todo (excepto lectores)
+            <Button color="orange" disabled={clearConfirmText !== 'ELIMINAR'} onClick={confirmClearExceptLectores} loading={clearing}>
+              Eliminar Datos
             </Button>
           </Group>
-        </Modal>
+        </Stack>
+      </Modal>
 
-        <Modal opened={restoreFileModalOpen} onClose={() => { setRestoreFileModalOpen(false); setRestoreFile(null); setRestoreFileName(''); if (fileInputRef.current) fileInputRef.current.value = ''; }} title="Confirmar Restauración desde Archivo" centered>
-          <Text fw={700} mb="md" c="black">
-            Vas a restaurar la base de datos desde el archivo:<br />
-            <b>{restoreFileName}</b><br />
-            <span style={{ color: '#d97706' }}>Esta acción <b>sobrescribirá</b> la base de datos actual y no se puede deshacer.</span>
-          </Text>
+      <Modal
+        opened={restoreFileModalOpen}
+        onClose={() => setRestoreFileModalOpen(false)}
+        title="Restaurar desde Archivo"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="blue" title="Información" icon={<IconInfoCircle size={16} />}>
+            Se restaurará la base de datos desde el archivo: <b>{restoreFileName}</b>
+          </Alert>
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => { setRestoreFileModalOpen(false); setRestoreFile(null); setRestoreFileName(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}>
+            <Button variant="light" onClick={() => setRestoreFileModalOpen(false)}>
               Cancelar
             </Button>
-            <Button color="green" onClick={confirmFileRestore} loading={uploading}>
-              Restaurar desde archivo
+            <Button color="blue" onClick={confirmFileRestore} loading={uploading}>
+              Restaurar
             </Button>
           </Group>
-        </Modal>
+        </Stack>
+      </Modal>
 
-        <Modal opened={restoreBackupModalOpen} onClose={() => { setRestoreBackupModalOpen(false); setBackupToRestore(null); }} title="Confirmar Restauración de Backup" centered>
-          <Text fw={700} mb="md" c="black">
-            Vas a restaurar la base de datos desde el backup:<br />
-            <b>{backupToRestore?.filename}</b><br />
-            <span style={{ color: '#d97706' }}>Esta acción <b>sobrescribirá</b> la base de datos actual y no se puede deshacer.</span>
-          </Text>
+      <Modal
+        opened={restoreBackupModalOpen}
+        onClose={() => setRestoreBackupModalOpen(false)}
+        title="Restaurar Backup"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="blue" title="Información" icon={<IconInfoCircle size={16} />}>
+            Se restaurará la base de datos desde el backup: <b>{backupToRestore?.filename}</b>
+          </Alert>
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => { setRestoreBackupModalOpen(false); setBackupToRestore(null); }}>
+            <Button variant="light" onClick={() => setRestoreBackupModalOpen(false)}>
               Cancelar
             </Button>
             <Button color="blue" onClick={confirmRestoreBackup} loading={restoringBackup}>
-              Restaurar backup seleccionado
+              Restaurar
             </Button>
           </Group>
-        </Modal>
+        </Stack>
+      </Modal>
 
-        <Modal opened={deleteBackupModalOpen} onClose={() => { setDeleteBackupModalOpen(false); setBackupToDelete(null); }} title="Confirmar Eliminación de Backup" centered>
-          <Text fw={700} mb="md" c="black">
-            ¿Seguro que quieres eliminar el backup <b>{backupToDelete?.filename}</b>?<br />
-            <span style={{ color: '#d97706' }}>Esta acción no se puede deshacer.</span>
-          </Text>
+      <Modal
+        opened={deleteBackupModalOpen}
+        onClose={() => setDeleteBackupModalOpen(false)}
+        title="Eliminar Backup"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="red" title="¡ATENCIÓN!" icon={<IconAlertCircle size={16} />}>
+            Se eliminará el backup: <b>{backupToDelete?.filename}</b>
+          </Alert>
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => { setDeleteBackupModalOpen(false); setBackupToDelete(null); }}>
+            <Button variant="light" onClick={() => setDeleteBackupModalOpen(false)}>
               Cancelar
             </Button>
             <Button color="red" onClick={confirmDeleteBackup} loading={deletingBackup}>
-              Eliminar backup
+              Eliminar
             </Button>
           </Group>
-        </Modal>
+        </Stack>
+      </Modal>
 
-        {/* Modal para crear grupo */}
-        <Modal opened={createGrupoModalOpen} onClose={() => setCreateGrupoModalOpen(false)} title="Crear Nuevo Grupo" centered>
-          <Stack>
-            <TextInput
-              label="Nombre del Grupo"
-              placeholder="Ingrese el nombre del grupo"
-              value={newGrupoNombre}
-              onChange={(e) => setNewGrupoNombre(e.currentTarget.value)}
-              required
-            />
-            <Textarea
-              label="Descripción"
-              placeholder="Ingrese una descripción (opcional)"
-              value={newGrupoDescripcion}
-              onChange={(e) => setNewGrupoDescripcion(e.currentTarget.value)}
-            />
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={() => setCreateGrupoModalOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleCreateGrupo} loading={loadingGrupos}>
-                Crear Grupo
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
-
-        {/* Modal para editar grupo */}
-        <Modal opened={editGrupoModalOpen} onClose={() => setEditGrupoModalOpen(false)} title="Editar Grupo" centered>
-          <Stack>
-            <TextInput
-              label="Nombre del Grupo"
-              placeholder="Ingrese el nombre del grupo"
-              value={editGrupoNombre}
-              onChange={(e) => setEditGrupoNombre(e.currentTarget.value)}
-              required
-            />
-            <Textarea
-              label="Descripción"
-              placeholder="Ingrese una descripción (opcional)"
-              value={editGrupoDescripcion}
-              onChange={(e) => setEditGrupoDescripcion(e.currentTarget.value)}
-            />
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={() => setEditGrupoModalOpen(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleEditGrupo} loading={loadingGrupos}>
-                Guardar Cambios
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
-
-        {/* Modal para eliminar grupo */}
-        <Modal opened={deleteGrupoModalOpen} onClose={() => setDeleteGrupoModalOpen(false)} title="Eliminar Grupo" centered>
-          <Text fw={700} mb="md" c="black">
-            ¿Estás seguro de que quieres eliminar el grupo <b>{grupoToDelete?.Nombre}</b>?<br />
-            <span style={{ color: '#d97706' }}>Esta acción no se puede deshacer.</span>
-          </Text>
+      <Modal
+        opened={createGrupoModalOpen}
+        onClose={() => setCreateGrupoModalOpen(false)}
+        title="Crear Grupo"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <TextInput
+            label="Nombre del Grupo"
+            placeholder="Ingrese el nombre del grupo"
+            value={newGrupoNombre}
+            onChange={(e) => setNewGrupoNombre(e.currentTarget.value)}
+            required
+          />
+          <Textarea
+            label="Descripción"
+            placeholder="Ingrese una descripción (opcional)"
+            value={newGrupoDescripcion}
+            onChange={(e) => setNewGrupoDescripcion(e.currentTarget.value)}
+          />
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setDeleteGrupoModalOpen(false)}>
+            <Button variant="light" onClick={() => setCreateGrupoModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateGrupo} loading={loadingGrupos}>
+              Crear Grupo
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={editGrupoModalOpen}
+        onClose={() => setEditGrupoModalOpen(false)}
+        title="Editar Grupo"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <TextInput
+            label="Nombre del Grupo"
+            placeholder="Ingrese el nombre del grupo"
+            value={editGrupoNombre}
+            onChange={(e) => setEditGrupoNombre(e.currentTarget.value)}
+            required
+          />
+          <Textarea
+            label="Descripción"
+            placeholder="Ingrese una descripción (opcional)"
+            value={editGrupoDescripcion}
+            onChange={(e) => setEditGrupoDescripcion(e.currentTarget.value)}
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => setEditGrupoModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEditGrupo} loading={loadingGrupos}>
+              Guardar Cambios
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={deleteGrupoModalOpen}
+        onClose={() => setDeleteGrupoModalOpen(false)}
+        title="Eliminar Grupo"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="red" title="¡ATENCIÓN!" icon={<IconAlertCircle size={16} />}>
+            ¿Estás seguro de que quieres eliminar el grupo <b>{grupoToDelete?.Nombre}</b>?<br />
+            Esta acción <span style={{ color: '#d97706' }}>no se puede deshacer</span>.
+          </Alert>
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => setDeleteGrupoModalOpen(false)}>
               Cancelar
             </Button>
             <Button color="red" onClick={handleDeleteGrupo} loading={loadingGrupos}>
               Eliminar Grupo
             </Button>
           </Group>
-        </Modal>
+        </Stack>
+      </Modal>
 
-        {/* Modal Crear Usuario */}
-        <Modal opened={usuarioModalOpen} onClose={() => setUsuarioModalOpen(false)} title="Crear Usuario" centered>
-          <Stack>
-            <TextInput label="Carné Profesional (User)" value={newUser} onChange={e => setNewUser(e.currentTarget.value.replace(/\D/g, ''))} maxLength={6} required />
+      <Modal
+        opened={usuarioModalOpen}
+        onClose={() => setUsuarioModalOpen(false)}
+        title="Crear Usuario"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <TextInput
+            label="Carné Profesional (User)"
+            value={newUser}
+            onChange={e => setNewUser(e.currentTarget.value.replace(/\D/g, ''))}
+            maxLength={6}
+            required
+          />
+          <Select
+            label="Rol"
+            placeholder="Seleccione un rol"
+            required
+            value={newRol}
+            onChange={(value) => setNewRol(value as 'superadmin' | 'admingrupo' | 'user_consulta')}
+            data={[
+              { value: 'superadmin', label: 'Superadmin' },
+              { value: 'admingrupo', label: 'Admin Grupo' },
+              { value: 'user_consulta', label: 'Usuario Consulta' },
+            ]}
+            error={!newRol && 'El rol es obligatorio'}
+          />
+          {newRol !== 'superadmin' && (
             <Select
-              label="Rol"
-              placeholder="Seleccione un rol"
-              required
-              value={newRol}
-              onChange={(value) => setNewRol(value as 'superadmin' | 'admingrupo' | 'user_consulta')}
-              data={[
-                { value: 'superadmin', label: 'Superadmin' },
-                { value: 'admingrupo', label: 'Admin Grupo' },
-                { value: 'user_consulta', label: 'Usuario Consulta' },
-              ]}
-              error={!newRol && 'El rol es obligatorio'}
-            />
-            {newRol !== 'superadmin' && (
-              <Select label="Grupo" value={newGrupo?.toString() || ''} onChange={v => setNewGrupo(Number(v))} data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))} required searchable />
-            )}
-            <TextInput label="Contraseña" value={newPass} onChange={e => setNewPass(e.currentTarget.value)} type="password" required />
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={() => setUsuarioModalOpen(false)}>Cancelar</Button>
-              <Button onClick={handleCreateUsuario} loading={loadingUsuarios}>Crear Usuario</Button>
-            </Group>
-          </Stack>
-        </Modal>
-
-        {/* Modal Editar Usuario */}
-        <Modal opened={editUsuarioModalOpen} onClose={() => setEditUsuarioModalOpen(false)} title="Editar Usuario" centered>
-          <Stack>
-            <Select
-              label="Rol"
-              placeholder="Seleccione un rol"
-              required
-              value={editRol}
-              onChange={(value) => setEditRol(value as 'superadmin' | 'admingrupo' | 'user_consulta')}
-              data={[
-                { value: 'superadmin', label: 'Superadmin' },
-                { value: 'admingrupo', label: 'Admin Grupo' },
-                { value: 'user_consulta', label: 'Usuario Consulta' },
-              ]}
-            />
-            <Select label="Grupo" value={editGrupo?.toString() || ''} onChange={v => setEditGrupo(Number(v))} data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))} required searchable />
-            <TextInput label="Contraseña" value={editPass} onChange={e => setEditPass(e.currentTarget.value)} type="password" />
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={() => setEditUsuarioModalOpen(false)}>Cancelar</Button>
-              <Button onClick={handleEditUsuario} loading={loadingUsuarios}>Guardar Cambios</Button>
-            </Group>
-          </Stack>
-        </Modal>
-
-        {/* Modal Eliminar Usuario */}
-        <Modal opened={deleteUsuarioModalOpen} onClose={() => setDeleteUsuarioModalOpen(false)} title="Eliminar Usuario" centered>
-          <Text fw={700} mb="md" c="black">
-            ¿Seguro que quieres eliminar el usuario <b>{usuarioToDelete?.User}</b>?<br />
-            <span style={{ color: '#d97706' }}>Esta acción no se puede deshacer.</span>
-          </Text>
-          <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => setDeleteUsuarioModalOpen(false)}>Cancelar</Button>
-            <Button color="red" onClick={handleDeleteUsuario} loading={loadingUsuarios}>Eliminar Usuario</Button>
-          </Group>
-        </Modal>
-
-        {/* Modal Reasignar Grupo */}
-        <Modal opened={reassignModalOpen} onClose={() => setReassignModalOpen(false)} title="Reasignar Grupo" centered>
-          <Stack>
-            <Select
-              label="Nuevo Grupo"
-              value={nuevoGrupoId?.toString() || ''}
-              onChange={v => setNuevoGrupoId(Number(v))}
+              label="Grupo"
+              value={newGrupo?.toString() || ''}
+              onChange={v => setNewGrupo(Number(v))}
               data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))}
               required
               searchable
             />
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={() => setReassignModalOpen(false)}>Cancelar</Button>
-              <Button onClick={handleReassignGrupo}>Reasignar</Button>
-            </Group>
-          </Stack>
-        </Modal>
+          )}
+          <PasswordInput
+            label="Contraseña"
+            value={newPass}
+            onChange={e => setNewPass(e.currentTarget.value)}
+            required
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => setUsuarioModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateUsuario} loading={loadingUsuarios}>
+              Crear Usuario
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
-        {/* Módulo de Personalización del Footer */}
-        <Paper withBorder p="md" mt="xl">
-          <Title order={3} mb="md">Personalización del Footer</Title>
-          <Text size="sm" c="dimmed" mb="md">
-            Personaliza el texto que aparece en el footer del Sidebar.
-          </Text>
-          <Group>
-            <TextInput
-              label="Texto del Footer"
-              value={footerText}
-              onChange={(e) => setFooterText(e.currentTarget.value)}
-              style={{ flex: 1 }}
+      <Modal
+        opened={editUsuarioModalOpen}
+        onClose={() => setEditUsuarioModalOpen(false)}
+        title="Editar Usuario"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Select
+            label="Rol"
+            placeholder="Seleccione un rol"
+            required
+            value={editRol}
+            onChange={(value) => setEditRol(value as 'superadmin' | 'admingrupo' | 'user_consulta')}
+            data={[
+              { value: 'superadmin', label: 'Superadmin' },
+              { value: 'admingrupo', label: 'Admin Grupo' },
+              { value: 'user_consulta', label: 'Usuario Consulta' },
+            ]}
+          />
+          {editRol !== 'superadmin' && (
+            <Select
+              label="Grupo"
+              value={editGrupo?.toString() || ''}
+              onChange={v => setEditGrupo(Number(v))}
+              data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))}
+              required
+              searchable
             />
-            <Button onClick={() => setFooterModalOpen(true)} mt={24}>
+          )}
+          <PasswordInput
+            label="Contraseña"
+            value={editPass}
+            onChange={e => setEditPass(e.currentTarget.value)}
+            placeholder="Dejar en blanco para mantener la actual"
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => setEditUsuarioModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEditUsuario} loading={loadingUsuarios}>
               Guardar Cambios
             </Button>
           </Group>
-        </Paper>
+        </Stack>
+      </Modal>
 
-        {/* Modal de confirmación para guardar el footer */}
-        <Modal opened={footerModalOpen} onClose={() => setFooterModalOpen(false)} title="Confirmar Cambios" centered>
-          <Text mb="md">
-            ¿Estás seguro de que quieres cambiar el texto del footer a:
-            <br />
-            <b>{footerText}</b>
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setFooterModalOpen(false)}>
+      <Modal
+        opened={deleteUsuarioModalOpen}
+        onClose={() => setDeleteUsuarioModalOpen(false)}
+        title="Eliminar Usuario"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="red" title="¡ATENCIÓN!" icon={<IconAlertCircle size={16} />}>
+            ¿Estás seguro de que quieres eliminar el usuario <b>{usuarioToDelete?.User}</b>?<br />
+            Esta acción <span style={{ color: '#d97706' }}>no se puede deshacer</span>.
+          </Alert>
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => setDeleteUsuarioModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button color="red" onClick={handleDeleteUsuario} loading={loadingUsuarios}>
+              Eliminar Usuario
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={reassignModalOpen}
+        onClose={() => setReassignModalOpen(false)}
+        title="Reasignar Grupo"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <Alert color="blue" title="Información" icon={<IconInfoCircle size={16} />}>
+            Reasignar el caso <b>{casoToReassign?.Nombre_del_Caso}</b> a otro grupo
+          </Alert>
+          <Select
+            label="Nuevo Grupo"
+            placeholder="Seleccione un grupo"
+            value={nuevoGrupoId?.toString() || ''}
+            onChange={v => setNuevoGrupoId(Number(v))}
+            data={grupos.map(g => ({ value: g.ID_Grupo.toString(), label: g.Nombre }))}
+            required
+            searchable
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => setReassignModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleReassignGrupo}>
+              Reasignar
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={footerModalOpen}
+        onClose={() => setFooterModalOpen(false)}
+        title="Configurar Pie de Página"
+        centered
+        radius="md"
+      >
+        <Stack>
+          <TextInput
+            label="Texto del Pie de Página"
+            value={footerText}
+            onChange={e => setFooterText(e.currentTarget.value)}
+            required
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => setFooterModalOpen(false)}>
               Cancelar
             </Button>
             <Button onClick={handleSaveFooter}>
-              Confirmar
+              Guardar
             </Button>
           </Group>
-        </Modal>
-      </Container>
-    </>
+        </Stack>
+      </Modal>
+    </Box>
   );
 }
 

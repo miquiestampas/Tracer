@@ -88,14 +88,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const timeToLogout = SESSION_DURATION_MS;
       const timeToWarning = SESSION_DURATION_MS - SESSION_WARNING_MS;
 
+      console.log('Reiniciando timeouts de sesión:', {
+        timeToWarning: new Date(Date.now() + timeToWarning).toLocaleTimeString(),
+        timeToLogout: new Date(Date.now() + timeToLogout).toLocaleTimeString()
+      });
+
       if (timeToWarning > 0) {
         const newWarningTimeout = setTimeout(() => {
+          console.log('Mostrando advertencia de sesión');
           setShowSessionWarning(true);
         }, timeToWarning);
         setWarningTimeout(newWarningTimeout);
       }
       
       const newLogoutTimeout = setTimeout(() => {
+        console.log('Ejecutando logout por timeout');
         notifications.show({
           title: 'Sesión Expirada',
           message: 'Tu sesión ha expirado por inactividad. Por favor, inicia sesión de nuevo.',
