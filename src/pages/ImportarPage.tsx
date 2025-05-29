@@ -36,6 +36,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { ProgressOverlay } from '../components/common/ProgressOverlay';
 import TaskStatusMonitor from '../components/common/TaskStatusMonitor';
 import { useTask } from '../contexts/TaskContext';
+import { useAuth } from '../context/AuthContext';
 
 // Definir los campos requeridos - SEPARANDO Fecha y Hora
 const REQUIRED_FIELDS: { [key in 'LPR' | 'GPS' | 'GPX_KML']: string[] } = {
@@ -124,6 +125,8 @@ function ImportarPage() {
 
   const { addTask } = useTask();
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
+
+  const { getToken } = useAuth();
 
   // Cargar casos para el selector
   useEffect(() => {
@@ -638,6 +641,36 @@ function ImportarPage() {
     setImportWarning(null);
   };
 
+  // --- NUEVA FUNCIÓN DE DESCARGA SEGURA ---
+  const handleDownloadArchivo = async (archivoId: number, nombreArchivo: string) => {
+    try {
+      const token = getToken();
+      const response = await fetch(`/api/archivos/${archivoId}/download`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error('No se pudo descargar el archivo.');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = nombreArchivo;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      notifications.show({
+        title: 'Error de descarga',
+        message: 'No se pudo descargar el archivo.',
+        color: 'red'
+      });
+    }
+  };
+
   // --- Renderizado del Componente ---
   return (
     <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
@@ -848,7 +881,7 @@ function ImportarPage() {
                         <ActionIcon
                           variant="subtle"
                           color="blue"
-                          onClick={() => window.open(`/api/archivos/${archivo.ID_Archivo}/download`, '_blank')}
+                          onClick={() => handleDownloadArchivo(archivo.ID_Archivo, archivo.Nombre_del_Archivo)}
                         >
                           <IconDownload size={16} />
                         </ActionIcon>

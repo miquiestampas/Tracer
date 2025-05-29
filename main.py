@@ -745,53 +745,47 @@ class UploadInitiationResponse(BaseModel):
     task_id: str
     message: str
 
-@app.post("/casos/{caso_id}/archivos/upload", response_model=UploadInitiationResponse, status_code=status.HTTP_202_ACCEPTED) # MODIFIED status_code and response_model
+@app.post("/casos/{caso_id}/archivos/upload", response_model=UploadInitiationResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_excel_submission(
     caso_id: int,
-    background_tasks: BackgroundTasks, # MOVED UP further
+    background_tasks: BackgroundTasks,
     tipo_archivo: str = Form(..., pattern="^(GPS|LPR)$"),
     excel_file: UploadFile = File(...),
     column_mapping: str = Form(...),
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_active_user)
 ):
+    import os
     logger.info(f"User {current_user.User} requesting to upload file '{excel_file.filename}' for caso {caso_id}")
-    # 1. Verificar caso y permisos (Synchronous part)
     db_caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
     if db_caso is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Caso no encontrado")
-
     user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
     is_superadmin = user_rol == RolUsuarioEnum.superadmin.value
     is_admingrupo = user_rol == RolUsuarioEnum.admingrupo.value
-
     if not is_superadmin and not is_admingrupo:
          raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para subir archivos.")
-
-    if is_admingrupo: # admingrupo specific checks
+    if is_admingrupo:
         if current_user.ID_Grupo is None:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
         if db_caso.ID_Grupo != current_user.ID_Grupo:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para subir archivos a este caso (grupo no coincide).")
-
-    # 2. Verificar si ya existe un archivo con el mismo nombre en el mismo caso (Synchronous part)
     archivo_existente = db.query(models.ArchivoExcel).filter(
         models.ArchivoExcel.ID_Caso == caso_id,
         models.ArchivoExcel.Nombre_del_Archivo == excel_file.filename
     ).first()
-    
     if archivo_existente:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Ya existe un archivo con el nombre '{excel_file.filename}' en este caso."
         )
-
     task_id = uuid.uuid4().hex
     original_filename = excel_file.filename
-    # Save to a temporary file path that includes the task_id to avoid collisions
+    # --- NUEVO: Guardar en subcarpeta uploads/CasoX ---
+    caso_folder = UPLOADS_DIR / f"Caso{caso_id}"
+    os.makedirs(caso_folder, exist_ok=True)
     temp_filename = f"processing_{task_id}_{original_filename}"
-    temp_file_path = str(UPLOADS_DIR / temp_filename) # Ensure it's a string for pd.read_excel
-
+    temp_file_path = str(caso_folder / temp_filename)
     logger.info(f"[Task {task_id}] Saving temporary file to: {temp_file_path}")
     try:
         with open(temp_file_path, "wb") as buffer:
@@ -799,15 +793,12 @@ async def upload_excel_submission(
         logger.info(f"[Task {task_id}] Temporary file saved successfully: {temp_file_path}")
     except Exception as e:
         logger.error(f"[Task {task_id}] CRÍTICO al guardar el archivo subido {original_filename} en {temp_file_path}: {e}", exc_info=True)
-        # Clean up partial file if save failed, though it might be open/locked
         if os.path.exists(temp_file_path):
-            try: os.remove(temp_file_path) 
+            try: os.remove(temp_file_path)
             except: pass
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"No se pudo guardar el archivo temporalmente '{original_filename}'.")
     finally:
-        excel_file.file.close() 
-    
-    # Inicializar estado de la tarea
+        excel_file.file.close()
     task_statuses[task_id] = {
         "status": "pending",
         "message": "Upload accepted, pending processing.",
@@ -815,21 +806,17 @@ async def upload_excel_submission(
         "total": None,
         "stage": "reading_file"
     }
-
-    # Enqueue the background task
     background_tasks.add_task(
         process_file_in_background,
         task_id,
-        temp_file_path, # Pass the full path to the temp file
-        original_filename, # Pass the original filename for final DB record
+        temp_file_path,
+        original_filename,
         caso_id,
         tipo_archivo,
-        column_mapping, # Pass the raw JSON string
-        current_user.User # Pass user ID for logging/context in task
+        column_mapping,
+        current_user.User
     )
-    
     logger.info(f"[Task {task_id}] File '{original_filename}' for caso {caso_id} enqueued for background processing.")
-    
     return UploadInitiationResponse(
         task_id=task_id,
         message="File upload accepted and is being processed in the background. Check status endpoint for progress."
@@ -890,54 +877,6 @@ def read_archivos_por_caso(caso_id: int, db: Session = Depends(get_db), current_
     except Exception as e:
         logger.error(f"Error al obtener archivos para caso {caso_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error interno al obtener archivos: {e}")
-
-@app.get("/archivos/{id_archivo}/download")
-async def download_archivo(id_archivo: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
-    logger.info(f"Solicitud de descarga para archivo ID: {id_archivo} por usuario {current_user.User}")
-    archivo_db = db.query(models.ArchivoExcel).options(joinedload(models.ArchivoExcel.caso)).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
-    if archivo_db is None:
-        logger.error(f"Registro archivo ID {id_archivo} no encontrado DB.")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registro de archivo no encontrado.")
-
-    if not archivo_db.caso:
-        logger.error(f"Archivo ID {id_archivo} no está asociado a ningún caso. No se puede verificar permisos.")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error de consistencia de datos del archivo.")
-
-    user_rol = current_user.Rol.value if hasattr(current_user.Rol, 'value') else current_user.Rol
-    if user_rol == RolUsuarioEnum.admingrupo.value:
-        if current_user.ID_Grupo is None:
-            logger.warning(f"Admingrupo {current_user.User} sin grupo asignado intentó descargar archivo {id_archivo}.")
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admingrupo no tiene un grupo asignado.")
-        if archivo_db.caso.ID_Grupo != current_user.ID_Grupo:
-            logger.warning(f"Admingrupo {current_user.User} (Grupo {current_user.ID_Grupo}) intentó descargar archivo {id_archivo} del caso {archivo_db.ID_Caso} (Grupo {archivo_db.caso.ID_Grupo}). Acceso denegado.")
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para descargar este archivo.")
-    elif user_rol != RolUsuarioEnum.superadmin.value:
-        logger.warning(f"Usuario {current_user.User} (Rol {user_rol}) intentó descargar archivo {id_archivo}. Acceso denegado.")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permiso denegado para descargar archivos.")
-
-    if not archivo_db.Nombre_del_Archivo:
-         logger.error(f"Registro archivo ID {id_archivo} sin nombre.")
-         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Falta nombre del archivo BD.")
-    file_path = UPLOADS_DIR / archivo_db.Nombre_del_Archivo
-    logger.info(f"[Download] Verificando: {file_path}")
-    if not os.path.isfile(file_path):
-        logger.error(f"[Download] Archivo físico NO encontrado: {file_path}")
-        try:
-             contenido_dir = os.listdir(UPLOADS_DIR)
-             logger.warning(f"[Download] Contenido {UPLOADS_DIR}: {contenido_dir}")
-        except Exception as list_err:
-             logger.error(f"[Download] Error listando {UPLOADS_DIR}: {list_err}")
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo original no encontrado servidor.")
-    else:
-        logger.info(f"[Download] Archivo encontrado: {file_path}")
-    media_type = 'application/octet-stream'
-    if archivo_db.Nombre_del_Archivo:
-        if archivo_db.Nombre_del_Archivo.lower().endswith(('.xlsx', '.xls')):
-            media_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        elif archivo_db.Nombre_del_Archivo.lower().endswith('.csv'):
-            media_type = 'text/csv'
-    logger.info(f"[Download] Devolviendo: {file_path} ({media_type})")
-    return FileResponse(path=file_path, filename=archivo_db.Nombre_del_Archivo, media_type=media_type)
 
 @app.delete("/archivos/{id_archivo}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_archivo(id_archivo: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
@@ -2273,17 +2212,17 @@ def get_sugerencias_matriculas(
 # --- START Background File Processing Function ---
 def process_file_in_background(
     task_id: str,
-    temp_file_path: str, # Full path to the temporarily saved file
+    temp_file_path: str,
     original_filename: str,
     caso_id: int,
     tipo_archivo: str,
     column_mapping_str: str,
-    user_id_for_log: int # User ID for logging purposes
+    user_id_for_log: int
 ):
-    db: Session = SessionLocal() # Create a new session for the background task
+    import os
+    db: Session = SessionLocal()
     logger.info(f"[Task {task_id}] Background processing started for {original_filename} (Caso: {caso_id}, Tipo: {tipo_archivo})")
     task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "processing", "message": "Leyendo archivo...", "progress": 0, "stage": "reading_file"}
-
     try:
         logger.info(f"[Task {task_id}] Leyendo archivo: {temp_file_path}")
         try:
@@ -2497,6 +2436,16 @@ def process_file_in_background(
             **task_statuses.get(task_id, {}), "status": "completed", "message": final_msg,
             "progress": 100, "result": result_data.model_dump(), "stage": None
         }
+        # --- Guardar archivo definitivo en uploads/CasoX/nombre_original ---
+        caso_folder = UPLOADS_DIR / f"Caso{caso_id}"
+        os.makedirs(caso_folder, exist_ok=True)
+        final_file_path = caso_folder / original_filename
+        try:
+            shutil.copy(temp_file_path, final_file_path)
+            logger.info(f"[Task {task_id}] Archivo definitivo guardado en: {final_file_path}")
+        except Exception as e:
+            logger.error(f"[Task {task_id}] Error al mover archivo a destino final: {e}", exc_info=True)
+            raise ValueError(f"No se pudo guardar el archivo definitivo '{original_filename}' en la carpeta del caso.")
     except ValueError as ve_proc:
         logger.error(f"[Task {task_id}] Error de validación: {ve_proc}", exc_info=True)
         task_statuses[task_id] = {**task_statuses.get(task_id, {}), "status": "failed", "message": str(ve_proc), "stage": None}
@@ -3513,29 +3462,18 @@ def create_saved_search(caso_id: int, saved_search_data: schemas.SavedSearchCrea
 
 @app.get("/api/casos/{caso_id}/size")
 def get_caso_size(caso_id: int, db: Session = Depends(get_db)):
-    """
-    Obtiene el tamaño total en bytes de todos los archivos asociados a un caso.
-    """
+    import os
     try:
-        # Obtener todos los archivos del caso
         archivos = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Caso == caso_id).all()
-        
-        # Carpeta de uploads
-        uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
-        
-        # Calcular el tamaño total
+        caso_folder = os.path.join(os.path.dirname(__file__), 'uploads', f'Caso{caso_id}')
         total_size = 0
         for archivo in archivos:
             if archivo.Nombre_del_Archivo:
-                ruta = os.path.join(uploads_dir, archivo.Nombre_del_Archivo)
+                ruta = os.path.join(caso_folder, archivo.Nombre_del_Archivo)
                 if os.path.exists(ruta):
                     total_size += os.path.getsize(ruta)
-        
-        # Formatear el tamaño a MB con 2 decimales
         size_mb = round(total_size / (1024 * 1024), 2)
-        
         return {"size_mb": size_mb}
-        
     except Exception as e:
         logger.error(f"Error al obtener el tamaño del caso {caso_id}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -3573,3 +3511,43 @@ def update_task_status(task_id: str, status: str, message: str, progress: float 
     
     task_statuses[task_id] = new_status
     logger.info(f"[Task {task_id}] Status updated: {status} - {message} - Progress: {progress}%")
+
+# --- NUEVO ENDPOINT DE DESCARGA ROBUSTO ---
+from fastapi import APIRouter
+from fastapi.responses import FileResponse
+
+@app.get("/api/archivos/{id_archivo}/download")
+async def descargar_archivo(id_archivo: int, db: Session = Depends(get_db), current_user: models.Usuario = Depends(get_current_active_user)):
+    import os
+    if current_user is None:
+        logger.warning(f"[DESCARGA NUEVA] Intento de descarga no autenticado para archivo ID: {id_archivo}")
+        raise HTTPException(status_code=401, detail="No autenticado para descargar archivos.")
+    logger.info(f"[DESCARGA NUEVA] Solicitud para archivo ID: {id_archivo} por usuario {current_user.User}")
+    archivo_db = db.query(models.ArchivoExcel).filter(models.ArchivoExcel.ID_Archivo == id_archivo).first()
+    if not archivo_db:
+        logger.error(f"[DESCARGA NUEVA] Archivo ID {id_archivo} no encontrado en BD.")
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en base de datos.")
+    caso_id = archivo_db.ID_Caso
+    nombre_archivo = archivo_db.Nombre_del_Archivo
+    if not caso_id or not nombre_archivo:
+        logger.error(f"[DESCARGA NUEVA] Archivo ID {id_archivo} sin caso o sin nombre.")
+        raise HTTPException(status_code=500, detail="Archivo sin caso o sin nombre en BD.")
+    carpeta_caso = UPLOADS_DIR / f"Caso{caso_id}"
+    ruta_archivo = carpeta_caso / nombre_archivo
+    logger.info(f"[DESCARGA NUEVA] Buscando en: {ruta_archivo}")
+    try:
+        archivos_en_carpeta = os.listdir(carpeta_caso)
+        logger.info(f"[DESCARGA NUEVA] Archivos en carpeta: {archivos_en_carpeta}")
+    except Exception as e:
+        logger.error(f"[DESCARGA NUEVA] Error listando carpeta: {e}")
+    if not os.path.isfile(ruta_archivo):
+        logger.error(f"[DESCARGA NUEVA] Archivo físico NO encontrado: {ruta_archivo}")
+        raise HTTPException(status_code=404, detail="Archivo físico no encontrado en servidor.")
+    logger.info(f"[DESCARGA NUEVA] Archivo encontrado y listo para descargar: {ruta_archivo}")
+    # Detectar tipo MIME
+    media_type = 'application/octet-stream'
+    if nombre_archivo.lower().endswith(('.xlsx', '.xls')):
+        media_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    elif nombre_archivo.lower().endswith('.csv'):
+        media_type = 'text/csv'
+    return FileResponse(path=ruta_archivo, filename=nombre_archivo, media_type=media_type)
