@@ -1132,6 +1132,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
               onClick={() => {
                 setShowWarningModal(false);
                 setPendingData(null);
+                notifications.hide('gps-loading');
               }}
             >
               Cancelar

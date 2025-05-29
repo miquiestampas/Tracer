@@ -3551,3 +3551,29 @@ async def descargar_archivo(id_archivo: int, db: Session = Depends(get_db), curr
     elif nombre_archivo.lower().endswith('.csv'):
         media_type = 'text/csv'
     return FileResponse(path=ruta_archivo, filename=nombre_archivo, media_type=media_type)
+
+@app.get("/casos/{caso_id}/lecturas_relevantes", response_model=List[schemas.Lectura])
+def get_lecturas_relevantes_por_caso(
+    caso_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(get_current_active_user)
+):
+    """
+    Obtiene todas las lecturas marcadas como relevantes para un caso específico.
+    Solo usuarios del grupo del caso (o superadmin) pueden acceder.
+    """
+    caso = db.query(models.Caso).filter(models.Caso.ID_Caso == caso_id).first()
+    if not caso:
+        raise HTTPException(status_code=404, detail="Caso no encontrado")
+    is_superadmin = getattr(current_user.Rol, 'value', current_user.Rol) == "superadmin"
+    if not is_superadmin and caso.ID_Grupo != current_user.ID_Grupo:
+        raise HTTPException(status_code=403, detail="No tiene permiso para ver lecturas de este caso.")
+
+    lecturas_relevantes = db.query(models.Lectura)\
+        .options(joinedload(models.Lectura.lector), joinedload(models.Lectura.relevancia))\
+        .join(models.LecturaRelevante, models.Lectura.ID_Lectura == models.LecturaRelevante.ID_Lectura)\
+        .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+        .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+        .order_by(models.Lectura.Fecha_y_Hora)\
+        .all()
+    return lecturas_relevantes
