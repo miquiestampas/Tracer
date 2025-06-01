@@ -1154,6 +1154,11 @@ function LectoresPage() {
         onClose={closeBatchEditModal}
         selectedLectorIds={selectedLectorIds}
         onSave={handleBatchEditSave}
+        provincias={provinciasUnicas}
+        localidades={localidadesUnicas}
+        carreteras={carreterasUnicas.map(c => c.value)}
+        organismos={organismosUnicos.map(o => o.value)}
+        sentidos={['Creciente', 'Decreciente']}
       />
 
       <ExportarLectoresModal

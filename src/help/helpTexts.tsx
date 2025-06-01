@@ -18,6 +18,7 @@ const helpTexts = {
             <li><b>Comparar patrones de movimiento</b> de diferentes vehículos.</li>
             <li><b>Localizar coincidencias</b> entre vehículos en distintos puntos geográficos y temporales.</li>
             <li><b>Investigar vehículos lanzadera</b> que acompañan a un objetivo en diferentes momentos y ubicaciones.</li>
+            <li><b>Exportar datos filtrados</b> directamente a Excel para su análisis externo o documentación.</li>
           </ul>
         </Text>
         <Text size="md" fw={700} mb={2}>¿Cómo guardar una búsqueda?</Text>

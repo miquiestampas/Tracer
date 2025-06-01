@@ -9,9 +9,14 @@ interface BatchEditLectoresModalProps {
   onClose: () => void;
   selectedLectorIds: string[];
   onSave: () => void;
+  provincias: string[];
+  localidades: string[];
+  carreteras: string[];
+  organismos: string[];
+  sentidos?: string[];
 }
 
-function BatchEditLectoresModal({ opened, onClose, selectedLectorIds, onSave }: BatchEditLectoresModalProps) {
+function BatchEditLectoresModal({ opened, onClose, selectedLectorIds, onSave, provincias, localidades, carreteras, organismos, sentidos = ['Creciente', 'Decreciente'] }: BatchEditLectoresModalProps) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState<Partial<LectorUpdateData>>({
     Provincia: undefined,
@@ -64,43 +69,52 @@ function BatchEditLectoresModal({ opened, onClose, selectedLectorIds, onSave }: 
           Los campos que dejes vacíos no se modificarán en los lectores seleccionados.
         </Text>
 
-        <TextInput
+        <Select
           label="Localidad"
+          placeholder="Dejar vacío para no modificar"
+          data={localidades}
           value={formData.Localidad || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, Localidad: e.target.value || undefined }))}
-          placeholder="Dejar vacío para no modificar"
+          onChange={(value) => setFormData(prev => ({ ...prev, Localidad: value || undefined }))}
+          searchable
+          clearable
         />
 
-        <TextInput
+        <Select
           label="Provincia"
+          placeholder="Dejar vacío para no modificar"
+          data={provincias}
           value={formData.Provincia || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, Provincia: e.target.value || undefined }))}
-          placeholder="Dejar vacío para no modificar"
+          onChange={(value) => setFormData(prev => ({ ...prev, Provincia: value || undefined }))}
+          searchable
+          clearable
         />
 
-        <TextInput
+        <Select
           label="Carretera"
-          value={formData.Carretera || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, Carretera: e.target.value || undefined }))}
           placeholder="Dejar vacío para no modificar"
+          data={carreteras}
+          value={formData.Carretera || ''}
+          onChange={(value) => setFormData(prev => ({ ...prev, Carretera: value || undefined }))}
+          searchable
+          clearable
         />
 
-        <TextInput
+        <Select
           label="Organismo Regulador"
-          value={formData.Organismo_Regulador || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, Organismo_Regulador: e.target.value || undefined }))}
           placeholder="Dejar vacío para no modificar"
+          data={organismos}
+          value={formData.Organismo_Regulador || ''}
+          onChange={(value) => setFormData(prev => ({ ...prev, Organismo_Regulador: value || undefined }))}
+          searchable
+          clearable
         />
 
         <Select
           label="Sentido"
           placeholder="Dejar vacío para no modificar"
+          data={sentidos}
           value={formData.Sentido || ''}
           onChange={(value) => setFormData(prev => ({ ...prev, Sentido: value || undefined }))}
-          data={[
-            { value: 'Creciente', label: 'Creciente' },
-            { value: 'Decreciente', label: 'Decreciente' },
-          ]}
           clearable
         />
 
