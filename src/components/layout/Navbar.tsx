@@ -73,7 +73,7 @@ const Navbar: React.FC<NavbarProps> = ({ collapsed }) => {
               }}
             >
               <item.icon 
-                size="1.3rem" 
+                size={collapsed ? '2.2rem' : '1.3rem'}
                 stroke={1.5} 
                 style={{ 
                   color: location.pathname === item.path ? '#000' : '#fff',

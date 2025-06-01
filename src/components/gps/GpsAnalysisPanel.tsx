@@ -1041,30 +1041,6 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
           zIndex: 9999,
         }}
       >
-        <div style={{ position: 'absolute', top: 12, right: 16, zIndex: 10001 }}>
-          <ActionIcon
-            variant="default"
-            size={32}
-            style={{
-              width: 32,
-              height: 32,
-              background: 'white',
-              border: '2px solid #234be7',
-              color: '#234be7',
-              boxShadow: 'none',
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-              zIndex: 10001
-            }}
-            onClick={() => setFullscreenMap(false)}
-            aria-label="Salir de pantalla completa"
-          >
-            <IconMinimize size={16} color="#234be7" />
-          </ActionIcon>
-        </div>
         <Paper withBorder style={{ height: '100vh', minHeight: 400, width: '100vw' }}>
           <GpsMapStandalone
             ref={mapRef}

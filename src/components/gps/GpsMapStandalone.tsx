@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import L from 'leaflet';
 import ReactDOMServer from 'react-dom/server';
 import { Card, Group, Text, Badge, Tooltip, Button, ActionIcon } from '@mantine/core';
-import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronLeft, IconChevronRight, IconDownload } from '@tabler/icons-react';
+import { IconClock, IconGauge, IconCompass, IconMapPin, IconHome, IconStar, IconFlag, IconUser, IconBuilding, IconBriefcase, IconAlertCircle, IconX, IconChevronLeft, IconChevronRight, IconDownload, IconCamera, IconMaximize, IconMinimize } from '@tabler/icons-react';
 import type { GpsLectura, GpsCapa, LocalizacionInteres } from '../../types/data';
 import HeatmapLayer from './HeatmapLayer';
 import MarkerClusterGroup from 'react-leaflet-markercluster';
@@ -811,8 +811,86 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
     return null;
   };
 
+  // --- Captura de pantalla ---
+  const handleExportarMapa = async () => {
+    const mapElement = document.querySelector('.leaflet-container');
+    if (!mapElement) return;
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(mapElement as HTMLElement, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: null,
+        scale: 2
+      });
+      const link = document.createElement('a');
+      link.download = `captura-mapa-gps.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Error al exportar el mapa:', error);
+    }
+  };
+
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {fullscreenMap && (
+        <div style={{
+          position: 'absolute',
+          top: 24,
+          right: 32,
+          zIndex: 20000,
+          display: 'flex',
+          gap: 12
+        }}>
+          <ActionIcon
+            variant="default"
+            size={48}
+            style={{
+              width: 48,
+              height: 48,
+              background: 'white',
+              border: '2px solid #234be7',
+              color: '#234be7',
+              boxShadow: 'none',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0
+            }}
+            onClick={handleExportarMapa}
+            aria-label="Exportar captura de pantalla"
+          >
+            <IconCamera size={28} color="#234be7" />
+          </ActionIcon>
+          <Tooltip label="Salir de pantalla completa" position="left" withArrow>
+            <ActionIcon
+              variant="filled"
+              color="blue"
+              size={56}
+              style={{
+                width: 56,
+                height: 56,
+                background: '#234be7',
+                border: '3px solid #234be7',
+                color: 'white',
+                boxShadow: '0 0 16px #234be7',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                zIndex: 20001
+              }}
+              onClick={() => window.dispatchEvent(new CustomEvent('exitFullscreenGpsMap'))}
+              aria-label="Salir de pantalla completa"
+            >
+              <IconMinimize size={32} color="white" />
+            </ActionIcon>
+          </Tooltip>
+        </div>
+      )}
       <MapContainer
         center={initialCenter}
         zoom={initialZoom}

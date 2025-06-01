@@ -1115,18 +1115,18 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       {/* Botones de cámara y pantalla completa arriba a la derecha */}
       <div style={{
         position: 'absolute',
-        top: 12,
-        right: 16,
-        zIndex: 1000,
+        top: isFullscreen ? 24 : 12,
+        right: isFullscreen ? 32 : 16,
+        zIndex: 20000,
         display: 'flex',
         gap: 8
       }}>
         <ActionIcon
           variant="default"
-          size={32}
+          size={isFullscreen ? 48 : 32}
           style={{
-            width: 32,
-            height: 32,
+            width: isFullscreen ? 48 : 32,
+            height: isFullscreen ? 48 : 32,
             background: 'white',
             border: '2px solid #234be7',
             color: '#234be7',
@@ -1141,29 +1141,33 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           id="camera-capture-btn-lpr"
           aria-label="Exportar captura de pantalla"
         >
-          <IconCamera size={16} color="#234be7" />
+          <IconCamera size={isFullscreen ? 28 : 16} color="#234be7" />
         </ActionIcon>
-        <ActionIcon
-          variant="default"
-          size={32}
-          style={{
-            width: 32,
-            height: 32,
-            background: 'white',
-            border: '2px solid #234be7',
-            color: '#234be7',
-            boxShadow: 'none',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 0
-          }}
-          onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
-          aria-label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
-        >
-          {isFullscreen ? <IconMinimize size={16} color="#234be7" /> : <IconMaximize size={16} color="#234be7" />}
-        </ActionIcon>
+        <Tooltip label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"} position="left" withArrow>
+          <ActionIcon
+            variant="filled"
+            color="blue"
+            size={isFullscreen ? 56 : 32}
+            style={{
+              width: isFullscreen ? 56 : 32,
+              height: isFullscreen ? 56 : 32,
+              background: isFullscreen ? '#234be7' : 'white',
+              border: isFullscreen ? '3px solid #234be7' : '2px solid #234be7',
+              color: isFullscreen ? 'white' : '#234be7',
+              boxShadow: isFullscreen ? '0 0 16px #234be7' : 'none',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+              zIndex: 20001
+            }}
+            onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
+            aria-label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+          >
+            {isFullscreen ? <IconMinimize size={isFullscreen ? 32 : 16} color={isFullscreen ? 'white' : '#234be7'} /> : <IconMaximize size={16} color="#234be7" />}
+          </ActionIcon>
+        </Tooltip>
       </div>
       <MapContainer 
         key={`map-${mapKey}-${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}-${mapControls.visualizationType}`}
