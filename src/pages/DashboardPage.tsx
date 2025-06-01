@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { SimpleGrid, Card, Text, Group, ThemeIcon, rem, Box, Stack, Paper, Grid, RingProgress, Center, Loader, Alert, Title, Avatar } from '@mantine/core';
 import { IconFolder, IconDeviceCctv, IconMap2, IconSearch, IconFileImport, IconDatabase } from '@tabler/icons-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { getEstadisticasGlobales } from '../services/estadisticasApi';
 import { getArchivosRecientes, getImportacionesRecientes } from '../services/dashboardApi';
 import { getCasos } from '../services/casosApi';
 import { QuickSearch } from '../components/dashboard/QuickSearch';
 import { ImportTimeline } from '../components/dashboard/ImportTimeline';
-import { RecentCases } from '../components/dashboard/RecentCases';
-import BusquedaMulticasoPanel from '../components/busqueda/BusquedaMulticasoPanel';
 import { ReaderGeoAlerts } from '../components/dashboard/ReaderAlerts';
-import RecentSuspectVehicles from '../components/dashboard/RecentSuspectVehicles.new';
+import BusquedaMulticasoPanel from '../components/busqueda/BusquedaMulticasoPanel';
+import { buscarVehiculo } from '../services/dashboardApi';
+import { notifications } from '@mantine/notifications';
 
 // Datos de ejemplo para los widgets de resumen
 const summaryData = [
@@ -30,6 +30,7 @@ function HomePage() {
     files: true,
     imports: true
   });
+  const navigate = useNavigate();
 
   const fetchEstadisticas = useCallback(async () => {
     setEstadisticasLoading(true);
@@ -69,8 +70,28 @@ function HomePage() {
   }, [fetchEstadisticas, fetchDashboardData]);
 
   const handleQuickSearch = async (matricula: string) => {
-    // Implementar la búsqueda de matrícula
-    console.log('Buscando matrícula:', matricula);
+    try {
+      const resultado = await buscarVehiculo(matricula);
+      if (resultado && resultado.lecturas.length > 0) {
+        notifications.show({
+          title: 'Vehículo encontrado',
+          message: `Se encontraron ${resultado.lecturas.length} lecturas para la matrícula ${matricula}`,
+          color: 'green',
+        });
+      } else {
+        notifications.show({
+          title: 'Vehículo no encontrado',
+          message: `No se encontraron lecturas para la matrícula ${matricula}`,
+          color: 'yellow',
+        });
+      }
+    } catch (error) {
+      notifications.show({
+        title: 'Error en la búsqueda',
+        message: 'No se pudo realizar la búsqueda del vehículo',
+        color: 'red',
+      });
+    }
   };
 
   return (
@@ -89,14 +110,6 @@ function HomePage() {
           <Card shadow="sm" radius="md" padding="lg" withBorder mt={0}>
             <BusquedaMulticasoPanel />
           </Card>
-
-          {/* Investigaciones Recientes */}
-          <Box mt="xl">
-            <RecentCases cases={recentCases} />
-          </Box>
-
-          {/* Apartado de vehículos sospechosos recientes al final */}
-          <RecentSuspectVehicles />
         </Grid.Col>
 
         {/* Columna Derecha */}

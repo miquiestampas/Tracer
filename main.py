@@ -3551,3 +3551,21 @@ async def descargar_archivo(id_archivo: int, db: Session = Depends(get_db), curr
     elif nombre_archivo.lower().endswith('.csv'):
         media_type = 'text/csv'
     return FileResponse(path=ruta_archivo, filename=nombre_archivo, media_type=media_type)
+
+@app.get("/casos/{caso_id}/lecturas_relevantes", response_model=List[schemas.Lectura])
+def get_lecturas_relevantes_por_caso(caso_id: int, db: Session = Depends(get_db)):
+    """
+    Devuelve todas las lecturas marcadas como relevantes para un caso específico.
+    """
+    try:
+        lecturas_relevantes = db.query(models.Lectura)\
+            .options(joinedload(models.Lectura.lector), joinedload(models.Lectura.relevancia))\
+            .join(models.LecturaRelevante, models.Lectura.ID_Lectura == models.LecturaRelevante.ID_Lectura)\
+            .join(models.ArchivoExcel, models.Lectura.ID_Archivo == models.ArchivoExcel.ID_Archivo)\
+            .filter(models.ArchivoExcel.ID_Caso == caso_id)\
+            .order_by(models.Lectura.Fecha_y_Hora)\
+            .all()
+        return lecturas_relevantes
+    except Exception as e:
+        logger.error(f"Error al obtener lecturas relevantes para caso {caso_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno al obtener lecturas relevantes")

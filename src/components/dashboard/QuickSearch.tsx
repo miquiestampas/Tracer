@@ -1,51 +1,52 @@
-import React, { useState, useMemo } from 'react';
-import { TextInput, Button, Group, Paper, Text, Stack, Loader, Alert, Badge, Divider } from '@mantine/core';
-import { IconSearch, IconClock, IconMapPin } from '@tabler/icons-react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { TextInput, Button, Paper, Stack, Group, Text, Badge, Divider } from '@mantine/core';
+import { IconMapPin } from '@tabler/icons-react';
+import { useDebouncedValue } from '@mantine/hooks';
 import { buscarVehiculo } from '../../services/dashboardApi';
+import type { Lectura } from '../../types/data';
 
 interface QuickSearchProps {
   onSearch: (matricula: string) => void;
 }
 
-interface Lectura {
-  id: number;
-  fecha: string;
-  lector: string;
-  caso: string;
-}
-
-interface ResultadoBusqueda {
+interface VehiculoSearchResult {
   matricula: string;
-  lecturas: Lectura[];
+  lecturas: {
+    id: number;
+    fecha: string;
+    lector: string;
+    caso: string;
+  }[];
 }
 
 export function QuickSearch({ onSearch }: QuickSearchProps) {
   const [matricula, setMatricula] = useState('');
+  const [debouncedMatricula] = useDebouncedValue(matricula, 500);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<ResultadoBusqueda | null>(null);
+  const [resultado, setResultado] = useState<VehiculoSearchResult | null>(null);
 
-  const handleSearch = async () => {
-    if (!matricula.trim()) return;
+  const handleSearch = useCallback(async () => {
+    if (!debouncedMatricula.trim()) return;
     setLoading(true);
     setError(null);
     setResultado(null);
 
     try {
-      const resultado = await buscarVehiculo(matricula);
+      const resultado = await buscarVehiculo(debouncedMatricula);
       setResultado(resultado);
-      onSearch(matricula);
+      onSearch(debouncedMatricula);
     } catch (err: any) {
       setError(err.message || 'Error al buscar el vehículo');
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedMatricula, onSearch]);
 
   // Agrupar lecturas por caso y ordenar casos por la fecha más reciente
   const casosOrdenados = useMemo(() => {
     if (!resultado) return [];
-    const agrupado: Record<string, Lectura[]> = {};
+    const agrupado: Record<string, typeof resultado.lecturas> = {};
     resultado.lecturas.forEach(lectura => {
       const caso = lectura.caso || 'SIN CASO';
       if (!agrupado[caso]) agrupado[caso] = [];
@@ -59,110 +60,106 @@ export function QuickSearch({ onSearch }: QuickSearchProps) {
     return Object.entries(agrupado)
       .sort(([, lecturasA], [, lecturasB]) =>
         new Date(lecturasB[0].fecha).getTime() - new Date(lecturasA[0].fecha).getTime()
-      );
+      )
+      .slice(0, 5); // Limitar a 5 casos más recientes
   }, [resultado]);
 
   return (
-    <Stack>
-      <Paper p="md" withBorder>
+    <Paper p="md" withBorder shadow="md" radius="md" style={{ width: '100%' }}>
+      <Stack>
         <Group>
           <TextInput
-            placeholder="Buscar matrícula..."
+            placeholder="Introduce una matrícula..."
             value={matricula}
             onChange={(e) => setMatricula(e.target.value)}
             style={{ flex: 1 }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           />
-          <Button
-            leftSection={<IconSearch size={16} />}
-            onClick={handleSearch}
-            loading={loading}
-          >
+          <Button onClick={handleSearch} loading={loading}>
             Buscar
           </Button>
+          <Button
+            variant="light"
+            color="gray"
+            onClick={() => {
+              setMatricula('');
+              setResultado(null);
+              setError(null);
+            }}
+            disabled={loading}
+          >
+            Limpiar
+          </Button>
         </Group>
-      </Paper>
 
-      {error && (
-        <Alert color="red" title="Error">
-          {error}
-        </Alert>
-      )}
+        {error && (
+          <Text c="red" size="sm">
+            {error}
+          </Text>
+        )}
 
-      {loading && (
-        <Group justify="center" p="md">
-          <Loader size="sm" />
-        </Group>
-      )}
+        {resultado && (
+          <Paper p="md" withBorder>
+            <Stack>
+              <Group>
+                <Text fw={500} size="lg">
+                  Matrícula: {resultado.matricula}
+                </Text>
+                <Badge size="lg" variant="light">
+                  {resultado.lecturas.length} lecturas
+                </Badge>
+              </Group>
 
-      {resultado && (
-        <Paper p="md" withBorder>
-          <Stack>
-            <Group>
-              <Text fw={500} size="lg">
-                Matrícula: {resultado.matricula}
-              </Text>
-              <Badge size="lg" variant="light">
-                {resultado.lecturas.length} lecturas
-              </Badge>
-            </Group>
-
-            {resultado.lecturas.length === 0 ? (
-              <Text c="dimmed">No se encontraron lecturas para esta matrícula</Text>
-            ) : (
-              <>
-                <Stack>
-                  <Group>
-                    <IconMapPin size={16} />
-                    <Text fw={500}>Casos encontrados:</Text>
-                  </Group>
-                  <Group>
-                    {casosOrdenados.map(([caso, lecturas]) => (
-                      <Badge key={caso} size="md" variant="filled">
-                        {caso} ({lecturas.length})
-                      </Badge>
-                    ))}
-                  </Group>
-                </Stack>
-                <Divider />
-                <Stack>
-                  <Text fw={500} size="md">Lecturas por caso:</Text>
-                  {casosOrdenados.map(([caso, lecturas]) => (
-                    <Stack key={caso} mt="sm">
-                      <Group>
-                        <Badge size="md" variant="filled">{caso}</Badge>
-                        <Text size="sm" c="dimmed">
-                          {lecturas.length} lecturas encontradas
-                        </Text>
-                      </Group>
-                      {lecturas.slice(0, 5).map((lectura) => (
-                        <Paper key={lectura.id} p="xs" withBorder>
-                          <Stack gap="xs">
-                            <Group>
-                              <Text size="sm" fw={500}>
-                                {lectura.fecha}
-                              </Text>
-                            </Group>
+              {resultado.lecturas.length === 0 ? (
+                <Text c="dimmed">No se encontraron lecturas para esta matrícula</Text>
+              ) : (
+                <>
+                  <Stack>
+                    <Group>
+                      <IconMapPin size={16} />
+                      <Text fw={500}>Casos encontrados:</Text>
+                    </Group>
+                    <Group>
+                      {casosOrdenados.map(([caso, lecturas]) => (
+                        <Badge key={caso} size="md" variant="filled">
+                          {caso} ({lecturas.length})
+                        </Badge>
+                      ))}
+                      {resultado.lecturas.length > 5 && (
+                        <Badge size="md" variant="light">
+                          +{resultado.lecturas.length - 5} más
+                        </Badge>
+                      )}
+                    </Group>
+                  </Stack>
+                  <Divider />
+                  <Stack>
+                    <Text fw={500}>Últimas lecturas:</Text>
+                    {resultado.lecturas
+                      .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+                      .slice(0, 5)
+                      .map((lectura) => (
+                        <Group key={lectura.id} justify="space-between">
+                          <Stack gap={0}>
+                            <Text size="sm" fw={500}>
+                              {lectura.lector}
+                            </Text>
                             <Text size="xs" c="dimmed">
-                              Lector: {lectura.lector}
+                              {new Date(lectura.fecha).toLocaleString()}
                             </Text>
                           </Stack>
-                        </Paper>
+                          <Badge size="sm" variant="light">
+                            {lectura.caso || 'SIN CASO'}
+                          </Badge>
+                        </Group>
                       ))}
-                      {lecturas.length > 5 && (
-                        <Text size="sm" c="dimmed">
-                          Y {lecturas.length - 5} lecturas más en este caso...
-                        </Text>
-                      )}
-                    </Stack>
-                  ))}
-                </Stack>
-              </>
-            )}
-          </Stack>
-        </Paper>
-      )}
-    </Stack>
+                  </Stack>
+                </>
+              )}
+            </Stack>
+          </Paper>
+        )}
+      </Stack>
+    </Paper>
   );
 }
 

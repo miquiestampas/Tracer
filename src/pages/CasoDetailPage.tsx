@@ -275,7 +275,7 @@ function CasoDetailPage() {
       if (!idCasoNum) return;
       setRelevantLoading(true);
       try {
-          const response = await apiClient.get<Lectura[]>(`/lecturas`, { params: { caso_id: idCasoNum, solo_relevantes: true } });
+          const response = await apiClient.get<Lectura[]>(`/lecturas`, { params: { caso_ids: idCasoNum, solo_relevantes: true } });
           setLecturasRelevantes(response.data || []);
           console.log('[CasoDetailPage] Lecturas relevantes cargadas:', response.data?.length);
       } catch (error) {

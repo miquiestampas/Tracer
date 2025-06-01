@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme, Table, Select, Collapse, Alert, Progress, Loader } from '@mantine/core';
+import { Stack, Grid, Button, TextInput, Box, NumberInput, LoadingOverlay, Title, rem, Input, Group, ActionIcon, Tooltip, Paper, Checkbox, ThemeIcon, Text, Flex, useMantineTheme, Table, Select, Collapse, Alert, Progress, Loader, Pagination } from '@mantine/core';
 import { TimeInput, DateInput } from '@mantine/dates';
 import { MultiSelect, MultiSelectProps } from '@mantine/core';
 import { IconSearch, IconClock, IconDeviceCctv, IconFolder, IconLicense, IconRoad, IconArrowsUpDown, IconStar, IconStarOff, IconDeviceFloppy, IconBookmark, IconBookmarkOff, IconCar, IconStarFilled, IconCalendar, IconFileExport, IconFilterOff, IconChevronDown, IconChevronRight, IconBuildingCommunity, IconTableOptions, IconTable, IconPlus, IconX, IconMapPin } from '@tabler/icons-react';
@@ -21,6 +21,7 @@ import { getLecturasGps } from '../../services/gpsApi';
 import appEventEmitter from '../../utils/eventEmitter';
 import SaveSearchModal from '../modals/SaveSearchModal';
 import SavedSearchesModal from '../modals/SavedSearchesModal';
+import { useDebouncedValue } from '@mantine/hooks';
 
 // --- Estilos específicos (añadidos aquí también) ---
 const customStyles = `
@@ -153,21 +154,32 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const theme = useMantineTheme();
 
     // --- Estados ---
-    const [fechaInicio, setFechaInicio] = useState('');
-    const [fechaFin, setFechaFin] = useState('');
-    const [timeFrom, setTimeFrom] = useState('');
-    const [timeTo, setTimeTo] = useState('');
-    const [selectedLectores, setSelectedLectores] = useState<string[]>([]);
     const [selectedCasos, setSelectedCasos] = useState<string[]>([]);
+    const [debouncedSelectedCasos] = useDebouncedValue(selectedCasos, 500);
+    const [fechaInicio, setFechaInicio] = useState('');
+    const [debouncedFechaInicio] = useDebouncedValue(fechaInicio, 500);
+    const [fechaFin, setFechaFin] = useState('');
+    const [debouncedFechaFin] = useDebouncedValue(fechaFin, 500);
+    const [timeFrom, setTimeFrom] = useState('');
+    const [debouncedTimeFrom] = useDebouncedValue(timeFrom, 500);
+    const [timeTo, setTimeTo] = useState('');
+    const [debouncedTimeTo] = useDebouncedValue(timeTo, 500);
+    const [selectedLectores, setSelectedLectores] = useState<string[]>([]);
+    const [debouncedSelectedLectores] = useDebouncedValue(selectedLectores, 500);
     const [selectedCarreteras, setSelectedCarreteras] = useState<string[]>([]);
+    const [debouncedSelectedCarreteras] = useDebouncedValue(selectedCarreteras, 500);
     const [selectedSentidos, setSelectedSentidos] = useState<string[]>([]);
+    const [debouncedSelectedSentidos] = useDebouncedValue(selectedSentidos, 500);
+    const [matricula, setMatricula] = useState('');
+    const [debouncedMatricula] = useDebouncedValue(matricula, 500);
+    const [minPasos, setMinPasos] = useState<number | ''>('');
+    const [debouncedMinPasos] = useDebouncedValue(minPasos, 500);
+    const [maxPasos, setMaxPasos] = useState<number | ''>('');
+    const [debouncedMaxPasos] = useDebouncedValue(maxPasos, 500);
     const [selectedOrganismos, setSelectedOrganismos] = useState<string[]>([]);
     const [selectedProvincias, setSelectedProvincias] = useState<string[]>([]);
-    const [matricula, setMatricula] = useState('');
     const [matriculaTags, setMatriculaTags] = useState<string[]>([]);
     const [currentMatriculaInput, setCurrentMatriculaInput] = useState('');
-    const [minPasos, setMinPasos] = useState<number | null>(null);
-    const [maxPasos, setMaxPasos] = useState<number | null>(null);
     const [lectoresList, setLectoresList] = useState<SelectOption[]>([]);
     const [casosList, setCasosList] = useState<SelectOption[]>([]);
     const [carreterasList, setCarreterasList] = useState<SelectOption[]>([]);
@@ -180,7 +192,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [results, setResults] = useState<ExtendedLectura[]>([]);
     const [selectedRecords, setSelectedRecords] = useState<(number | string)[]>([]);
     const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState(25);
+    const [totalPages, setTotalPages] = useState(1);
+    const ITEMS_PER_PAGE = 50;
     const [sortStatus, setSortStatus] = useState<DataTableSortStatus<ExtendedLectura>>({ columnAccessor: 'Fecha_y_Hora', direction: 'desc' });
     const [casosSeleccionados, setCasosSeleccionados] = useState<number[]>([]);
     const [organismosList, setOrganismosList] = useState<SelectOption[]>([]);
@@ -340,10 +353,10 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         });
         
         // Aplicar paginación
-        const start = (page - 1) * pageSize;
-        const end = start + pageSize;
+        const start = (page - 1) * ITEMS_PER_PAGE;
+        const end = start + ITEMS_PER_PAGE;
         return data.slice(start, end);
-    }, [processedResults, sortStatus, page, pageSize]);
+    }, [processedResults, sortStatus, page]);
 
     // --- Cargar datos iniciales ---
     useEffect(() => {
@@ -436,18 +449,15 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
     // --- NUEVA: Función para Limpiar Filtros ---
     const handleClearFilters = useCallback(() => {
-        setFechaInicio('');
-        setFechaFin('');
-        setTimeFrom('');
-        setTimeTo('');
-        setSelectedLectores([]);
+        setSelectedCasos([]);
         setSelectedCarreteras([]);
         setSelectedSentidos([]);
-        setSelectedCasos([]);
+        setSelectedOrganismos([]);
+        setSelectedProvincias([]);
         setCurrentMatriculaInput('');
         setMatriculaTags([]);
-        setMinPasos(null);
-        setMaxPasos(null);
+        setMinPasos('');
+        setMaxPasos('');
         setSelectedRecords([]);
         
         notifications.show({ 
@@ -493,7 +503,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     }, [fechaInicio, fechaFin, timeFrom, timeTo, minPasos, maxPasos]);
 
     // --- Modificar handleSearch para enviar cada matrícula como parámetro separado ---
-    const handleSearch = async () => {
+    const handleSearch = useCallback(async () => {
         // Mostrar notificación de carga en la esquina inferior derecha
         const notificationId = 'analisis-loading';
         notifications.show({
@@ -593,7 +603,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             setOverlayMessage('');
             setOverlayProgress(0);
         }
-    };
+    }, [casoIdFijo, permitirSeleccionCaso, selectedCasos, selectedCarreteras, selectedSentidos, selectedLectores, fechaInicio, fechaFin, timeFrom, timeTo, tipoFuenteFijo, currentMatriculaInput, matriculaTags, minPasos, maxPasos]);
 
     // --- Handler de selección ---
     const handleSelectionChange = useCallback((selectedRecords: ExtendedLectura[]) => {
@@ -1163,7 +1173,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const handlePageSizeChange = useCallback((value: string | null) => {
         if (value === null) return;
         const newPageSize = parseInt(value, 10);
-        setPageSize(newPageSize);
         setPage(1); // Resetear a la primera página al cambiar el tamaño
     }, []);
 
@@ -1458,7 +1467,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     columns={columns}
                                     minHeight={200}
                                     totalRecords={processedResults.length}
-                                    recordsPerPage={pageSize}
+                                    recordsPerPage={ITEMS_PER_PAGE}
                                     page={page}
                                     onPageChange={handlePageChange}
                                     idAccessor="ID_Lectura"
@@ -1481,7 +1490,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                     <Select
                                         label="Filas por página"
                                         data={['25', '50', '100']}
-                                        value={String(pageSize)}
+                                        value={String(ITEMS_PER_PAGE)}
                                         onChange={handlePageSizeChange}
                                         style={{ width: 150 }}
                                         disabled={loading}
