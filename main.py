@@ -3305,7 +3305,13 @@ def buscar_vehiculos_multicaso(
                         "Matricula": l.Matricula,
                         "Fecha_y_Hora": l.Fecha_y_Hora.isoformat(),
                         "ID_Caso": caso.ID_Caso,
-                        "Nombre_del_Caso": caso.Nombre_del_Caso
+                        "Nombre_del_Caso": caso.Nombre_del_Caso,
+                        "ID_Lector": l.ID_Lector,
+                        "Carretera": getattr(l.lector, 'Carretera', ''),
+                        "Provincia": getattr(l.lector, 'Provincia', ''),
+                        "Localidad": getattr(l.lector, 'Localidad', ''),
+                        "Coordenada_X": getattr(l.lector, 'Coordenada_X', ''),
+                        "Coordenada_Y": getattr(l.lector, 'Coordenada_Y', '')
                     }
                     for l in lecturas_caso
                 ]

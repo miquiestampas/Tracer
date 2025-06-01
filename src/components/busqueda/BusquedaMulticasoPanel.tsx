@@ -158,7 +158,9 @@ function BusquedaMulticasoPanel() {
         Caso: caso.nombre,
         Fecha_y_Hora: dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'),
         ID_Lector: lectura.ID_Lector,
-        Lector: lectura.lector || '',
+        Carretera: (lectura as any).Carretera || '',
+        Provincia: (lectura as any).Provincia || '',
+        Localidad: (lectura as any).Localidad || '',
         Coordenada_X: lectura.Coordenada_X ?? '',
         Coordenada_Y: lectura.Coordenada_Y ?? '',
       }))
@@ -180,7 +182,9 @@ function BusquedaMulticasoPanel() {
         Caso: caso.nombre,
         Fecha_y_Hora: dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss'),
         ID_Lector: lectura.ID_Lector,
-        Lector: lectura.lector || '',
+        Carretera: (lectura as any).Carretera || '',
+        Provincia: (lectura as any).Provincia || '',
+        Localidad: (lectura as any).Localidad || '',
         Coordenada_X: lectura.Coordenada_X ?? '',
         Coordenada_Y: lectura.Coordenada_Y ?? '',
       }))
@@ -188,14 +192,16 @@ function BusquedaMulticasoPanel() {
     if (lecturas.length === 0) return;
     // Crear tabla HTML
     let table = `<table style='border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:12pt;'>`;
-    table += `<thead><tr><th style='border:1px solid black;padding:8px;'>Matrícula</th><th style='border:1px solid black;padding:8px;'>Caso</th><th style='border:1px solid black;padding:8px;'>Fecha y Hora</th><th style='border:1px solid black;padding:8px;'>ID Lector</th><th style='border:1px solid black;padding:8px;'>Lector</th><th style='border:1px solid black;padding:8px;'>Coordenada X</th><th style='border:1px solid black;padding:8px;'>Coordenada Y</th></tr></thead><tbody>`;
+    table += `<thead><tr><th style='border:1px solid black;padding:8px;'>Matrícula</th><th style='border:1px solid black;padding:8px;'>Caso</th><th style='border:1px solid black;padding:8px;'>Fecha y Hora</th><th style='border:1px solid black;padding:8px;'>ID Lector</th><th style='border:1px solid black;padding:8px;'>Carretera</th><th style='border:1px solid black;padding:8px;'>Provincia</th><th style='border:1px solid black;padding:8px;'>Localidad</th><th style='border:1px solid black;padding:8px;'>Coordenada X</th><th style='border:1px solid black;padding:8px;'>Coordenada Y</th></tr></thead><tbody>`;
     lecturas.forEach(l => {
       table += `<tr>`;
       table += `<td style='border:1px solid black;padding:8px;'>${l.Matrícula}</td>`;
       table += `<td style='border:1px solid black;padding:8px;'>${l.Caso}</td>`;
       table += `<td style='border:1px solid black;padding:8px;'>${l.Fecha_y_Hora}</td>`;
       table += `<td style='border:1px solid black;padding:8px;'>${l.ID_Lector}</td>`;
-      table += `<td style='border:1px solid black;padding:8px;'>${l.Lector}</td>`;
+      table += `<td style='border:1px solid black;padding:8px;'>${l.Carretera}</td>`;
+      table += `<td style='border:1px solid black;padding:8px;'>${l.Provincia}</td>`;
+      table += `<td style='border:1px solid black;padding:8px;'>${l.Localidad}</td>`;
       table += `<td style='border:1px solid black;padding:8px;'>${l.Coordenada_X}</td>`;
       table += `<td style='border:1px solid black;padding:8px;'>${l.Coordenada_Y}</td>`;
       table += `</tr>`;
