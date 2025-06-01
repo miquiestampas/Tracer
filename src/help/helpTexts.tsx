@@ -230,6 +230,7 @@ const helpTexts = {
             <li>Utiliza el zoom y los filtros para centrarte en áreas o vehículos específicos.</li>
             <li>Combina la visualización de lecturas LPR y GPS para obtener un análisis más completo.</li>
             <li>Guarda capturas del mapa para documentar hallazgos relevantes.</li>
+            <li><b>Haz doble clic en una lectura de la tabla</b> para centrar y hacer zoom sobre ella en el mapa.</li>
           </ul>
         </Text>
       </Stack>

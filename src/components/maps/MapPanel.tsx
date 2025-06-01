@@ -13,6 +13,7 @@ import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
 import { TimeInput } from '@mantine/dates';
 import { useMapHighlight } from '../../context/MapHighlightContext';
+import { notifications } from '@mantine/notifications';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -1055,24 +1056,37 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
   // Función para centrar el mapa en una lectura específica
   const centerMapOnLectura = useCallback((lectura: Lectura) => {
-    if (!mapRef.current || !lectura.Coordenada_X || !lectura.Coordenada_Y) return;
-    
-    console.log('Centrando mapa en lectura:', lectura);
-    
-    // Centrar el mapa y hacer zoom
-    mapRef.current.setView(
-      [lectura.Coordenada_Y, lectura.Coordenada_X],
-      18, // Zoom más cercano para mejor detalle
-      {
-        animate: true,
-        duration: 1 // Duración de la animación en segundos
+    // Si la lectura tiene coordenadas, centrar ahí
+    if (mapRef.current && lectura.Coordenada_X && lectura.Coordenada_Y) {
+      mapRef.current.setView(
+        [lectura.Coordenada_Y, lectura.Coordenada_X],
+        19,
+        { animate: true, duration: 1 }
+      );
+      setSelectedLectura(lectura);
+      return;
+    }
+    // Si no, buscar el lector asociado
+    if (lectura.ID_Lector) {
+      const lector = lectores.find(l => String(l.ID_Lector) === String(lectura.ID_Lector));
+      if (lector && lector.Coordenada_X && lector.Coordenada_Y && mapRef.current) {
+        mapRef.current.setView(
+          [lector.Coordenada_Y, lector.Coordenada_X],
+          19,
+          { animate: true, duration: 1 }
+        );
+        setSelectedLectura(lectura);
+        return;
       }
-    );
-    
-    // Actualizar la lectura seleccionada
+    }
+    // Si tampoco, notificar error
+    notifications.show({
+      title: 'No se puede centrar',
+      message: 'No hay coordenadas disponibles para esta lectura ni para su lector asociado.',
+      color: 'red',
+    });
     setSelectedLectura(lectura);
-    console.log('Lectura seleccionada actualizada:', lectura);
-  }, []);
+  }, [lectores]);
 
   // Efecto para centrar y resaltar lecturas seleccionadas desde el contexto
   useEffect(() => {
@@ -1086,140 +1100,148 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   }, [highlightedLecturas]);
 
   // Componente del mapa para reutilizar
-  const MapComponent = ({ isFullscreen = false }) => (
-    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      <style>
-        {`
-          .leaflet-container {
-            z-index: ${isFullscreen ? 10000 : 1} !important;
-          }
-          .leaflet-div-icon {
-            background: transparent !important;
-            border: none !important;
-          }
-          .custom-div-icon {
-            background: transparent !important;
-            border: none !important;
-          }
-          .lectura-popup {
-            max-height: ${isFullscreen ? '400px' : '200px'};
-            overflow-y: auto;
-          }
-          canvas {
-            will-read-frequently: true;
-          }
-        `}
-      </style>
-      {/* Banner deslizante */}
-      <InfoBanner info={infoBanner} onClose={() => setInfoBanner(null)} />
-      {/* Botones de cámara y pantalla completa arriba a la derecha */}
-      <div style={{
-        position: 'absolute',
-        top: isFullscreen ? 24 : 12,
-        right: isFullscreen ? 32 : 16,
-        zIndex: 20000,
-        display: 'flex',
-        gap: 8
-      }}>
-        <ActionIcon
-          variant="default"
-          size={isFullscreen ? 48 : 32}
-          style={{
-            width: isFullscreen ? 48 : 32,
-            height: isFullscreen ? 48 : 32,
-            background: 'white',
-            border: '2px solid #234be7',
-            color: '#234be7',
-            boxShadow: 'none',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 0
-          }}
-          onClick={handleExportarMapa}
-          id="camera-capture-btn-lpr"
-          aria-label="Exportar captura de pantalla"
-        >
-          <IconCamera size={isFullscreen ? 28 : 16} color="#234be7" />
-        </ActionIcon>
-        <Tooltip label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"} position="left" withArrow>
+  const MapComponent = ({ isFullscreen = false }) => {
+    // Efecto para centrar y hacer zoom cuando cambia la lectura seleccionada
+    useEffect(() => {
+      if (selectedLectura && mapRef.current && selectedLectura.Coordenada_X && selectedLectura.Coordenada_Y) {
+        mapRef.current.setView(
+          [selectedLectura.Coordenada_Y, selectedLectura.Coordenada_X],
+          19,
+          { animate: true, duration: 1 }
+        );
+      }
+    }, [selectedLectura]);
+
+    return (
+      <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+        <style>
+          {`
+            .leaflet-container {
+              z-index: ${isFullscreen ? 10000 : 1} !important;
+            }
+            .leaflet-div-icon {
+              background: transparent !important;
+              border: none !important;
+            }
+            .custom-div-icon {
+              background: transparent !important;
+              border: none !important;
+            }
+            .lectura-popup {
+              max-height: ${isFullscreen ? '400px' : '200px'};
+              overflow-y: auto;
+            }
+            canvas {
+              will-read-frequently: true;
+            }
+          `}
+        </style>
+        {/* Banner deslizante */}
+        <InfoBanner info={infoBanner} onClose={() => setInfoBanner(null)} />
+        {/* Botones de cámara y pantalla completa arriba a la derecha */}
+        <div style={{
+          position: 'absolute',
+          top: isFullscreen ? 24 : 12,
+          right: isFullscreen ? 32 : 16,
+          zIndex: 20000,
+          display: 'flex',
+          gap: 8
+        }}>
           <ActionIcon
-            variant="filled"
-            color="blue"
-            size={isFullscreen ? 56 : 32}
+            variant="default"
+            size={isFullscreen ? 48 : 32}
             style={{
-              width: isFullscreen ? 56 : 32,
-              height: isFullscreen ? 56 : 32,
-              background: isFullscreen ? '#234be7' : 'white',
-              border: isFullscreen ? '3px solid #234be7' : '2px solid #234be7',
-              color: isFullscreen ? 'white' : '#234be7',
-              boxShadow: isFullscreen ? '0 0 16px #234be7' : 'none',
+              width: isFullscreen ? 48 : 32,
+              height: isFullscreen ? 48 : 32,
+              background: 'white',
+              border: '2px solid #234be7',
+              color: '#234be7',
+              boxShadow: 'none',
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 0,
-              zIndex: 20001
+              padding: 0
             }}
-            onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
-            aria-label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+            onClick={handleExportarMapa}
+            id="camera-capture-btn-lpr"
+            aria-label="Exportar captura de pantalla"
           >
-            {isFullscreen ? <IconMinimize size={isFullscreen ? 32 : 16} color={isFullscreen ? 'white' : '#234be7'} /> : <IconMaximize size={16} color="#234be7" />}
+            <IconCamera size={isFullscreen ? 28 : 16} color="#234be7" />
           </ActionIcon>
-        </Tooltip>
+          <Tooltip label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"} position="left" withArrow>
+            <ActionIcon
+              variant="filled"
+              color="blue"
+              size={isFullscreen ? 56 : 32}
+              style={{
+                width: isFullscreen ? 56 : 32,
+                height: isFullscreen ? 56 : 32,
+                background: isFullscreen ? '#234be7' : 'white',
+                border: isFullscreen ? '3px solid #234be7' : '2px solid #234be7',
+                color: isFullscreen ? 'white' : '#234be7',
+                boxShadow: isFullscreen ? '0 0 16px #234be7' : 'none',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                zIndex: 20001
+              }}
+              onClick={() => isFullscreen ? setFullscreenMap(false) : setFullscreenMap(true)}
+              aria-label={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+            >
+              {isFullscreen ? <IconMinimize size={isFullscreen ? 32 : 16} color={isFullscreen ? 'white' : '#234be7'} /> : <IconMaximize size={16} color="#234be7" />}
+            </ActionIcon>
+          </Tooltip>
+        </div>
+        <MapContainer 
+          center={centroInicial} 
+          zoom={zoomInicial} 
+          scrollWheelZoom={true} 
+          style={{ 
+            ...mapContainerStyle,
+            height: isFullscreen ? '100vh' : '100%',
+          }}
+          ref={mapRef}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url={getTileLayerUrl()}
+            maxZoom={19}
+            errorTileUrl="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/0/0/0.png"
+            tileSize={256}
+            zoomOffset={0}
+            updateWhenIdle={true}
+            updateWhenZooming={false}
+            keepBuffer={2}
+          />
+          
+          {renderReaderLayers()}
+          {/* Solo mostrar resultados del filtro si no se han guardado en una capa y no hay capas activas con la misma matrícula */}
+          {resultadosFiltro.lecturas.length > 0 && 
+           !mostrarFormularioCapa && 
+           !capas.some(capa => capa.activa && capa.filtros.lectorId === selectedMatricula) && 
+           renderResultadosFiltro()}
+          {capas.map(renderCapaMarkers)}
+          {renderCoincidencias()}
+          {highlightedLecturas && highlightedLecturas.length > 0 && highlightedLecturas.map((l, i) => (
+            l.Coordenada_Y && l.Coordenada_X && (
+              <Marker
+                key={`highlighted-${i}`}
+                position={[l.Coordenada_Y, l.Coordenada_X]}
+                icon={L.divIcon({
+                  className: 'custom-div-icon',
+                  html: `<div style="width:28px;height:28px;background:#ffd700;border-radius:50%;border:3px solid #228be6;box-shadow:0 0 12px #ffd700;"></div>`
+                })}
+                zIndexOffset={999}
+              />
+            )
+          ))}
+        </MapContainer>
       </div>
-      <MapContainer 
-        key={`map-${mapKey}-${lectores.length}-${lecturas.length}-${capas.length}-${resultadosFiltro.lecturas.length}-${mapControls.visualizationType}`}
-        center={centroInicial} 
-        zoom={zoomInicial} 
-        scrollWheelZoom={true} 
-        style={{ 
-          ...mapContainerStyle,
-          height: isFullscreen ? '100vh' : '100%',
-        }}
-        ref={(map) => {
-          if (map) {
-            mapRef.current = map;
-          }
-        }}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url={getTileLayerUrl()}
-          maxZoom={19}
-          errorTileUrl="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/0/0/0.png"
-          tileSize={256}
-          zoomOffset={0}
-          updateWhenIdle={true}
-          updateWhenZooming={false}
-          keepBuffer={2}
-        />
-        
-        {renderReaderLayers()}
-        {/* Solo mostrar resultados del filtro si no se han guardado en una capa y no hay capas activas con la misma matrícula */}
-        {resultadosFiltro.lecturas.length > 0 && 
-         !mostrarFormularioCapa && 
-         !capas.some(capa => capa.activa && capa.filtros.lectorId === selectedMatricula) && 
-         renderResultadosFiltro()}
-        {capas.map(renderCapaMarkers)}
-        {renderCoincidencias()}
-        {highlightedLecturas && highlightedLecturas.length > 0 && highlightedLecturas.map((l, i) => (
-          l.Coordenada_Y && l.Coordenada_X && (
-            <Marker
-              key={`highlighted-${i}`}
-              position={[l.Coordenada_Y, l.Coordenada_X]}
-              icon={L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div style="width:28px;height:28px;background:#ffd700;border-radius:50%;border:3px solid #228be6;box-shadow:0 0 12px #ffd700;"></div>`
-              })}
-              zIndexOffset={999}
-            />
-          )
-        ))}
-      </MapContainer>
-    </div>
-  );
+    );
+  };
 
   // Componente para el panel de lecturas filtradas
   const LecturasFiltradasPanel = () => {
@@ -1315,6 +1337,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                     borderLeft: selectedLectura?.ID_Lectura === lectura.ID_Lectura ? '4px solid var(--mantine-color-blue-6)' : undefined
                   }}
                   onClick={() => centerMapOnLectura(lectura)}
+                  onMouseDown={e => {
+                    // Para máxima compatibilidad, también centramos en mouse down
+                    if (e.button === 0) centerMapOnLectura(lectura);
+                  }}
                 >
                   <Table.Td>{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY HH:mm:ss')}</Table.Td>
                   <Table.Td>{lectura.Matricula}</Table.Td>
