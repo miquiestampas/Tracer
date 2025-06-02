@@ -1413,6 +1413,8 @@ def read_lecturas(
     solo_relevantes: Optional[bool] = False,
     min_pasos: Optional[int] = None,
     max_pasos: Optional[int] = None,
+    organismos: Optional[List[str]] = Query(None),
+    provincias: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db)
 ):
     logger.info(f"GET /lecturas - Filtros: min_pasos={min_pasos} max_pasos={max_pasos} carreteras={carretera_ids}")
@@ -1433,6 +1435,10 @@ def read_lecturas(
         base_query = base_query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
     if solo_relevantes:
         base_query = base_query.join(models.LecturaRelevante)
+    if organismos:
+        base_query = base_query.filter(models.Lector.Organismo_Regulador.in_(organismos))
+    if provincias:
+        base_query = base_query.filter(models.Lector.Provincia.in_(provincias))
     
     # Filtros de fecha y hora
     try:
@@ -1485,6 +1491,10 @@ def read_lecturas(
             pasos_subquery = pasos_subquery.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
         if solo_relevantes:
             pasos_subquery = pasos_subquery.join(models.LecturaRelevante)
+        if organismos:
+            pasos_subquery = pasos_subquery.filter(models.Lector.Organismo_Regulador.in_(organismos))
+        if provincias:
+            pasos_subquery = pasos_subquery.filter(models.Lector.Provincia.in_(provincias))
             
         # Aplicar los mismos filtros de fecha/hora
         try:
@@ -3176,6 +3186,8 @@ def read_lecturas_por_filtros(
     solo_relevantes: Optional[bool] = False,
     min_pasos: Optional[int] = None,
     max_pasos: Optional[int] = None,
+    organismos: Optional[List[str]] = Query(None),
+    provincias: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(get_current_active_user)
 ):
@@ -3197,6 +3209,10 @@ def read_lecturas_por_filtros(
         base_query = base_query.filter(models.Lectura.Tipo_Fuente == tipo_fuente)
     if solo_relevantes:
         base_query = base_query.join(models.LecturaRelevante)
+    if organismos:
+        base_query = base_query.filter(models.Lector.Organismo_Regulador.in_(organismos))
+    if provincias:
+        base_query = base_query.filter(models.Lector.Provincia.in_(provincias))
     
     # Filtros de fecha y hora
     try:

@@ -210,6 +210,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
     const [showSaveSearchModal, setShowSaveSearchModal] = useState(false);
     const [savingSearch, setSavingSearch] = useState(false);
     const [sessionSelectedRecords, setSessionSelectedRecords] = useState<Set<number | string>>(new Set());
+    const [lectoresRaw, setLectoresRaw] = useState<any[]>([]); // Para extraer organismos y provincias únicos
     
     // --- Procesar datos ---
     const getLectorBaseId = (nombreLector: string): string => {
@@ -364,15 +365,11 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             setInitialLoading(true);
             try {
                 if (casoIdFijo) {
-                    console.log(`[AnalisisLecturasPanel] Cargando lectores para caso ${casoIdFijo}...`);
                     const response = await fetch(`${API_BASE_URL}/casos/${casoIdFijo}/lectores`);
-                    if (!response.ok) {
-                        throw new Error(`Error HTTP: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
                     const data = await response.json();
-                    if (!data || !Array.isArray(data)) {
-                        throw new Error('Formato de respuesta inválido');
-                    }
+                    if (!data || !Array.isArray(data)) throw new Error('Formato de respuesta inválido');
+                    setLectoresRaw(data);
                     // Procesar lectores
                     const lectoresOptions = data
                         .filter(l => l && l.ID_Lector)
@@ -381,7 +378,11 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                             label: `${l.Nombre || l.ID_Lector} (${l.ID_Lector})`
                         }));
                     setLectoresList(lectoresOptions);
-                    // Si necesitas carreteras, puedes mantener la lógica anterior o adaptarla
+                    // Organismos y provincias únicos del caso
+                    const organismos = Array.from(new Set(data.map(l => l.Organismo_Regulador).filter(Boolean)));
+                    setOrganismosList(organismos.map(o => ({ value: o, label: o })));
+                    const provincias = Array.from(new Set(data.map(l => l.Provincia).filter(Boolean)));
+                    setProvinciasList(provincias.map(p => ({ value: p, label: p })));
                 }
             } catch (e) {
                 console.error(e);
@@ -478,7 +479,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             });
             return false;
         }
-        
         // Validar horas
         if (timeFrom && timeTo && timeFrom > timeTo) {
             notifications.show({
@@ -488,9 +488,10 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             });
             return false;
         }
-        
         // Validar pasos
-        if (minPasos !== null && maxPasos !== null && minPasos > maxPasos) {
+        const minPasosNum = typeof minPasos === 'number' ? minPasos : undefined;
+        const maxPasosNum = typeof maxPasos === 'number' ? maxPasos : undefined;
+        if (minPasosNum !== undefined && maxPasosNum !== undefined && minPasosNum > maxPasosNum) {
             notifications.show({
                 title: 'Error en Pasos',
                 message: 'El mínimo de pasos no puede ser mayor que el máximo',
@@ -498,11 +499,10 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             });
             return false;
         }
-        
         return true;
     }, [fechaInicio, fechaFin, timeFrom, timeTo, minPasos, maxPasos]);
 
-    // --- Modificar handleSearch para enviar cada matrícula como parámetro separado ---
+    // --- Modificar handleSearch para filtrar por organismo y provincia ---
     const handleSearch = useCallback(async () => {
         // Mostrar notificación de carga en la esquina inferior derecha
         const notificationId = 'analisis-loading';
@@ -535,6 +535,8 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             selectedLectores.forEach(id => params.append('lector_ids', id));
             selectedCarreteras.forEach(id => params.append('carretera_ids', id));
             selectedSentidos.forEach(s => params.append('sentido', s));
+            selectedOrganismos.forEach(o => params.append('organismos', o));
+            selectedProvincias.forEach(p => params.append('provincias', p));
             
             // Añadir ID del caso
             if (casoIdFijo) {
@@ -553,13 +555,15 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             if (tipoFuenteFijo) params.append('tipo_fuente', tipoFuenteFijo);
             
             // Procesar filtros de pasos
-            if (minPasos !== null && minPasos > 0) {
-                params.append('min_pasos', String(minPasos));
-                console.log('[AnalisisLecturasPanel] Aplicando min_pasos:', minPasos);
+            const minPasosNum = typeof minPasos === 'number' ? minPasos : undefined;
+            const maxPasosNum = typeof maxPasos === 'number' ? maxPasos : undefined;
+            if (minPasosNum !== undefined && minPasosNum > 0) {
+                params.append('min_pasos', String(minPasosNum));
+                console.log('[AnalisisLecturasPanel] Aplicando min_pasos:', minPasosNum);
             }
-            if (maxPasos !== null && maxPasos > 0) {
-                params.append('max_pasos', String(maxPasos));
-                console.log('[AnalisisLecturasPanel] Aplicando max_pasos:', maxPasos);
+            if (maxPasosNum !== undefined && maxPasosNum > 0) {
+                params.append('max_pasos', String(maxPasosNum));
+                console.log('[AnalisisLecturasPanel] Aplicando max_pasos:', maxPasosNum);
             }
             
             params.append('limit', '100000');
@@ -603,7 +607,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
             setOverlayMessage('');
             setOverlayProgress(0);
         }
-    }, [casoIdFijo, permitirSeleccionCaso, selectedCasos, selectedCarreteras, selectedSentidos, selectedLectores, fechaInicio, fechaFin, timeFrom, timeTo, tipoFuenteFijo, currentMatriculaInput, matriculaTags, minPasos, maxPasos]);
+    }, [casoIdFijo, permitirSeleccionCaso, selectedCasos, selectedCarreteras, selectedSentidos, selectedLectores, fechaInicio, fechaFin, timeFrom, timeTo, tipoFuenteFijo, currentMatriculaInput, matriculaTags, minPasos, maxPasos, selectedOrganismos, selectedProvincias]);
 
     // --- Handler de selección ---
     const handleSelectionChange = useCallback((selectedRecords: ExtendedLectura[]) => {
@@ -935,15 +939,19 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
 
     // Actualizar los handlers de cambio para los inputs de pasos
     const handleMinPasosChange = (value: string | number | null) => {
-        const numValue = value === null || value === '' ? null : 
-                        typeof value === 'string' ? parseInt(value, 10) : value;
+        let numValue: number | '' = '';
+        if (typeof value === 'number' && !isNaN(value)) {
+            numValue = value;
+        }
         setMinPasos(numValue);
         console.log('[AnalisisLecturasPanel] Nuevo valor min_pasos:', numValue);
     };
 
     const handleMaxPasosChange = (value: string | number | null) => {
-        const numValue = value === null || value === '' ? null : 
-                        typeof value === 'string' ? parseInt(value, 10) : value;
+        let numValue: number | '' = '';
+        if (typeof value === 'number' && !isNaN(value)) {
+            numValue = value;
+        }
         setMaxPasos(numValue);
         console.log('[AnalisisLecturasPanel] Nuevo valor max_pasos:', numValue);
     };
@@ -1239,66 +1247,6 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                         onChange={e => setTimeTo(e.target.value)}
                                     />
                                 </Group>
-                                <MultiSelect
-                                    label="Lectores"
-                                    placeholder="Todos"
-                                    data={lectoresList}
-                                    value={selectedLectores}
-                                    onChange={setSelectedLectores}
-                                    searchable
-                                    clearable
-                                    disabled={initialLoading}
-                                    leftSection={<IconDeviceCctv style={iconStyle} />}
-                                    comboboxProps={{
-                                        withinPortal: true,
-                                        position: 'bottom',
-                                        middlewares: { flip: false, shift: false },
-                                        offset: 0,
-                                    }}
-                                />
-                                <Group grow>
-                                <MultiSelect
-                                        label="Organismo"
-                                    data={organismosList}
-                                    value={selectedOrganismos}
-                                    onChange={setSelectedOrganismos}
-                                    searchable
-                                    clearable
-                                        leftSection={<IconBuildingCommunity style={iconStyle} />}
-                                />
-                                <MultiSelect
-                                        label="Provincia"
-                                    data={provinciasList}
-                                    value={selectedProvincias}
-                                    onChange={setSelectedProvincias}
-                                    searchable
-                                    clearable
-                                    leftSection={<IconMapPin style={iconStyle} />}
-                                />
-                                </Group>
-                                <Group grow>
-                                <MultiSelect
-                                        label="Carretera"
-                                        placeholder="Todas"
-                                    data={carreterasList}
-                                    value={selectedCarreteras}
-                                    onChange={setSelectedCarreteras}
-                                    searchable
-                                    clearable
-                                        leftSection={<IconRoad style={iconStyle} />}
-                                />
-                                    {tipoFuenteFijo === 'LPR' ? (
-                                    <MultiSelect
-                                        label="Sentido"
-                                        placeholder="Ambos"
-                                        data={sentidosList}
-                                        value={selectedSentidos}
-                                        onChange={setSelectedSentidos}
-                                        clearable
-                                        leftSection={<IconArrowsUpDown style={iconStyle} />}
-                                    />
-                                    ) : null}
-                                </Group>
                                 <Box>
                                     <TextInput
                                         label="Matrícula (Completa o parcial)"
@@ -1328,6 +1276,66 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                         </Group>
                                     )}
                                 </Box>
+                                <MultiSelect
+                                    label="Lectores"
+                                    placeholder="Todos"
+                                    data={lectoresList}
+                                    value={selectedLectores}
+                                    onChange={setSelectedLectores}
+                                    searchable
+                                    clearable
+                                    disabled={initialLoading}
+                                    leftSection={<IconDeviceCctv style={iconStyle} />}
+                                    comboboxProps={{
+                                        withinPortal: true,
+                                        position: 'bottom',
+                                        middlewares: { flip: false, shift: false },
+                                        offset: 0,
+                                    }}
+                                />
+                                <Group grow>
+                                    <MultiSelect
+                                        label="Organismo"
+                                        data={organismosList}
+                                        value={selectedOrganismos}
+                                        onChange={setSelectedOrganismos}
+                                        searchable
+                                        clearable
+                                        leftSection={<IconBuildingCommunity style={iconStyle} />}
+                                    />
+                                    <MultiSelect
+                                        label="Provincia"
+                                        data={provinciasList}
+                                        value={selectedProvincias}
+                                        onChange={setSelectedProvincias}
+                                        searchable
+                                        clearable
+                                        leftSection={<IconMapPin style={iconStyle} />}
+                                    />
+                                </Group>
+                                <Group grow>
+                                    <MultiSelect
+                                        label="Carretera"
+                                        placeholder="Todas"
+                                        data={carreterasList}
+                                        value={selectedCarreteras}
+                                        onChange={setSelectedCarreteras}
+                                        searchable
+                                        clearable
+                                        leftSection={<IconRoad style={iconStyle} />}
+                                    />
+                                    {tipoFuenteFijo === 'LPR' ? (
+                                    <MultiSelect
+                                        label="Sentido"
+                                        placeholder="Ambos"
+                                        data={sentidosList}
+                                        value={selectedSentidos}
+                                        onChange={setSelectedSentidos}
+                                        clearable
+                                        leftSection={<IconArrowsUpDown style={iconStyle} />}
+                                    />
+                                    ) : null}
+                                </Group>
                                 <Group grow>
                                     <NumberInput
                                         label="Mín. Pasos"
