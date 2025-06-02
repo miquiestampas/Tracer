@@ -8,6 +8,7 @@ import { getCasos } from '../services/casosApi';
 import { QuickSearch } from '../components/dashboard/QuickSearch';
 import { ImportTimeline } from '../components/dashboard/ImportTimeline';
 import { ReaderGeoAlerts } from '../components/dashboard/ReaderAlerts';
+import { ReadersMap } from '../components/dashboard/ReadersMap';
 import BusquedaMulticasoPanel from '../components/busqueda/BusquedaMulticasoPanel';
 import { buscarVehiculo } from '../services/dashboardApi';
 import { notifications } from '@mantine/notifications';
@@ -110,6 +111,11 @@ function HomePage() {
           <Card shadow="sm" radius="md" padding="lg" withBorder mt={0}>
             <BusquedaMulticasoPanel />
           </Card>
+
+          {/* Mapa de Lectores */}
+          <Box mt="xl">
+            <ReadersMap />
+          </Box>
         </Grid.Col>
 
         {/* Columna Derecha */}
