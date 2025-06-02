@@ -70,6 +70,8 @@ function LecturasRelevantesPanel({
     const [highlightedRows, setHighlightedRows] = useState<number[]>([]);
     const [exportColumns, setExportColumns] = useState<string[]>([]);
     const tableRef = useRef<HTMLDivElement>(null);
+    const [exportModalOpen, setExportModalOpen] = useState<false | 'excel' | 'word'>(false);
+    const [pendingExportType, setPendingExportType] = useState<'excel' | 'word' | null>(null);
 
     // Columnas disponibles para exportación
     const availableExportColumns = useMemo(() => [
@@ -85,11 +87,19 @@ function LecturasRelevantesPanel({
         setExportColumns(availableExportColumns.map(col => col.value));
     }, [availableExportColumns]);
 
-    // Función para exportar a Excel
-    const exportToExcel = useCallback(() => {
-        if (!lecturas.length) return;
+    // --- NUEVO: Función para obtener los datos a exportar ---
+    const getExportData = useCallback(() => {
+        const base = selectedRecordIds.length > 0
+            ? lecturas.filter(l => selectedRecordIds.includes(l.ID_Lectura))
+            : lecturas;
+        return base;
+    }, [lecturas, selectedRecordIds]);
 
-        const selectedData = lecturas.map(lectura => {
+    // --- MODIFICADO: Exportar a Excel ---
+    const exportToExcel = useCallback(() => {
+        const dataToExport = getExportData();
+        if (!dataToExport.length) return;
+        const selectedData = dataToExport.map(lectura => {
             const row: any = {};
             exportColumns.forEach(col => {
                 if (col === 'Fecha_y_Hora') {
@@ -102,23 +112,21 @@ function LecturasRelevantesPanel({
             });
             return row;
         });
-
         const ws = XLSX.utils.json_to_sheet(selectedData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Lecturas Relevantes');
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
         const data = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         saveAs(data, 'lecturas_relevantes.xlsx');
-    }, [lecturas, exportColumns]);
+    }, [getExportData, exportColumns]);
 
-    // Función para exportar a Word
+    // --- MODIFICADO: Exportar a Word ---
     const exportToWord = useCallback(() => {
-        if (!lecturas.length) return;
-
+        const dataToExport = getExportData();
+        if (!dataToExport.length) return;
         const table = document.createElement('table');
         table.style.borderCollapse = 'collapse';
         table.style.width = '100%';
-
         // Crear encabezados
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
@@ -131,10 +139,9 @@ function LecturasRelevantesPanel({
         });
         thead.appendChild(headerRow);
         table.appendChild(thead);
-
         // Crear filas de datos
         const tbody = document.createElement('tbody');
-        lecturas.forEach(lectura => {
+        dataToExport.forEach(lectura => {
             const tr = document.createElement('tr');
             exportColumns.forEach(col => {
                 const td = document.createElement('td');
@@ -152,7 +159,6 @@ function LecturasRelevantesPanel({
             tbody.appendChild(tr);
         });
         table.appendChild(tbody);
-
         const html = `
             <html>
                 <head>
@@ -167,10 +173,9 @@ function LecturasRelevantesPanel({
                 </body>
             </html>
         `;
-
         const blob = new Blob([html], { type: 'application/msword' });
         saveAs(blob, 'lecturas_relevantes.doc');
-    }, [lecturas, exportColumns, availableExportColumns]);
+    }, [getExportData, exportColumns, availableExportColumns]);
 
     // Función para exportar como captura de pantalla
     const exportAsScreenshot = useCallback(async () => {
@@ -293,6 +298,44 @@ function LecturasRelevantesPanel({
     ];
     }, [lecturas, selectedRecordIds, onEditNota, onGuardarVehiculo, onDesmarcar, handleCheckboxChange, handleSelectAll]);
 
+    // --- MODAL DE EXPORTACIÓN ---
+    const ExportModal = (
+        <Modal
+            opened={!!exportModalOpen}
+            onClose={() => setExportModalOpen(false)}
+            title={pendingExportType === 'excel' ? 'Exportar a Excel' : 'Exportar a Word'}
+            size="lg"
+            styles={{ body: { minWidth: 480 } }}
+        >
+            <Stack>
+                <Text size="sm">Selecciona las columnas que deseas exportar:</Text>
+                <MultiSelect
+                    data={availableExportColumns}
+                    value={exportColumns}
+                    onChange={setExportColumns}
+                    placeholder="Seleccionar columnas para exportar"
+                    style={{ width: '100%' }}
+                />
+                <Group justify="flex-end">
+                    <Button variant="default" onClick={() => setExportModalOpen(false)}>Cancelar</Button>
+                    <Button
+                        leftSection={pendingExportType === 'excel' ? <IconFileSpreadsheet size={16} /> : <IconFileText size={16} />}
+                        onClick={() => {
+                            setExportModalOpen(false);
+                            setTimeout(() => {
+                                if (pendingExportType === 'excel') exportToExcel();
+                                else if (pendingExportType === 'word') exportToWord();
+                            }, 200);
+                        }}
+                        disabled={exportColumns.length === 0}
+                    >
+                        Exportar
+                    </Button>
+                </Group>
+            </Stack>
+        </Modal>
+    );
+
     return (
         <>
             <style>{datatablePaginationStyle}</style>
@@ -301,14 +344,6 @@ function LecturasRelevantesPanel({
                     <Group justify="space-between" align="center" mb="sm">
                         <Title order={4}>Lecturas Marcadas como Relevantes ({totalRecords})</Title>
                         <Group gap="xs">
-                            <MultiSelect
-                                data={availableExportColumns}
-                                value={exportColumns}
-                                onChange={setExportColumns}
-                                placeholder="Seleccionar columnas para exportar"
-                                style={{ width: 400 }}
-                                size="xs"
-                            />
                             <Menu shadow="md" width={200}>
                                 <Menu.Target>
                                     <Button
@@ -322,13 +357,13 @@ function LecturasRelevantesPanel({
                                 <Menu.Dropdown>
                                     <Menu.Item
                                         leftSection={<IconFileSpreadsheet size={16} />}
-                                        onClick={exportToExcel}
+                                        onClick={() => { setPendingExportType('excel'); setExportModalOpen('excel'); }}
                                     >
                                         Exportar a Excel
                                     </Menu.Item>
                                     <Menu.Item
                                         leftSection={<IconFileText size={16} />}
-                                        onClick={exportToWord}
+                                        onClick={() => { setPendingExportType('word'); setExportModalOpen('word'); }}
                                     >
                                         Exportar a Word
                                     </Menu.Item>
@@ -414,6 +449,7 @@ function LecturasRelevantesPanel({
                     )}
                 </Stack>
             </Box>
+            {ExportModal}
         </>
     );
 }
