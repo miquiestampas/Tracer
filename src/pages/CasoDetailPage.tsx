@@ -19,7 +19,6 @@ import 'leaflet/dist/leaflet.css';
 import CasoMap from '../components/maps/CasoMap';
 import LecturaFilters, { FilterState } from '../components/filters/LecturaFilters';
 import EditNotaModal from '../components/modals/EditNotaModal';
-import LprAvanzadoPanel from '../components/lpr_avanzado/LprAvanzadoPanel';
 import LecturasRelevantesPanel from '../components/caso/LecturasRelevantesPanel';
 import VehiculosPanel from '../components/vehiculos/VehiculosPanel';
 import AnalisisAvanzadoPanel from '../components/lanzadera/LanzaderaPanel';
@@ -44,8 +43,6 @@ const initialFilterState: FilterState = {
 // TODO: Replace with actual types from panel components
 type AnalisisFilters = any;
 type AnalisisResults = Lectura[];
-type LprAvanzadoFilters = any;
-type LprAvanzadoResults = any; // Probablemente resultados agrupados por matrícula
 type LanzaderaParams = any; 
 type LanzaderaResults = any; // Probablemente los detalles de coocurrencias
 

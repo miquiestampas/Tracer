@@ -18,9 +18,9 @@ import apiClient from '../services/api';
 
 // Lista de estados válidos
 const CASE_STATUSES: EstadoCaso[] = [
+    "En Análisis",
     "Nuevo",
     "Esperando Archivos",
-    "En Análisis",
     "Pendiente Informe",
     "Cerrada"
 ];
@@ -78,7 +78,7 @@ function CasosPage() {
   const { user } = useAuth();
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [loadingGrupos, setLoadingGrupos] = useState(false);
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('grid');
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
 
   // --- NUEVO: Estados para Filtro y Ordenación ---
   const [filterText, setFilterText] = useState('');
@@ -113,7 +113,13 @@ function CasosPage() {
     setError(null);
     try {
       const data = await getCasos();
-      setCasos(data);
+      // Ordenar los casos por estado según CASE_STATUSES
+      const sortedData = [...data].sort((a, b) => {
+        const indexA = CASE_STATUSES.indexOf(a.Estado);
+        const indexB = CASE_STATUSES.indexOf(b.Estado);
+        return indexA - indexB;
+      });
+      setCasos(sortedData);
     } catch (err) {
       setError('Error al cargar los casos. Inténtalo de nuevo.');
       console.error(err);
