@@ -1623,7 +1623,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                       <Stack gap={4}>
                         <Group justify="space-between">
                           <Text size="sm" fw={500}>{lectura.Matricula}</Text>
-                          <Text size="xs" c="dimmed">{dayjs(lectura.Fecha_y_Hora).format('HH:mm:ss')}</Text>
+                          <Stack gap={0} align="end">
+                            <Text size="xs" c="dimmed">{dayjs(lectura.Fecha_y_Hora).format('DD/MM/YYYY')}</Text>
+                            <Text size="xs" c="dimmed">{dayjs(lectura.Fecha_y_Hora).format('HH:mm:ss')}</Text>
+                          </Stack>
                         </Group>
                         <Group gap="xs">
                           <IconMapPin size={14} style={{ color: 'gray' }} />
