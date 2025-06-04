@@ -8,7 +8,7 @@ import type { Lectura, LectorCoordenadas, Vehiculo } from '../../types/data';
 import apiClient from '../../services/api';
 import dayjs from 'dayjs';
 import { getLectorSugerencias, getLectoresParaMapa } from '../../services/lectoresApi';
-import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconEdit, IconEye, IconEyeOff, IconCheck, IconX, IconInfoCircle, IconMaximize, IconMinimize, IconClock, IconGauge, IconMapPin, IconCamera, IconRefresh, IconChevronLeft, IconChevronRight } from '@tabler/icons-react';
 import { useHotkeys } from '@mantine/hooks';
 import html2canvas from 'html2canvas';
 import { TimeInput } from '@mantine/dates';
@@ -123,10 +123,12 @@ interface MapControls {
   showCoincidencias: boolean;
 }
 
-// --- InfoBanner (copiado de GpsMapStandalone) ---
-const InfoBanner = ({ info, onClose }: {
+// --- InfoBanner mejorado con navegación ---
+const InfoBanner = ({ info, onClose, onNavigate, disableNav }: {
   info: any;
   onClose: () => void;
+  onNavigate?: (direction: 'prev' | 'next') => void;
+  disableNav?: boolean;
 }) => {
   if (!info) return null;
   return (
@@ -184,6 +186,13 @@ const InfoBanner = ({ info, onClose }: {
               </div>
             )}
           </div>
+          {/* Flechas de navegación */}
+          {onNavigate && !disableNav && (
+            <Group gap={4}>
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('prev')}><IconChevronLeft size={20} /></ActionIcon>
+              <ActionIcon size="md" variant="filled" color="white" style={{ background: 'white', color: '#228be6' }} onClick={() => onNavigate('next')}><IconChevronRight size={20} /></ActionIcon>
+            </Group>
+          )}
         </Group>
       </Card>
       <style>{`
@@ -647,7 +656,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
               icon={createMarkerIcon(lecturasEnLector.length, 'lector', '#228be6')}
               zIndexOffset={500}
               eventHandlers={{
-                click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
+                click: () => {
+                  setSelectedLectura(lecturasEnLector[0]);
+                  setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector });
+                }
               }}
             />
           );
@@ -655,9 +667,8 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
         {/* Renderizar lecturas individuales */}
         {lecturasLPR
-          .filter(l => !l.ID_Lector && l.Coordenada_X && l.Coordenada_Y)
+          .filter(l => l.Coordenada_X && l.Coordenada_Y)
           .map((lectura) => {
-            console.log('Renderizando lectura individual:', lectura.ID_Lectura);
             const isSelected = selectedLectura?.ID_Lectura === lectura.ID_Lectura;
             return (
               <React.Fragment key={`filtro-lectura-${lectura.ID_Lectura}`}>
@@ -667,10 +678,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                     center={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
                     radius={50}
                     pathOptions={{
-                      color: '#228be6',
-                      fillColor: '#228be6',
-                      fillOpacity: 0.1,
-                      weight: 2,
+                      color: '#e03131',
+                      fillColor: '#e03131',
+                      fillOpacity: 0.15,
+                      weight: 3,
                       dashArray: '5, 5'
                     }}
                   />
@@ -684,10 +695,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                         position: relative;
                         width: ${isSelected ? '36px' : '16px'};
                         height: ${isSelected ? '36px' : '16px'};
-                        background: ${isSelected ? 'rgba(34,139,230,0.25)' : '#228be6'};
+                        background: ${isSelected ? 'rgba(224,49,49,0.25)' : '#228be6'};
                         border-radius: 50%;
-                        border: ${isSelected ? '3px solid #fff' : '2px solid #fff'};
-                        box-shadow: 0 0 12px rgba(34,139,230,0.5);
+                        border: ${isSelected ? '3px solid #e03131' : '2px solid #fff'};
+                        box-shadow: 0 0 12px ${isSelected ? '#e03131' : 'rgba(34,139,230,0.5)'};
                         animation: ${isSelected ? 'gpsPulse 1.5s infinite' : 'none'};
                         display: flex;
                         align-items: center;
@@ -699,28 +710,31 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                             top: 50%;
                             left: 50%;
                             transform: translate(-50%, -50%);
-                            width: 10px;
-                            height: 10px;
-                            background: #fff;
+                            width: 12px;
+                            height: 12px;
+                            background: #e03131;
                             border-radius: 50%;
-                            box-shadow: 0 0 8px #228be6;
+                            box-shadow: 0 0 8px #e03131;
                           "></div>
                         ` : ''}
                       </div>
                       <style>
                         @keyframes gpsPulse {
-                          0% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
-                          70% { box-shadow: 0 0 0 12px rgba(34,139,230,0); }
-                          100% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
+                          0% { box-shadow: 0 0 0 0 #e03131; }
+                          70% { box-shadow: 0 0 0 16px rgba(224,49,49,0); }
+                          100% { box-shadow: 0 0 0 0 #e03131; }
                         }
                       </style>
                     `,
                     iconSize: [isSelected ? 36 : 16, isSelected ? 36 : 16],
                     iconAnchor: [isSelected ? 18 : 8, isSelected ? 18 : 8]
                   })}
-                  zIndexOffset={isSelected ? 700 : 600}
+                  zIndexOffset={isSelected ? 900 : 600}
                   eventHandlers={{
-                    click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
+                    click: () => {
+                      setSelectedLectura(lectura);
+                      setInfoBanner({ ...lectura, tipo: 'lectura' });
+                    }
                   }}
                 />
               </React.Fragment>
@@ -756,7 +770,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           icon={createMarkerIcon(lecturasEnLector.length, 'lector', capa.color)}
           zIndexOffset={300}
           eventHandlers={{
-            click: () => setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector })
+            click: () => {
+              setSelectedLectura(lecturasEnLector[0]);
+              setInfoBanner({ ...lector, tipo: 'lector', lecturas: lecturasEnLector });
+            }
           }}
         />
       );
@@ -764,22 +781,21 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
 
     // Renderizar lecturas individuales (solo LPR)
     capa.lecturas
-      .filter(l => !l.ID_Lector && l.Coordenada_X && l.Coordenada_Y && l.Tipo_Fuente !== 'GPS')
+      .filter(l => l.Coordenada_X && l.Coordenada_Y && l.Tipo_Fuente !== 'GPS')
       .forEach((lectura) => {
         console.log('Renderizando lectura individual en capa:', lectura.ID_Lectura);
         const isSelected = selectedLectura?.ID_Lectura === lectura.ID_Lectura;
         markers.push(
           <React.Fragment key={`${capa.id}-lectura-${lectura.ID_Lectura}`}>
-            {/* Círculo de resaltado para la lectura seleccionada */}
             {isSelected && (
               <Circle
                 center={[lectura.Coordenada_Y!, lectura.Coordenada_X!]}
                 radius={50}
                 pathOptions={{
-                  color: capa.color,
-                  fillColor: capa.color,
-                  fillOpacity: 0.1,
-                  weight: 2,
+                  color: '#e03131',
+                  fillColor: '#e03131',
+                  fillOpacity: 0.15,
+                  weight: 3,
                   dashArray: '5, 5'
                 }}
               />
@@ -793,10 +809,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                     position: relative;
                     width: ${isSelected ? '36px' : '16px'};
                     height: ${isSelected ? '36px' : '16px'};
-                    background: ${isSelected ? 'rgba(34,139,230,0.25)' : capa.color};
+                    background: ${isSelected ? 'rgba(224,49,49,0.25)' : capa.color};
                     border-radius: 50%;
-                    border: ${isSelected ? '3px solid #fff' : '2px solid #fff'};
-                    box-shadow: 0 0 12px rgba(34,139,230,0.5);
+                    border: ${isSelected ? '3px solid #e03131' : '2px solid #fff'};
+                    box-shadow: 0 0 12px ${isSelected ? '#e03131' : 'rgba(34,139,230,0.5)'};
                     animation: ${isSelected ? 'gpsPulse 1.5s infinite' : 'none'};
                     display: flex;
                     align-items: center;
@@ -808,28 +824,31 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                         top: 50%;
                         left: 50%;
                         transform: translate(-50%, -50%);
-                        width: 10px;
-                        height: 10px;
-                        background: #fff;
+                        width: 12px;
+                        height: 12px;
+                        background: #e03131;
                         border-radius: 50%;
-                        box-shadow: 0 0 8px #228be6;
+                        box-shadow: 0 0 8px #e03131;
                       "></div>
                     ` : ''}
                   </div>
                   <style>
                     @keyframes gpsPulse {
-                      0% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
-                      70% { box-shadow: 0 0 0 12px rgba(34,139,230,0); }
-                      100% { box-shadow: 0 0 0 0 rgba(34,139,230,0.5); }
+                      0% { box-shadow: 0 0 0 0 #e03131; }
+                      70% { box-shadow: 0 0 0 16px rgba(224,49,49,0); }
+                      100% { box-shadow: 0 0 0 0 #e03131; }
                     }
                   </style>
                 `,
                 iconSize: [isSelected ? 36 : 16, isSelected ? 36 : 16],
                 iconAnchor: [isSelected ? 18 : 8, isSelected ? 18 : 8]
               })}
-              zIndexOffset={isSelected ? 500 : 400}
+              zIndexOffset={isSelected ? 900 : 400}
               eventHandlers={{
-                click: () => setInfoBanner({ ...lectura, tipo: 'lectura' })
+                click: () => {
+                  setSelectedLectura(lectura);
+                  setInfoBanner({ ...lectura, tipo: 'lectura' });
+                }
               }}
             />
           </React.Fragment>
@@ -1099,8 +1118,17 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
     }
   }, [highlightedLecturas]);
 
+  // --- EFECTO: Mostrar InfoBanner automáticamente al seleccionar una lectura ---
+  useEffect(() => {
+    if (selectedLectura) {
+      setInfoBanner({ ...selectedLectura, tipo: 'lectura' });
+    }
+  }, [selectedLectura]);
+
   // Componente del mapa para reutilizar
   const MapComponent = ({ isFullscreen = false }) => {
+    const [hasMounted, setHasMounted] = useState(false);
+    useEffect(() => { setHasMounted(true); }, []);
     // Efecto para centrar y hacer zoom cuando cambia la lectura seleccionada
     useEffect(() => {
       if (selectedLectura && mapRef.current && selectedLectura.Coordenada_X && selectedLectura.Coordenada_Y) {
@@ -1137,7 +1165,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
           `}
         </style>
         {/* Banner deslizante */}
-        <InfoBanner info={infoBanner} onClose={() => setInfoBanner(null)} />
+        <InfoBanner info={infoBanner} onClose={() => setInfoBanner(null)} 
+          onNavigate={selectedLectura ? handleNavigateLectura : undefined}
+          disableNav={infoBanner?.tipo === 'lector'}
+        />
         {/* Botones de cámara y pantalla completa arriba a la derecha */}
         <div style={{
           position: 'absolute',
@@ -1195,11 +1226,10 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
             </ActionIcon>
           </Tooltip>
         </div>
-        <MapContainer 
-          center={centroInicial} 
-          zoom={zoomInicial} 
-          scrollWheelZoom={true} 
-          style={{ 
+        <MapContainer
+          {...(!hasMounted ? { center: centroInicial, zoom: zoomInicial } : {} as any)}
+          scrollWheelZoom={true}
+          style={{
             ...mapContainerStyle,
             height: isFullscreen ? '100vh' : '100%',
           }}
@@ -1374,6 +1404,20 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
       console.error('Error al exportar el mapa:', error);
     }
   };
+
+  // --- Función para navegar entre lecturas ---
+  const handleNavigateLectura = useCallback((direction: 'prev' | 'next') => {
+    const lecturasLPR = resultadosFiltro.lecturas.filter(l => l.Tipo_Fuente !== 'GPS');
+    if (!selectedLectura || lecturasLPR.length === 0) return;
+    const idx = lecturasLPR.findIndex(l => l.ID_Lectura === selectedLectura.ID_Lectura);
+    if (idx === -1) return;
+    let newIndex = direction === 'prev' ? idx - 1 : idx + 1;
+    if (newIndex < 0) newIndex = lecturasLPR.length - 1;
+    if (newIndex >= lecturasLPR.length) newIndex = 0;
+    const nextLectura = lecturasLPR[newIndex];
+    setSelectedLectura(nextLectura);
+    // (El centrado del mapa ahora lo hace el useEffect de arriba)
+  }, [resultadosFiltro.lecturas, selectedLectura]);
 
   if (fullscreenMap) {
     return (
