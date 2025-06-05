@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, Button, Group, Table, Text, ActionIcon, Title, ScrollArea, Stack, Box } from '@mantine/core';
-import { IconX, IconArrowsSort, IconSearch, IconFileExport } from '@tabler/icons-react';
+import { IconX, IconArrowsSort, IconSearch, IconFileExport, IconTrash } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
 
@@ -23,10 +23,11 @@ interface SavedSearchesModalProps {
     onClose: () => void;
     savedSearches: SavedSearch[];
     selectedSearches: number[];
-    setSelectedSearches: (ids: number[]) => void;
+    setSelectedSearches: (searches: number[]) => void;
     handleCrossSearch: () => void;
     handleDeleteSavedSearch: (id: number) => void;
-    onClearResults?: () => void;
+    onClearResults: () => void;
+    onLoadSearch: (search: SavedSearch) => void;
 }
 
 const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
@@ -37,7 +38,8 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
     setSelectedSearches,
     handleCrossSearch,
     handleDeleteSavedSearch,
-    onClearResults
+    onClearResults,
+    onLoadSearch
 }) => {
     // Ordenación local
     const [sortBy, setSortBy] = useState<'name' | 'created_at' | 'results'>('created_at');
@@ -177,7 +179,7 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                             <Table.Thead>
                                 <Table.Tr>
                                     <Table.Th
-                                        style={{ cursor: 'pointer' }}
+                                        style={{ cursor: 'pointer', width: '40%' }}
                                         onClick={() => {
                                             setSortBy('name');
                                             setSortDir(sortBy === 'name' && sortDir === 'asc' ? 'desc' : 'asc');
@@ -186,7 +188,7 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                         Nombre <IconArrowsSort size={14} style={{ verticalAlign: 'middle' }} />
                                     </Table.Th>
                                     <Table.Th
-                                        style={{ cursor: 'pointer' }}
+                                        style={{ cursor: 'pointer', width: '20%' }}
                                         onClick={() => {
                                             setSortBy('created_at');
                                             setSortDir(sortBy === 'created_at' && sortDir === 'asc' ? 'desc' : 'asc');
@@ -195,7 +197,7 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                         Fecha <IconArrowsSort size={14} style={{ verticalAlign: 'middle' }} />
                                     </Table.Th>
                                     <Table.Th
-                                        style={{ cursor: 'pointer' }}
+                                        style={{ cursor: 'pointer', width: '15%' }}
                                         onClick={() => {
                                             setSortBy('results');
                                             setSortDir(sortBy === 'results' && sortDir === 'asc' ? 'desc' : 'asc');
@@ -203,8 +205,8 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                     >
                                         Nº lecturas <IconArrowsSort size={14} style={{ verticalAlign: 'middle' }} />
                                     </Table.Th>
-                                    <Table.Th>Seleccionar</Table.Th>
-                                    <Table.Th>Acciones</Table.Th>
+                                    <Table.Th style={{ width: '10%' }}>Seleccionar</Table.Th>
+                                    <Table.Th style={{ width: '15%' }}>Acciones</Table.Th>
                                 </Table.Tr>
                             </Table.Thead>
                             <Table.Tbody>
@@ -227,22 +229,33 @@ const SavedSearchesModal: React.FC<SavedSearchesModalProps> = ({
                                             />
                                         </Table.Td>
                                         <Table.Td>
-                                            <ActionIcon
-                                                color="teal"
-                                                variant="subtle"
-                                                onClick={() => handleExportSearch(search)}
-                                                title="Exportar a Excel"
-                                            >
-                                                <IconFileExport size={18} />
-                                            </ActionIcon>
-                                            <ActionIcon
-                                                color="red"
-                                                variant="subtle"
-                                                onClick={() => handleDeleteSavedSearch(search.id)}
-                                                title="Eliminar búsqueda"
-                                            >
-                                                <IconX size={16} />
-                                            </ActionIcon>
+                                            <Group gap="xs" justify="flex-end">
+                                                <ActionIcon
+                                                    color="blue"
+                                                    variant="subtle"
+                                                    onClick={() => onLoadSearch(search)}
+                                                    title="Recuperar búsqueda"
+                                                >
+                                                    <IconSearch size={18} />
+                                                </ActionIcon>
+                                                <ActionIcon
+                                                    color="red"
+                                                    variant="subtle"
+                                                    onClick={() => handleDeleteSavedSearch(search.id)}
+                                                    title="Eliminar búsqueda"
+                                                >
+                                                    <IconTrash size={18} />
+                                                </ActionIcon>
+                                                <ActionIcon
+                                                    color="green"
+                                                    variant="subtle"
+                                                    onClick={() => handleExportSearch(search)}
+                                                    disabled={!search.results || search.results.length === 0}
+                                                    title="Exportar a Excel"
+                                                >
+                                                    <IconFileExport size={18} />
+                                                </ActionIcon>
+                                            </Group>
                                         </Table.Td>
                                     </Table.Tr>
                                 ))}

@@ -1196,6 +1196,34 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
         });
     }, []);
 
+    // --- Handler para cargar una búsqueda guardada ---
+    const handleLoadSavedSearch = useCallback((search: SavedSearch) => {
+        // Aplicar los filtros de la búsqueda guardada
+        if (search.filters) {
+            setFechaInicio(search.filters.fechaInicio || '');
+            setFechaFin(search.filters.fechaFin || '');
+            setTimeFrom(search.filters.timeFrom || '');
+            setTimeTo(search.filters.timeTo || '');
+            setSelectedLectores(search.filters.selectedLectores || []);
+            setSelectedCarreteras(search.filters.selectedCarreteras || []);
+            setSelectedSentidos(search.filters.selectedSentidos || []);
+            setMinPasos(search.filters.minPasos || '');
+            setMaxPasos(search.filters.maxPasos || '');
+        }
+        
+        // Aplicar los resultados
+        setResults(search.results || []);
+        
+        // Cerrar el modal
+        setShowSavedSearches(false);
+        
+        notifications.show({
+            title: 'Búsqueda Recuperada',
+            message: `Se ha recuperado la búsqueda "${search.name}"`,
+            color: 'green'
+        });
+    }, []);
+
     // --- Renderizado ---
     return (
         <Box style={{ position: 'relative' }}>
@@ -1462,6 +1490,7 @@ const AnalisisLecturasPanel = forwardRef<AnalisisLecturasPanelHandle, AnalisisLe
                                 handleCrossSearch={handleCrossSearch}
                                 handleDeleteSavedSearch={handleDeleteSavedSearch}
                                 onClearResults={handleClearResults}
+                                onLoadSearch={handleLoadSavedSearch}
                             />
 
                             <Box style={{ maxHeight: 'calc(100vh - 400px)', overflow: 'auto' }}>
