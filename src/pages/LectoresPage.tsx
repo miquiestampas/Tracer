@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
     Box, Title, Table, Loader, Alert, Pagination, Select, Group, Text, ActionIcon, Tooltip, Button, Tabs, SimpleGrid, MultiSelect, Space, Checkbox, LoadingOverlay,
-    Autocomplete, ScrollArea, Collapse, Divider, Paper
+    Autocomplete, ScrollArea, Collapse, Divider, Paper, Stack, ColorSwatch, Modal, TextInput, ColorInput, Switch
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconEdit, IconTrash, IconCheck, IconMap, IconList, IconFileExport, IconUpload, IconSearch, IconX, IconListDetails, IconChevronDown, IconChevronUp, IconPlus } from '@tabler/icons-react';
+import { IconEdit, IconTrash, IconCheck, IconMap, IconList, IconFileExport, IconUpload, IconSearch, IconX, IconListDetails, IconChevronDown, IconChevronUp, IconPlus, IconCamera } from '@tabler/icons-react';
 import { getLectores, updateLector, getLectoresParaMapa, deleteLector, importarLectores, getLectorSugerencias } from '../services/lectoresApi';
 import type { Lector, LectorUpdateData, LectorCoordenadas, LectorSugerenciasResponse } from '../types/data';
 import EditLectorModal from '../components/modals/EditLectorModal';
@@ -16,6 +16,7 @@ import _ from 'lodash';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import html2canvas from 'html2canvas';
 
 // @ts-ignore
 delete L.Icon.Default.prototype._getIconUrl;
@@ -34,18 +35,18 @@ const fuchsiaPointIcon = L.divIcon({
 });
 
 const activeLectorIcon = L.divIcon({
-  html: `<span style="background-color: fuchsia; width: 16px; height: 16px; border-radius: 50%; display: inline-block; border: 3px solid #222; box-shadow: 0 0 0 4px rgba(120,0,120,0.15);"></span>`,
+  html: `<span style="background-color: #011638; width: 24px; height: 24px; border-radius: 50%; display: inline-block; border: 3px solid #222; box-shadow: 0 0 0 4px rgba(1,22,56,0.15);"></span>`,
   className: 'custom-div-icon',
-  iconSize: [16, 16],
-  iconAnchor: [8, 8]
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
 });
 
 // Default marker icon
 const defaultMarkerIcon = L.divIcon({
-  html: `<span style="background-color: #3388ff; width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></span>`,
+  html: `<span style="background-color: #011638; width: 16px; height: 16px; border-radius: 50%; display: inline-block; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></span>`,
   className: 'custom-div-icon',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6]
+  iconSize: [16, 16],
+  iconAnchor: [8, 8]
 });
 
 // *** NUEVO: Importar CSS de leaflet-draw aquí ***
@@ -247,6 +248,21 @@ function LectoresFiltradosPanel({ lectores }) {
   );
 }
 
+// Nueva interfaz para capas dinámicas
+interface Capa {
+  id: string;
+  nombre: string;
+  color: string;
+  criterios: {
+    provincia?: string[];
+    carretera?: string[];
+    organismo?: string[];
+    localidad?: string[];
+    texto?: string;
+  };
+  activa: boolean;
+}
+
 function LectoresPage() {
   const [lectores, setLectores] = useState<Lector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -294,6 +310,14 @@ function LectoresPage() {
 
   // --- Añadir estado infoBanner ---
   const [infoBanner, setInfoBanner] = useState<LectorCoordenadas | null>(null);
+
+  // Nuevos estados para capas
+  const [capas, setCapas] = useState<Capa[]>([]);
+  const [nuevaCapa, setNuevaCapa] = useState<Partial<Capa>>({ nombre: '', color: '#011638' });
+  const [mostrarFormularioCapa, setMostrarFormularioCapa] = useState(false);
+  const [editandoCapa, setEditandoCapa] = useState<Capa | null>(null);
+
+  const mapRef = useRef<L.Map | null>(null);
 
   // Resetear filtros cuando se abre la pestaña del mapa
   useEffect(() => {
@@ -418,34 +442,33 @@ function LectoresPage() {
     return Array.from(suggestions).sort();
   }, [lectores, mapLectores]);
 
-  // Lógica de Filtrado (usa la función helper)
+  // Separar la lógica de filtrado y capas
   const lectoresFiltradosMapa = useMemo(() => {
     const textoBusquedaLower = filtroTextoLibre.toLowerCase().trim();
     const drawnPolygonGeoJSON = getShapeGeoJSONGeometry(drawnShape);
 
+    // Aplicar solo los filtros normales
     return mapLectores.filter(lector => {
-      // Filtros existentes
       const provinciaMatch = filtroProvincia.length === 0 || (lector.Provincia && filtroProvincia.includes(lector.Provincia));
       const carreteraMatch = filtroCarretera.length === 0 || (lector.Carretera && filtroCarretera.includes(lector.Carretera));
       const organismoMatch = filtroOrganismo.length === 0 || (lector.Organismo_Regulador && filtroOrganismo.includes(lector.Organismo_Regulador));
       const localidadMatch = filtroLocalidad.length === 0 || (lector.Localidad && filtroLocalidad.includes(lector.Localidad));
       const textoMatch = textoBusquedaLower === '' || 
-                         (lector.ID_Lector && lector.ID_Lector.toLowerCase().includes(textoBusquedaLower)) ||
-                         (lector.Nombre && lector.Nombre.toLowerCase().includes(textoBusquedaLower));
+                        (lector.ID_Lector && lector.ID_Lector.toLowerCase().includes(textoBusquedaLower)) ||
+                        (lector.Nombre && lector.Nombre.toLowerCase().includes(textoBusquedaLower));
 
-      // Filtro espacial (usa drawnPolygonGeoJSON)
-      let spatialMatch = true; 
+      // Filtro espacial
+      let spatialMatch = true;
       if (drawnPolygonGeoJSON && lector.Coordenada_X != null && lector.Coordenada_Y != null) {
         try {
           const lectorPoint = turfPoint([lector.Coordenada_X, lector.Coordenada_Y]);
           spatialMatch = booleanPointInPolygon(lectorPoint, drawnPolygonGeoJSON);
         } catch (turfError) {
           console.error("Error en comprobación espacial con Turf.js:", turfError);
-          spatialMatch = false; 
+          spatialMatch = false;
         }
-      } 
+      }
 
-      // Devolver true solo si todos los filtros coinciden
       return provinciaMatch && carreteraMatch && organismoMatch && localidadMatch && textoMatch && spatialMatch;
     });
   }, [mapLectores, filtroProvincia, filtroCarretera, filtroOrganismo, filtroLocalidad, filtroTextoLibre, drawnShape]);
@@ -831,6 +854,215 @@ function LectoresPage() {
     // Función vacía por ahora
   };
 
+  // Nuevo componente para el editor de capas
+  const EditorCapas = () => {
+    const handleToggleCapa = (capaId: string, checked: boolean) => {
+      setCapas(capas.map(c =>
+        c.id === capaId ? { ...c, activa: checked } : c
+      ));
+      if (checked) {
+        setFiltroProvincia([]);
+        setFiltroCarretera([]);
+        setFiltroOrganismo([]);
+        setFiltroLocalidad([]);
+        setFiltroTextoLibre('');
+        setDrawnShape(null);
+      }
+    };
+
+    return (
+      <Paper p="md" shadow="xs" radius="md" mb="md" withBorder>
+        <Group justify="space-between" mb="md">
+          <Title order={4}>Editor de Capas</Title>
+          <Button
+            variant="light"
+            color="blue"
+            size="xs"
+            onClick={() => setMostrarFormularioCapa(true)}
+            leftSection={<IconPlus size={14} />}
+          >
+            Nueva Capa
+          </Button>
+        </Group>
+        <Stack>
+          {capas.map((capa) => (
+            <Group key={capa.id} justify="space-between" align="center">
+              <Group>
+                <Switch
+                  checked={capa.activa}
+                  onChange={(event) => handleToggleCapa(capa.id, event.currentTarget.checked)}
+                  color="blue"
+                  size="md"
+                />
+                <ColorSwatch color={capa.color} size={20} />
+                <Text>{capa.nombre}</Text>
+              </Group>
+              <Group>
+                <ActionIcon
+                  variant="subtle"
+                  color="blue"
+                  onClick={() => setEditandoCapa(capa)}
+                >
+                  <IconEdit size={16} />
+                </ActionIcon>
+                <ActionIcon
+                  variant="subtle"
+                  color="red"
+                  onClick={() => {
+                    setCapas(capas.filter(c => c.id !== capa.id));
+                  }}
+                >
+                  <IconTrash size={16} />
+                </ActionIcon>
+              </Group>
+            </Group>
+          ))}
+        </Stack>
+      </Paper>
+    );
+  };
+
+  // Añadir el modal de capas
+  const CapaModal = () => {
+    const isEditing = !!editandoCapa;
+    const [nombre, setNombre] = useState(editandoCapa?.nombre || '');
+    const [color, setColor] = useState(editandoCapa?.color || '#011638');
+
+    const handleSave = () => {
+      if (!nombre.trim()) {
+        notifications.show({
+          title: 'Error',
+          message: 'El nombre de la capa es requerido',
+          color: 'red'
+        });
+        return;
+      }
+
+      const criterios = {
+        provincia: filtroProvincia.length > 0 ? [...filtroProvincia] : undefined,
+        carretera: filtroCarretera.length > 0 ? [...filtroCarretera] : undefined,
+        organismo: filtroOrganismo.length > 0 ? [...filtroOrganismo] : undefined,
+        localidad: filtroLocalidad.length > 0 ? [...filtroLocalidad] : undefined,
+        texto: filtroTextoLibre || undefined
+      };
+
+      if (isEditing && editandoCapa) {
+        setCapas(capas.map(c => 
+          c.id === editandoCapa.id 
+            ? { ...c, nombre, color, criterios }
+            : c
+        ));
+      } else {
+        setCapas([...capas, {
+          id: Date.now().toString(),
+          nombre,
+          color,
+          criterios,
+          activa: true
+        }]);
+      }
+
+      setMostrarFormularioCapa(false);
+      setEditandoCapa(null);
+    };
+
+    return (
+      <Modal
+        opened={mostrarFormularioCapa}
+        onClose={() => {
+          setMostrarFormularioCapa(false);
+          setEditandoCapa(null);
+        }}
+        title={isEditing ? 'Editar Capa' : 'Nueva Capa'}
+        centered
+      >
+        <Stack>
+          <TextInput
+            label="Nombre de la capa"
+            value={nombre}
+            onChange={(e) => setNombre(e.currentTarget.value)}
+            placeholder="Ingrese un nombre para la capa"
+          />
+          <ColorInput
+            label="Color de la capa"
+            value={color}
+            onChange={setColor}
+            format="hex"
+          />
+          <Group justify="flex-end" mt="md">
+            <Button variant="light" onClick={() => {
+              setMostrarFormularioCapa(false);
+              setEditandoCapa(null);
+            }}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave}>
+              {isEditing ? 'Guardar cambios' : 'Crear capa'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    );
+  };
+
+  // Añadir la función handleExportarMapa
+  const handleExportarMapa = async () => {
+    const mapContainer = document.querySelector('.leaflet-container');
+    if (!mapContainer) return;
+
+    try {
+      const canvas = await html2canvas(mapContainer as HTMLElement, {
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: null
+      });
+
+      const link = document.createElement('a');
+      link.download = `mapa-lectores-${new Date().toISOString().split('T')[0]}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Error al exportar el mapa:', error);
+      notifications.show({
+        title: 'Error',
+        message: 'No se pudo exportar el mapa',
+        color: 'red'
+      });
+    }
+  };
+
+  // Obtener los IDs de todas las capas activas
+  const idsCapasActivas = capas.filter(c => c.activa).flatMap(c => Array.isArray(c.ids) ? c.ids : []);
+
+  // Refuerza la lógica de intersección: mostrar lectores que cumplen los filtros Y los criterios de alguna capa activa
+  const capasActivas = capas.filter(c => c.activa && c.criterios);
+  const normalizar = (v: string) => v?.toLowerCase().trim();
+  const mostrarLectores = capasActivas.length > 0
+    ? lectoresFiltradosMapa.filter(lector =>
+        capasActivas.some(capa => {
+          const cr = capa.criterios || {};
+          const provinciaOk = !cr.provincia || (lector.Provincia && cr.provincia.map(normalizar).includes(normalizar(lector.Provincia)));
+          const carreteraOk = !cr.carretera || (lector.Carretera && cr.carretera.map(normalizar).includes(normalizar(lector.Carretera)));
+          const organismoOk = !cr.organismo || (lector.Organismo_Regulador && cr.organismo.map(normalizar).includes(normalizar(lector.Organismo_Regulador)));
+          const localidadOk = !cr.localidad || (lector.Localidad && cr.localidad.map(normalizar).includes(normalizar(lector.Localidad)));
+          const textoOk = !cr.texto ||
+            (lector.ID_Lector && normalizar(lector.ID_Lector).includes(normalizar(cr.texto))) ||
+            (lector.Nombre && normalizar(lector.Nombre).includes(normalizar(cr.texto)));
+          return provinciaOk && carreteraOk && organismoOk && localidadOk && textoOk;
+        })
+      )
+    : lectoresFiltradosMapa;
+
+  // Efecto para centrar el mapa sobre los lectores activos
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (mostrarLectores.length === 0) return;
+    const bounds = L.latLngBounds(mostrarLectores.map(l => [l.Coordenada_Y, l.Coordenada_X] as [number, number]));
+    if (bounds.isValid()) {
+      mapRef.current.fitBounds(bounds, { padding: [40, 40] });
+    }
+  }, [mostrarLectores]);
+
   return (
     <Box p="md" style={{ paddingLeft: 32, paddingRight: 32 }}>
       <Group justify="space-between" mb="xl">
@@ -1084,8 +1316,9 @@ function LectoresPage() {
                   localidadesUnicas={localidadesUnicas}
                   mapLoading={mapLoading}
                 />
+                <EditorCapas />
                 <Box style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <LectoresFiltradosPanel lectores={lectoresFiltradosMapa} />
+                  <LectoresFiltradosPanel lectores={mostrarLectores} />
                 </Box>
               </Box>
               <Box style={{ flex: 1, height: 'calc(100vh - 300px)', minHeight: '450px', position: 'relative' }}>
@@ -1105,6 +1338,7 @@ function LectoresPage() {
                     zoom={12} 
                     scrollWheelZoom={true} 
                     style={{ height: '100%', width: '100%' }}
+                    whenCreated={mapInstance => { mapRef.current = mapInstance; }}
                   >
                     <TileLayer
                       url="https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png"
@@ -1114,18 +1348,61 @@ function LectoresPage() {
                       onShapeDrawn={handleShapeDrawn}
                       onShapeDeleted={handleShapeDeleted}
                     />
-                    {lectoresFiltradosMapa.map(lector => {
-                      const useFuchsiaIcon = lector.Organismo_Regulador === 'ZBE Madrid';
+                    {mostrarLectores.map(lector => {
                       const isActive = infoBanner && infoBanner.ID_Lector === lector.ID_Lector;
+                      // Buscar la primera capa activa que coincida para el color
+                      const capaActiva = capasActivas.find(capa => {
+                        const cr = capa.criterios || {};
+                        const provinciaOk = !cr.provincia || (lector.Provincia && cr.provincia.map(normalizar).includes(normalizar(lector.Provincia)));
+                        const carreteraOk = !cr.carretera || (lector.Carretera && cr.carretera.map(normalizar).includes(normalizar(lector.Carretera)));
+                        const organismoOk = !cr.organismo || (lector.Organismo_Regulador && cr.organismo.map(normalizar).includes(normalizar(lector.Organismo_Regulador)));
+                        const localidadOk = !cr.localidad || (lector.Localidad && cr.localidad.map(normalizar).includes(normalizar(lector.Localidad)));
+                        const textoOk = !cr.texto ||
+                          (lector.ID_Lector && normalizar(lector.ID_Lector).includes(normalizar(cr.texto))) ||
+                          (lector.Nombre && normalizar(lector.Nombre).includes(normalizar(cr.texto)));
+                        return provinciaOk && carreteraOk && organismoOk && localidadOk && textoOk;
+                      });
+                      
+                      const markerIcon = L.divIcon({
+                        html: `<span style="background-color: ${capaActiva?.color || '#011638'}; width: ${isActive ? '24px' : '16px'}; height: ${isActive ? '24px' : '16px'}; border-radius: 50%; display: inline-block; border: ${isActive ? '3px solid #222' : '2px solid white'}; box-shadow: ${isActive ? '0 0 0 4px rgba(1,22,56,0.15)' : '0 0 4px rgba(0,0,0,0.4)'};"></span>`,
+                        className: 'custom-div-icon',
+                        iconSize: isActive ? [24, 24] : [16, 16],
+                        iconAnchor: isActive ? [12, 12] : [8, 8]
+                      });
+
                       return (
                         <Marker 
                           key={lector.ID_Lector} 
                           position={[lector.Coordenada_Y, lector.Coordenada_X]}
-                          icon={isActive ? activeLectorIcon : (useFuchsiaIcon ? fuchsiaPointIcon : defaultMarkerIcon)}
+                          icon={markerIcon}
                           eventHandlers={{ click: () => setInfoBanner(lector) }}
                         />
                       );
                     })}
+                    <ActionIcon
+                      variant="default"
+                      size={32}
+                      style={{
+                        position: 'absolute',
+                        bottom: 16,
+                        left: 16,
+                        zIndex: 1000,
+                        background: 'white',
+                        border: '2px solid #234be7',
+                        color: '#234be7',
+                        boxShadow: 'none',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0
+                      }}
+                      onClick={handleExportarMapa}
+                      id="camera-capture-btn-lectores"
+                      aria-label="Exportar captura de pantalla"
+                    >
+                      <IconCamera size={16} color="#234be7" />
+                    </ActionIcon>
                   </MapContainer>
                 ) : (
                   <Text>No hay lectores con coordenadas para mostrar en el mapa.</Text>
@@ -1172,6 +1449,8 @@ function LectoresPage() {
           localidades: localidadesUnicas.map(l => l.value)
         }}
       />
+
+      <CapaModal />
 
       <Box style={{ display: 'none' }}>
         {/* Componente eliminado */}

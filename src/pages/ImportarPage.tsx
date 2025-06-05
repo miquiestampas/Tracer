@@ -627,12 +627,20 @@ function ImportarPage() {
   const handleFileSelect = (file: File | null) => {
     if (!file) return;
 
-    // Validar tipo de archivo
+    // Validar tipo de archivo según el tipo seleccionado
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    const validExtensions = ['xlsx', 'xls', 'csv'];
-    
+    let validExtensions: string[] = [];
+    if (fileType === 'GPX_KML') {
+      validExtensions = ['gpx', 'kml'];
+    } else {
+      validExtensions = ['xlsx', 'xls', 'csv'];
+    }
     if (!validExtensions.includes(fileExtension || '')) {
-      setUploadError('Por favor, seleccione un archivo Excel (.xlsx, .xls) o CSV (.csv) válido.');
+      setUploadError(
+        fileType === 'GPX_KML'
+          ? 'Por favor, seleccione un archivo GPX (.gpx) o KML (.kml) válido.'
+          : 'Por favor, seleccione un archivo Excel (.xlsx, .xls) o CSV (.csv) válido.'
+      );
       return;
     }
 
@@ -764,7 +772,10 @@ function ImportarPage() {
               <Button
                 variant={fileType === 'LPR' ? 'filled' : 'outline'}
                 color="#2bd39e"
-                onClick={() => setFileType('LPR')}
+                onClick={() => {
+                  setFileType('LPR');
+                  setSelectedFile(null);
+                }}
                 disabled={isUploading || isReadingHeaders}
                 leftSection={<IconFileSpreadsheet size={18} />}
               >
@@ -773,7 +784,10 @@ function ImportarPage() {
               <Button
                 variant={fileType === 'GPS' ? 'filled' : 'outline'}
                 color="#2bd39e"
-                onClick={() => setFileType('GPS')}
+                onClick={() => {
+                  setFileType('GPS');
+                  setSelectedFile(null);
+                }}
                 disabled={isUploading || isReadingHeaders}
                 leftSection={<IconFileSpreadsheet size={18} />}
               >
@@ -782,7 +796,10 @@ function ImportarPage() {
               <Button
                 variant={fileType === 'GPX_KML' ? 'filled' : 'outline'}
                 color="#FF204E"
-                onClick={() => setFileType('GPX_KML')}
+                onClick={() => {
+                  setFileType('GPX_KML');
+                  setSelectedFile(null);
+                }}
                 disabled={isUploading || isReadingHeaders}
                 leftSection={<IconFileSpreadsheet size={18} />}
               >

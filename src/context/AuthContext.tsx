@@ -42,6 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true); // Inicia como true hasta que se verifique el token
   const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [showSessionEndModal, setShowSessionEndModal] = useState(false);
   const [warningTimeout, setWarningTimeout] = useState<NodeJS.Timeout | null>(null);
   const [logoutTimeout, setLogoutTimeout] = useState<NodeJS.Timeout | null>(null);
 
@@ -211,15 +212,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthenticated(false);
     localStorage.removeItem(JWT_TOKEN_KEY);
     localStorage.removeItem(TOKEN_TIMESTAMP_KEY);
-    // setShowSessionWarning(false);
     clearTimeouts();
-    // Opcional: Redirigir a /login. Esto usualmente se maneja en ProtectedRoute o App.tsx
-    // window.location.href = '/login'; 
-    notifications.show({
-        title: 'Sesión cerrada',
-        message: 'Has cerrado sesión exitosamente.',
-        color: 'blue',
-    });
+    setShowSessionEndModal(true);
+  };
+
+  const handleRestartSession = async () => {
+    setShowSessionEndModal(false);
+    window.location.href = '/login';
+  };
+
+  const handleCloseTab = () => {
+    window.close();
   };
 
   const keepAlive = async () => {
@@ -263,6 +266,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               </Button>
               <Button onClick={keepAlive}>
                 Mantener sesión
+              </Button>
+            </Group>
+          </Stack>
+        </Modal>
+      )}
+      {showSessionEndModal && (
+        <Modal
+          opened={showSessionEndModal}
+          onClose={() => setShowSessionEndModal(false)}
+          title="Sesión finalizada"
+          centered
+          withCloseButton={false}
+          closeOnClickOutside={false}
+          closeOnEscape={false}
+        >
+          <Stack>
+            <Text>
+              Tu sesión ha terminado. ¿Qué deseas hacer?
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="light" color="red" onClick={handleCloseTab}>
+                Salir
+              </Button>
+              <Button onClick={handleRestartSession}>
+                Iniciar sesión de nuevo
               </Button>
             </Group>
           </Stack>

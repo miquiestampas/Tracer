@@ -32,11 +32,11 @@ type SortDirection = 'asc' | 'desc';
 // --- NUEVO: Función para obtener color según estado ---
 function getStatusColor(estado: EstadoCaso): string {
     switch (estado) {
-        case "Nuevo": return '#2bd39e';
-        case "Esperando Archivos": return '#6528F7';
-        case "En Análisis": return '#211951';
-        case "Pendiente Informe": return '#FF204E';
-        case "Cerrada": return '#F0F3FF';
+        case "Nuevo": return '#0E1049'; // Penn Blue
+        case "Pendiente Informe": return '#2F4550'; // Charcoal
+        case "Esperando Archivos": return '#586F7C'; // Payne's gray
+        case "En Análisis": return '#B8DBD9'; // Light blue
+        case "Cerrada": return '#F4F4F9'; // Ghost white
         default: return '#D3D3D3'; // Color por defecto
     }
 }
