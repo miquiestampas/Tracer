@@ -455,8 +455,6 @@ const helpTexts = {
         <ul style={{ paddingLeft: '20px', margin: '4px 0' }}>
           <li><b>Búsqueda Rápida:</b> Localiza de inmediato información sobre cualquier matrícula registrada en el sistema. Introduce la matrícula y accede a sus lecturas y casos asociados.</li>
           <li><b>Búsqueda Multi-Caso:</b> Compara y analiza vehículos que aparecen en varios casos. Selecciona los casos de interés y descubre coincidencias de matrículas entre ellos.</li>
-          <li><b>Investigaciones Recientes:</b> Visualiza las investigaciones (casos) más recientes a las que tienes acceso. Desde aquí puedes acceder rápidamente al detalle de cada investigación.</li>
-          <li><b>Vehículos Sospechosos Recientes:</b> Consulta los últimos vehículos marcados como sospechosos en los casos accesibles. Este módulo te permite identificar rápidamente matrículas de interés especial y acceder a su información detallada.</li>
           <li><b>Resumen de Base de Datos:</b> Consulta de un vistazo el tamaño de la base de datos, el número de casos activos, lecturas totales y vehículos registrados.</li>
           <li><b>Total de Lectores en el Sistema:</b> Visualiza el número total de lectores (dispositivos de captura) registrados en el sistema. Este dato es útil para controlar la infraestructura y el alcance de la red de captación.</li>
           <li><b>Últimas Importaciones:</b> Revisa las importaciones de datos más recientes, incluyendo archivos procesados y su estado. Esto te ayuda a mantener el control sobre la actualización de la información en el sistema.</li>

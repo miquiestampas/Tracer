@@ -1122,6 +1122,12 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
   useEffect(() => {
     if (selectedLectura) {
       setInfoBanner({ ...selectedLectura, tipo: 'lectura' });
+      
+      // Hacer scroll a la lectura seleccionada en la tabla
+      const selectedElement = document.getElementById(`lectura-${selectedLectura.ID_Lectura}`);
+      if (selectedElement) {
+        selectedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     }
   }, [selectedLectura]);
 
@@ -1607,6 +1613,7 @@ const MapPanel: React.FC<MapPanelProps> = ({ casoId }) => {
                   .map((lectura) => (
                     <Paper
                       key={lectura.ID_Lectura}
+                      id={`lectura-${lectura.ID_Lectura}`}
                       p="xs"
                       withBorder
                       style={{
