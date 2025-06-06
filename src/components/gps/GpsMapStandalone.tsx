@@ -13,6 +13,9 @@ import { gpsCache } from '../../services/gpsCache';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
+import DrawControl from '../map/DrawControl';
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { point as turfPoint } from '@turf/helpers';
 
 interface GpsMapStandaloneProps {
   lecturas: GpsLectura[];
@@ -35,6 +38,9 @@ interface GpsMapStandaloneProps {
 
 interface GpsMapStandalonePropsWithFullscreen extends GpsMapStandaloneProps {
   fullscreenMap?: boolean;
+  drawnShape?: L.Layer | null;
+  onShapeDrawn?: (layer: L.Layer) => void;
+  onShapeDeleted?: () => void;
 }
 
 const ICONOS = [
@@ -406,7 +412,10 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
   currentPlaybackIndex,
   fullscreenMap,
   puntoSeleccionado,
-  heatmapMultiplier = 1.65
+  heatmapMultiplier = 1.65,
+  drawnShape,
+  onShapeDrawn,
+  onShapeDeleted
 }, ref): React.ReactElement => {
   const internalMapRef = useRef<L.Map | null>(null);
   const [selectedInfo, setSelectedInfo] = useState<any | null>(null);
@@ -851,6 +860,7 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
           attribution={tileLayerAttribution}
         />
         <MapAutoResize />
+        <DrawControl onShapeDrawn={onShapeDrawn!} onShapeDeleted={onShapeDeleted!} />
         {mapControls.showPoints && <ClusteredMarkersInternal />}
         {mapControls.showPoints && <ActiveLayersInternal />}
         {mapControls.showHeatmap && (

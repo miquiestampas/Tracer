@@ -13,6 +13,9 @@ import GpsMapStandalone from './GpsMapStandalone';
 import html2canvas from 'html2canvas';
 import { gpsCache } from '../../services/gpsCache';
 import { notifications } from '@mantine/notifications';
+import DrawControl from '../map/DrawControl';
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { point as turfPoint } from '@turf/helpers';
 
 // Estilos CSS en línea para el contenedor del mapa
 const mapContainerStyle = {
@@ -1027,6 +1030,26 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     fetchCapas();
   }, [casoId]);
 
+  const [drawnShape, setDrawnShape] = useState<L.Layer | null>(null);
+  const handleShapeDrawn = useCallback((layer: L.Layer) => { setDrawnShape(layer); }, []);
+  const handleShapeDeleted = useCallback(() => { setDrawnShape(null); }, []);
+
+  // Filtrado principal de lecturas (para el panel y el mapa)
+  const lecturasFiltradas = useMemo(() => {
+    if (!drawnShape) return lecturas;
+    // @ts-ignore
+    const geometry = drawnShape.toGeoJSON().geometry;
+    return lecturas.filter(l => {
+      if (l.Coordenada_X == null || l.Coordenada_Y == null) return false;
+      try {
+        const pt = turfPoint([l.Coordenada_X, l.Coordenada_Y]);
+        return booleanPointInPolygon(pt, geometry);
+      } catch {
+        return false;
+      }
+    });
+  }, [lecturas, drawnShape]);
+
   // --- Renderizado principal ---
   if (fullscreenMap) {
     return (
@@ -1115,7 +1138,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
         <Paper withBorder style={{ height: '100vh', minHeight: 400, width: '100vw' }}>
           <GpsMapStandalone
             ref={mapRef}
-            lecturas={lecturas}
+            lecturas={lecturasFiltradas}
             capas={capas}
             localizaciones={localizaciones}
             mapControls={mapControls}
@@ -1126,6 +1149,9 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
             fullscreenMap={fullscreenMap}
             puntoSeleccionado={puntoSeleccionado}
             heatmapMultiplier={heatmapMultiplier}
+            drawnShape={drawnShape}
+            onShapeDrawn={handleShapeDrawn}
+            onShapeDeleted={handleShapeDeleted}
           />
         </Paper>
       </div>
@@ -1514,7 +1540,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
           <Paper withBorder style={{ height: 'calc(100vh - 283px)', minHeight: 400, width: '100%' }}>
             <GpsMapStandalone
               ref={mapRef}
-              lecturas={lecturas}
+              lecturas={lecturasFiltradas}
               capas={capas}
               localizaciones={localizaciones}
               mapControls={mapControls}
@@ -1525,6 +1551,9 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
               fullscreenMap={fullscreenMap}
               puntoSeleccionado={puntoSeleccionado}
               heatmapMultiplier={heatmapMultiplier}
+              drawnShape={drawnShape}
+              onShapeDrawn={handleShapeDrawn}
+              onShapeDeleted={handleShapeDeleted}
             />
           </Paper>
         </div>

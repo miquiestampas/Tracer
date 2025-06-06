@@ -20,7 +20,7 @@ const DrawControl: React.FC<DrawControlProps> = ({ onShapeDrawn, onShapeDeleted 
 
     // Configuración de los controles de dibujo
     const drawControl = new L.Control.Draw({
-      position: 'topright', // Posición de los controles
+      position: 'topleft', // Posición de los controles (debajo del zoom)
       draw: {
         polygon: {
           allowIntersection: false, // No permitir que el polígono se cruce a sí mismo
