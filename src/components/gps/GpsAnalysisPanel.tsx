@@ -515,6 +515,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [pendingData, setPendingData] = useState<GpsLectura[] | null>(null);
   const [shouldProceed, setShouldProceed] = useState(false);
+  const [hasDismissedWarning, setHasDismissedWarning] = useState(false);
 
   // Estados para filtros
   const [filters, setFilters] = useState({
@@ -722,7 +723,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
       const cacheKey = `${casoId}_${vehiculoObjetivo}_${fechaInicio}_${horaInicio}_${fechaFin}_${horaFin}_${filters.velocidadMin}_${filters.velocidadMax}_${filters.duracionParada}_${JSON.stringify(filters.zonaSeleccionada)}`;
       const cachedData = gpsCache.getLecturas(casoId, cacheKey);
       if (cachedData) {
-        if (cachedData.length > 2000) {
+        if (cachedData.length > 2000 && !hasDismissedWarning) {
           setPendingData(cachedData);
           setShowWarningModal(true);
         } else {
@@ -750,7 +751,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
         matricula: vehiculoObjetivo
       });
       
-      if (data.length > 2000) {
+      if (data.length > 2000 && !hasDismissedWarning) {
         setPendingData(data);
         setShowWarningModal(true);
       } else {
@@ -778,11 +779,12 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
     } finally {
       setLoading(false);
     }
-  }, [casoId, filters, vehiculoObjetivo]);
+  }, [casoId, filters, vehiculoObjetivo, hasDismissedWarning]);
 
   // Función para manejar cambios en los filtros
   const handleFilterChange = useCallback((updates: Partial<typeof filters>) => {
     setFilters(prev => ({ ...prev, ...updates }));
+    setHasDismissedWarning(false);
   }, []);
 
   // Función para limpiar filtros
@@ -797,12 +799,18 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
       duracionParada: null,
       zonaSeleccionada: null
     });
+    setHasDismissedWarning(false);
     if (vehiculoObjetivo) {
       handleFiltrar();
     } else {
       setLecturas([]);
     }
   }, [handleFiltrar, vehiculoObjetivo]);
+
+  // Cuando cambia el vehículo objetivo, resetear el flag
+  useEffect(() => {
+    setHasDismissedWarning(false);
+  }, [vehiculoObjetivo]);
 
   // Función para limpiar el mapa completamente (igual que MapPanel)
   const handleLimpiarMapa = () => {
@@ -1196,6 +1204,7 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
                 }
                 setShowWarningModal(false);
                 setPendingData(null);
+                setHasDismissedWarning(true);
               }}
             >
               Continuar de todos modos
@@ -1205,6 +1214,8 @@ const GpsAnalysisPanel: React.FC<GpsAnalysisPanelProps> = ({ casoId, puntoSelecc
               onClick={() => {
                 setShowWarningModal(false);
                 setPendingData(null);
+                setLecturas([]);
+                setHasDismissedWarning(true);
               }}
             >
               Cancelar

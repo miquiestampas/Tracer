@@ -869,6 +869,38 @@ const GpsMapStandalone = React.memo(forwardRef<L.Map, GpsMapStandalonePropsWithF
             options={{ radius: 15, blur: 10, maxZoom: 18 } as any}
           />
         )}
+        {/* Renderizar localizaciones de interés */}
+        {mostrarLocalizaciones && localizaciones && localizaciones.map(loc => {
+          // Buscar el icono React correspondiente
+          const iconDef = ICONOS.find(i => i.name === loc.icono) || ICONOS.find(i => i.name === 'pin');
+          const IconComponent = iconDef ? iconDef.icon : IconMapPin;
+          // Renderizar el SVG a string usando ReactDOMServer, forzando tamaño y color
+          const iconSvg = ReactDOMServer.renderToString(
+            React.createElement(IconComponent, { size: 28, color: loc.color })
+          );
+          return (
+            <Marker
+              key={loc.id}
+              position={[loc.coordenada_y, loc.coordenada_x]}
+              icon={L.divIcon({
+                className: 'custom-localizacion-icon',
+                html: iconSvg,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
+              })}
+              eventHandlers={{
+                click: () => {
+                  setSelectedInfo({ info: loc, isLocalizacion: true });
+                }
+              }}
+            >
+              <Popup>
+                <b>{loc.titulo}</b><br />
+                {loc.descripcion}
+              </Popup>
+            </Marker>
+          );
+        }).filter(Boolean)}
         {playbackLayer && currentPlaybackIndex != null && currentPlaybackIndex >= 0 && animatedPosition && (
           <>
             {/* Polilínea del recorrido hasta el punto actual */}
